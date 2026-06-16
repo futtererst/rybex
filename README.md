@@ -451,3 +451,22 @@ Billing v2 Phase 1A domain review and hardening are documented in:
 - `docs/billing-v2-phase-1a-domain-implementation-report.md`
 
 The domain review recommendation is Accepted for Phase 1B UI. Billing v2 remains domain-only at this point: UI is not implemented, routes are unchanged, `app/billing/page.tsx` is unchanged, Pilot Mode is unchanged, and no persistence/auth/RLS/Field/Closeout behavior changed.
+
+## Billing v2 Interaction Design Reset
+
+Billing v2 Phase 1B UI attempt failed manual review. The rejected UI felt like forms and buttons, was visually cluttered, and did not clearly guide the user through the business process.
+
+The interaction design reset package defines the replacement direction:
+
+- `docs/billing-v2-ui-failure-review.md`
+- `docs/billing-v2-guided-workflow-interaction-design.md`
+- `docs/billing-v2-step-by-step-storyboard.md`
+- `docs/billing-v2-replacement-ui-implementation-plan.md`
+
+No replacement UI implementation occurred in this pass. Billing v2 domain layer remains the accepted foundation.
+
+Run:
+
+```powershell
+npm run billing-v2:verify-interaction-design
+```

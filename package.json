@@ -15,6 +15,7 @@
     "billing-v2:verify-engineering-readiness": "node scripts/verify-billing-v2-engineering-readiness.mjs",
     "billing-v2:qa-domain": "node scripts/qa-billing-v2-domain.mjs",
     "billing-v2:verify-domain": "node scripts/verify-billing-v2-domain.mjs",
+    "billing-v2:verify-interaction-design": "node scripts/verify-billing-v2-interaction-design-reset.mjs",
     "demo:check": "node scripts/verify-demo-ready.mjs",
     "demo:package": "node scripts/create-demo-package.mjs",
     "visual:capture": "node scripts/capture-visual-qa.mjs",
