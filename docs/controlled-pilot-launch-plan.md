@@ -304,3 +304,16 @@ Billing v2 engineering readiness guardrails now exist: ADRs, state transition ma
 No implementation occurred. Controlled pilot scope, Pilot Mode behavior, workflow runtime, persistence, auth, and RLS remain unchanged. The next approved Billing v2 implementation pass must be Phase 1A domain-only and must not refactor Field or Closeout.
 
 Verification: `npm run billing-v2:verify-engineering-readiness`.
+
+## Billing v2 Phase 1A Domain Boundary
+
+Billing v2 Phase 1A domain layer now exists as internal domain code only. Controlled pilot scope, Pilot Mode behavior, workflow runtime behavior, persistence, auth, RLS, Field, and Closeout remain unchanged.
+
+The controlled pilot launch plan should not treat Billing v2 as a new pilot workflow yet. A later Phase 1B UI/integration pass must be separately reviewed before any pilot-facing behavior changes.
+
+Verification:
+
+```powershell
+npm run billing-v2:qa-domain
+npm run billing-v2:verify-domain
+```

@@ -429,3 +429,25 @@ Verify the engineering-readiness package with:
 ```powershell
 npm run billing-v2:verify-engineering-readiness
 ```
+
+## Billing v2 Phase 1A Domain Layer
+
+Billing v2 Phase 1A domain layer now exists as domain-only code. It adds the BillingBackupPackage model, deterministic demo state, state machine commands, guards, readiness logic, structured evidence references, commercial review task/decision logic, blocker-clearance rules, outcome record generation, historical record generation, and domain QA.
+
+No Billing v2 UI behavior changed. No routes, `app/billing/page.tsx`, Pilot Mode behavior, persistence, auth, RLS, Field workflow, or Closeout workflow changed.
+
+Run:
+
+```powershell
+npm run billing-v2:qa-domain
+npm run billing-v2:verify-domain
+```
+
+## Billing v2 Phase 1A Domain Review
+
+Billing v2 Phase 1A domain review and hardening are documented in:
+
+- `docs/billing-v2-phase-1a-domain-review.md`
+- `docs/billing-v2-phase-1a-domain-implementation-report.md`
+
+The domain review recommendation is Accepted for Phase 1B UI. Billing v2 remains domain-only at this point: UI is not implemented, routes are unchanged, `app/billing/page.tsx` is unchanged, Pilot Mode is unchanged, and no persistence/auth/RLS/Field/Closeout behavior changed.

@@ -13,6 +13,8 @@
     "billing-v2:verify-blueprint": "node scripts/verify-billing-v2-blueprint.mjs",
     "billing-v2:verify-readiness": "node scripts/verify-billing-v2-implementation-readiness.mjs",
     "billing-v2:verify-engineering-readiness": "node scripts/verify-billing-v2-engineering-readiness.mjs",
+    "billing-v2:qa-domain": "node scripts/qa-billing-v2-domain.mjs",
+    "billing-v2:verify-domain": "node scripts/verify-billing-v2-domain.mjs",
     "demo:check": "node scripts/verify-demo-ready.mjs",
     "demo:package": "node scripts/create-demo-package.mjs",
     "visual:capture": "node scripts/capture-visual-qa.mjs",
