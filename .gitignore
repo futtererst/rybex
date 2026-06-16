@@ -1,0 +1,25 @@
+node_modules
+.next
+out
+dist
+*.tsbuildinfo
+.env*
+!.env.example
+visual-qa-output/*
+!visual-qa-output/.gitkeep
+!visual-qa-output/desktop/
+!visual-qa-output/desktop/.gitkeep
+!visual-qa-output/tablet/
+!visual-qa-output/tablet/.gitkeep
+!visual-qa-output/mobile/
+!visual-qa-output/mobile/.gitkeep
+!visual-qa-output/manual/
+!visual-qa-output/manual/.gitkeep
+.env.local
+.env.*.local
+node_modules/
+.next/
+package-output/
+
+# Generated visual QA output
+visual-qa-output/**
