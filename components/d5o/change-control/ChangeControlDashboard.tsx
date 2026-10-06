@@ -49,8 +49,8 @@ export function ChangeControlDashboard({
           <span className="muted">{noticeRisks.length} notice risk(s)</span>
         </div>
         <div className="project-detail-grid">
-          {activeEvents.map((event, index) => (
-            <ChangeEventCard event={event} key={`change-focus-${event.id}-${event.changeNumber}-${index}`} />
+          {activeEvents.map((event) => (
+            <ChangeEventCard event={event} key={event.id} />
           ))}
         </div>
       </section>

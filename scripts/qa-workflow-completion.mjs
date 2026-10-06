@@ -87,6 +87,39 @@ ${rows}
 `;
 }
 
+async function completeBillingV2GuidedWorkflow(page) {
+  await page.locator('[data-qa="billing-v2-start-package"]').click();
+  await page.locator('[data-qa="billing-v2-backup-summary-input"]').fill("Signed T&M ticket and supervisor backup are available for CE-004.");
+  await page.locator('[data-qa="billing-v2-related-source-input"]').fill("CE-004 / stored material billing support");
+  await page.locator('[data-qa="billing-v2-amount-input"]').fill("84000");
+  await page.locator('[data-qa="billing-v2-save-package"]').click();
+  await page.locator('[data-qa="billing-v2-step-add-proof"]').waitFor({ state: "visible", timeout: 5000 });
+
+  for (const evidenceId of [
+    "signed-tm-ticket",
+    "daily-report-reference",
+    "photo-log-reference",
+    "supervisor-confirmation",
+    "product-approval-backup"
+  ]) {
+    const card = page.locator(`[data-qa="billing-v2-evidence-card-${evidenceId}"]`);
+    await card.locator(`[data-qa="billing-v2-add-reference-${evidenceId}"]`).fill(`Workflow completion QA reference for ${evidenceId}.`);
+    await card.getByRole("button", { name: "Save reference", exact: true }).click();
+    await card.getByText("Saved reference:", { exact: false }).waitFor({ timeout: 5000 });
+  }
+
+  await page.locator('[data-qa="billing-v2-validate-readiness"]').click();
+  await page.locator('[data-qa="billing-v2-step-review"]').waitFor({ state: "visible", timeout: 5000 });
+  await page.locator('[data-qa="billing-v2-send-review"]').click();
+  await page.locator('[data-qa="billing-v2-step-review-decision"]').waitFor({ state: "visible", timeout: 5000 });
+  await page.locator('[data-qa="billing-v2-review-note-input"]').fill("Backup package approved for Pay App 003 commercial review.");
+  await page.locator('[data-qa="billing-v2-approve-review"]').click();
+  await page.locator('[data-qa="billing-v2-step-clear-blocker"]').waitFor({ state: "visible", timeout: 5000 });
+  await page.locator('[data-qa="billing-v2-resolution-note-input"]').fill("Backup package is complete and ready for pay application review.");
+  await page.locator('[data-qa="billing-v2-clear-blocker"]').click();
+  await page.locator('[data-qa="billing-v2-step-outcome"]').waitFor({ state: "visible", timeout: 5000 });
+}
+
 await assertServerReady();
 
 if (!existsSync(artifactDir)) {
@@ -120,77 +153,44 @@ try {
     focusedUrl
   );
 
+  await page.goto(focusedUrl, { waitUntil: "networkidle" });
+
   const focusedTaskVisible = await visible(page, '[data-qa="focused-task-panel"]');
   const focusedTaskText = await page.locator('[data-qa="focused-task-panel"]').first().innerText().catch(() => "");
   requireStep(
     results,
     "Focused task instruction visible",
-    focusedTaskVisible && /You are here to/i.test(focusedTaskText) && /Add missing billing backup/i.test(focusedTaskText),
-    focusedTaskVisible ? "Focused task panel names the exact task." : "Focused task panel was not visible."
+    focusedTaskVisible && /Billing Backup Package/i.test(focusedTaskText) && /Pay App 003/i.test(focusedTaskText),
+    focusedTaskVisible ? "Focused task panel names the guided Billing v2 package." : "Focused task panel was not visible."
   );
 
   requireStep(
     results,
-    "Completion panel visible",
-    await visible(page, '[data-qa="workflow-completion-panel"]'),
-    "Completion controls are present."
+    "Guided Billing v2 workflow visible",
+    await visible(page, '[data-qa="billing-v2-guided-workflow"]') &&
+      await visible(page, '[data-qa="billing-v2-process-rail"]') &&
+      await visible(page, '[data-qa="billing-v2-active-step"]'),
+    "Billing task exposes a process rail and one active guided step."
   );
+
+  await completeBillingV2GuidedWorkflow(page);
+  const outcomeText = await page.locator('[data-qa="billing-v2-outcome-record"]').innerText({ timeout: 5000 });
   requireStep(
     results,
-    "Guided completion flow visible",
-    await visible(page, '[data-qa="guided-completion-flow"]') &&
-      /Complete billing backup task/i.test(await page.locator('[data-qa="guided-completion-flow"]').first().innerText().catch(() => "")),
-    "Billing task exposes a visible step-by-step workflow."
+    "Billing v2 outcome visible",
+    /Billing backup blocker resolved/i.test(outcomeText) && /Pay App 003/i.test(outcomeText) && /\$84,000/i.test(outcomeText),
+    outcomeText || "No Billing v2 outcome was visible."
   );
-  await page.waitForSelector('[data-qa="workflow-completion-panel"][data-ready="true"]', { timeout: 5000 });
 
-  const guided = page.locator('[data-qa="guided-completion-flow"]').first();
-  const backupNote = "Signed T&M ticket and supervisor backup are available for CE-004.";
-  const evidenceReference = "Daily Report DR-2026-06-10, photo log PL-014, signed T&M ticket T&M-077.";
-  const resolutionNote = "Backup package is complete and ready for pay application review.";
-  const markBackup = guided.getByRole("button", { name: "Mark backup attached", exact: true });
-  await expectDisabled(markBackup, "Mark backup attached should be disabled until backup note and evidence reference are saved.");
-  await guided.locator('[data-qa="backup-note-input"]').fill(backupNote);
-  await guided.locator('[data-qa="save-backup-note"]').click();
-  await guided.getByText(`Saved backup note: ${backupNote}`, { exact: false }).waitFor({ timeout: 5000 });
-  await expectDisabled(markBackup, "Mark backup attached should remain disabled until evidence reference is saved.");
-  await guided.locator('[data-qa="billing-evidence-reference-input"]').fill(evidenceReference);
-  await guided.locator('[data-qa="save-billing-evidence-reference"]').click();
-  await guided.getByText(`Saved evidence reference: ${evidenceReference}`, { exact: false }).waitFor({ timeout: 5000 });
-  await expectEnabled(markBackup, "Mark backup attached should enable after backup note and evidence reference are saved.");
-
-  await clickCompletionButton(page, "Mark backup attached");
-  const panel = page.locator('[data-qa="workflow-completion-panel"]').first();
-  const attachedText = await panel.innerText().catch(() => "");
-  requireStep(results, "Mark backup attached", /Backup marked attached/i.test(attachedText), attachedText || "No attached message.");
-
-  await page.locator('[data-qa="guided-completion-flow"]').first().getByRole("button", { name: "Send to review", exact: true }).waitFor({ state: "visible", timeout: 4000 });
-  await clickCompletionButton(page, "Send to review");
-  const reviewText = await panel.innerText().catch(() => "");
-  requireStep(results, "Send to review", /Billing backup is ready for review/i.test(reviewText), reviewText || "No review message.");
-
-  const resolveButton = guided.getByRole("button", { name: "Resolve billing blocker", exact: true });
-  await expectDisabled(resolveButton, "Resolve billing blocker should be disabled until resolution note is saved.");
-  await guided.locator('[data-qa="billing-resolution-note-input"]').fill(resolutionNote);
-  await guided.locator('[data-qa="save-billing-resolution-note"]').click();
-  await guided.getByText(`Saved resolution note: ${resolutionNote}`, { exact: false }).waitFor({ timeout: 5000 });
-  await expectEnabled(resolveButton, "Resolve billing blocker should enable after resolution note is saved.");
-
-  await clickCompletionButton(page, "Resolve billing blocker");
-  const resolvedText = await panel.innerText().catch(() => "");
-  requireStep(results, "Resolve billing blocker", /Billing blocker resolved/i.test(resolvedText), resolvedText || "No resolved message.");
-
-  const historyText = await page.locator('[data-qa="workflow-completion-history"]').first().innerText().catch(() => "");
+  const historyText = await page.locator('[data-qa="billing-v2-historical-record"]').first().innerText().catch(() => "");
   requireStep(
     results,
-    "Completion history visible",
-    /Saved backup note/i.test(historyText) &&
-      /Saved evidence reference/i.test(historyText) &&
-      /Saved resolution note/i.test(historyText) &&
-      /Resolve billing blocker/i.test(historyText) &&
-      /Send to review/i.test(historyText) &&
-      /Mark backup attached/i.test(historyText),
-    historyText ? "Local history shows the completion path." : "No history was visible."
+    "Billing v2 historical record visible",
+    /Saved fields/i.test(historyText) &&
+      /Review task/i.test(historyText) &&
+      /Review decision/i.test(historyText) &&
+      /State transitions/i.test(historyText),
+    historyText ? "Local historical record shows the guided completion path." : "No historical record was visible."
   );
 } finally {
   await browser.close();

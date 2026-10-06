@@ -1,0 +1,35 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model OpportunityBidEvidenceSatisfaction {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId           String   @map("workspace_id") @db.Uuid
+  opportunityId         String   @map("opportunity_id") @db.Uuid
+  evidenceLinkId        String   @map("evidence_link_id") @db.Uuid
+  evidenceObjectId      String   @map("evidence_object_id") @db.Uuid
+  configurationVersionId String  @map("configuration_version_id") @db.Uuid
+  templatePackVersionId String   @map("template_pack_version_id") @db.Uuid
+  gateRequirementId     String   @map("gate_requirement_id") @db.Uuid
+  evidenceTypeId        String   @map("evidence_type_id") @db.Uuid
+  packageRevision       Int      @map("package_revision")
+  bidPackageVersion     String   @map("bid_package_version")
+  actorAuthUserId       String   @map("actor_auth_user_id") @db.Uuid
+  actorProfileId        String   @map("actor_profile_id") @db.Uuid
+  auditEventId          String   @map("audit_event_id") @db.Uuid
+  commandId             String   @map("command_id")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([evidenceLinkId, evidenceObjectId, workspaceId, opportunityId], map: "opp_bid_evidence_link_scope_uniq")
+  @@unique([workspaceId, opportunityId, packageRevision, bidPackageVersion, configurationVersionId, gateRequirementId], map: "opp_bid_evidence_req_revision_uniq")
+  @@unique([workspaceId, commandId], map: "opp_bid_evidence_command_uniq")
+  @@index([workspaceId, opportunityId, packageRevision, bidPackageVersion, configurationVersionId, gateRequirementId], map: "opportunity_bid_evidence_satisfactions_readiness_idx")
+  @@index([evidenceObjectId, evidenceLinkId], map: "opportunity_bid_evidence_satisfactions_evidence_idx")
+  @@index([actorAuthUserId, actorProfileId], map: "opportunity_bid_evidence_satisfactions_actor_identity_idx")
+  @@map("opportunity_bid_evidence_satisfactions")
+}

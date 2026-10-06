@@ -87,14 +87,7 @@ console.log(`Workflow state architecture QA passed. Report written to ${reportPa
 
 async function runBilling(page) {
   await openPilotWorkflow(page, "Add missing billing backup", "/billing", "billing-billing-backup-cash-recovery");
-  const guided = page.locator('[data-qa="guided-completion-flow"]').first();
-  await fillAndSave(guided, "backup-note-input", "save-backup-note", "Signed T&M ticket and supervisor backup are available for CE-004.");
-  await fillAndSave(guided, "billing-evidence-reference-input", "save-billing-evidence-reference", "Daily Report DR-2026-06-10, photo log PL-014, signed T&M ticket T&M-077.");
-  await guided.getByRole("button", { name: "Mark backup attached", exact: true }).click();
-  await guided.getByRole("button", { name: "Send to review", exact: true }).click();
-  await fillAndSave(guided, "billing-resolution-note-input", "save-billing-resolution-note", "Backup package is complete and ready for pay application review.");
-  await guided.getByRole("button", { name: "Resolve billing blocker", exact: true }).click();
-  await guided.locator('[data-qa="guided-completion-complete"]').waitFor({ state: "visible", timeout: 5000 });
+  await completeBillingV2GuidedWorkflow(page);
   await returnToPilot(page);
 }
 
@@ -141,7 +134,43 @@ async function openPilotWorkflow(page, label, route, focus) {
     url.hash === "#focused-task",
     { timeout: 10000 }
   );
-  await page.locator('[data-qa="guided-completion-flow"]').first().waitFor({ state: "visible", timeout: 10000 });
+  const selector = focus === "billing-billing-backup-cash-recovery"
+    ? '[data-qa="billing-v2-guided-workflow"]'
+    : '[data-qa="guided-completion-flow"]';
+  await page.locator(selector).first().waitFor({ state: "visible", timeout: 10000 });
+}
+
+async function completeBillingV2GuidedWorkflow(page) {
+  await page.locator('[data-qa="billing-v2-start-package"]').click();
+  await page.locator('[data-qa="billing-v2-backup-summary-input"]').fill("Signed T&M ticket and supervisor backup are available for CE-004.");
+  await page.locator('[data-qa="billing-v2-related-source-input"]').fill("CE-004 / stored material billing support");
+  await page.locator('[data-qa="billing-v2-amount-input"]').fill("84000");
+  await page.locator('[data-qa="billing-v2-save-package"]').click();
+  await page.locator('[data-qa="billing-v2-step-add-proof"]').waitFor({ state: "visible", timeout: 5000 });
+
+  for (const evidenceId of [
+    "signed-tm-ticket",
+    "daily-report-reference",
+    "photo-log-reference",
+    "supervisor-confirmation",
+    "product-approval-backup"
+  ]) {
+    const card = page.locator(`[data-qa="billing-v2-evidence-card-${evidenceId}"]`);
+    await card.locator(`[data-qa="billing-v2-add-reference-${evidenceId}"]`).fill(`Workflow state QA reference for ${evidenceId}.`);
+    await card.getByRole("button", { name: "Save reference", exact: true }).click();
+    await card.getByText("Saved reference:", { exact: false }).waitFor({ timeout: 5000 });
+  }
+
+  await page.locator('[data-qa="billing-v2-validate-readiness"]').click();
+  await page.locator('[data-qa="billing-v2-step-review"]').waitFor({ state: "visible", timeout: 5000 });
+  await page.locator('[data-qa="billing-v2-send-review"]').click();
+  await page.locator('[data-qa="billing-v2-step-review-decision"]').waitFor({ state: "visible", timeout: 5000 });
+  await page.locator('[data-qa="billing-v2-review-note-input"]').fill("Backup package approved for Pay App 003 commercial review.");
+  await page.locator('[data-qa="billing-v2-approve-review"]').click();
+  await page.locator('[data-qa="billing-v2-step-clear-blocker"]').waitFor({ state: "visible", timeout: 5000 });
+  await page.locator('[data-qa="billing-v2-resolution-note-input"]').fill("Backup package is complete and ready for pay application review.");
+  await page.locator('[data-qa="billing-v2-clear-blocker"]').click();
+  await page.locator('[data-qa="billing-v2-step-outcome"]').waitFor({ state: "visible", timeout: 5000 });
 }
 
 async function fillAndSave(scope, inputQa, saveQa, value) {

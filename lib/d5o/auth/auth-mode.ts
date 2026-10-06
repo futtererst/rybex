@@ -9,6 +9,10 @@ export function getAuthMode(): RybexAuthMode {
     return configuredMode as RybexAuthMode;
   }
 
+  if (process.env.RYBEXOS_RUNTIME_MODE === "production") {
+    return "supabase";
+  }
+
   return "demo";
 }
 

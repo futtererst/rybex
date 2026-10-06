@@ -97,8 +97,8 @@ export function generateBillingHistoricalRecord(
     reviewDecision: billingPackage.reviewDecision,
     stateTransitions: getBillingStateTransitions(billingPackage),
     outcome: outcomeRecord.outcome,
-    auditSummary: `${actorId} cleared the billing blocker after commercial review approval. Record is local/demo only.`,
-    storageMode: billingPackage.localDemoOnly ? "local_demo" : "database_pilot",
+    auditSummary: `${actorId} cleared the billing blocker after commercial review approval. Record storage mode: ${billingPackage.storageMode ?? (billingPackage.localDemoOnly ? "local_demo" : "database_pilot")}.`,
+    storageMode: billingPackage.storageMode ?? (billingPackage.localDemoOnly ? "local_demo" : "database_pilot"),
     createdAt
   };
 }

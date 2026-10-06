@@ -4,9 +4,14 @@ import { getCurrentRybexUser, getDatabaseSafeActorUserId } from "@/lib/d5o/auth/
 import { assertWorkflowTransactionPermission } from "@/lib/d5o/auth/permission-guard";
 import { isDatabaseMode } from "@/lib/d5o/data/data-source";
 import { persistWorkflowTransaction } from "@/lib/d5o/data/workflow-transaction-writes";
+import { isProductionRuntime, productionLocalAdapterError } from "@/lib/d5o/security/runtime-mode";
 import { applyWorkflowTransaction } from "@/lib/d5o/workflow/apply-transaction";
 import { isDatabaseWorkflowTransactionStore } from "@/lib/d5o/workflow/transaction-store";
-import type { WorkflowTransactionType } from "@/lib/d5o/workflow/transactions";
+import {
+  getWorkflowTransactionDefinition,
+  isWorkflowTransactionType,
+  type WorkflowTransactionType
+} from "@/lib/d5o/workflow/transactions";
 import type { OperatingWorkflow } from "@/lib/d5o/workflow/types";
 
 type CommitWorkflowTransactionInput = {
@@ -60,11 +65,12 @@ export async function commitWorkflowTransaction(
 
   const timestamp = new Date().toISOString();
   const currentUser = await getCurrentRybexUser();
+  const databaseStoreEnabled = isDatabaseMode() && isDatabaseWorkflowTransactionStore();
 
   if (!currentUser.authenticated || !currentUser.role) {
     return {
       success: false,
-      mode: "local",
+      mode: databaseStoreEnabled ? "database" : "local",
       message: currentUser.message,
       actor: {
         name: currentUser.name,
@@ -85,7 +91,7 @@ export async function commitWorkflowTransaction(
   } catch (error) {
     return {
       success: false,
-      mode: isDatabaseMode() && isDatabaseWorkflowTransactionStore() ? "database" : "local",
+      mode: databaseStoreEnabled ? "database" : "local",
       message: error instanceof Error ? error.message : "Workflow transaction permission denied.",
       actor: {
         name: currentUser.name,
@@ -97,6 +103,20 @@ export async function commitWorkflowTransaction(
         requiredPermissions: [],
         message: error instanceof Error ? error.message : "Workflow transaction permission denied."
       }
+    };
+  }
+
+  if (isProductionRuntime() && !databaseStoreEnabled) {
+    return {
+      success: false,
+      mode: "database",
+      message: productionLocalAdapterError("Workflow transactions"),
+      actor: {
+        name: currentUser.name,
+        role: currentUser.role,
+        source: currentUser.source
+      },
+      permission
     };
   }
 
@@ -124,7 +144,7 @@ export async function commitWorkflowTransaction(
     };
   }
 
-  if (!isDatabaseMode() || !isDatabaseWorkflowTransactionStore()) {
+  if (!databaseStoreEnabled) {
     return {
       success: true,
       mode: "local",
@@ -188,8 +208,12 @@ function validateRequest(request: CommitWorkflowTransactionInput) {
     return "Workflow transaction requires a workflow.";
   }
 
-  if (!request.transactionType) {
-    return "Workflow transaction requires a transaction type.";
+  if (!isWorkflowTransactionType(request.transactionType)) {
+    return "Workflow transaction runtime authority is missing or invalid.";
+  }
+
+  if (!getWorkflowTransactionDefinition(request.transactionType, request.workflow.workflowType)) {
+    return "Workflow transaction is not configured for this workflow type.";
   }
 
   if (!request.input?.notes?.trim()) {

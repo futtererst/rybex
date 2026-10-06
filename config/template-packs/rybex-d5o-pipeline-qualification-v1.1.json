@@ -1,0 +1,173 @@
+{
+  "packKey": "rybex-d5o-pipeline-qualification",
+  "packName": "D5O Pipeline Qualification",
+  "domain": "data_center_infrastructure",
+  "version": "1.1.0",
+  "status": "released",
+  "description": "Controlled Rybex Data Center Infrastructure Template Pack compatibility slice for accepted P1-01A Pricing Review readiness and accepted P1-01B.1 Pursuit Authorization.",
+  "mode": "startup_no_history",
+  "phase": {
+    "key": "pipeline-qualification",
+    "label": "Pipeline Qualification",
+    "sortOrder": 10
+  },
+  "gates": [
+    {
+      "key": "pricing-review",
+      "label": "Pricing Review",
+      "purpose": "Confirm the accepted qualification package is ready for pricing review.",
+      "sortOrder": 10
+    },
+    {
+      "key": "pursuit-authorization",
+      "label": "Pursuit Authorization",
+      "purpose": "Authorize or decline pursuit commitment after the Pricing Review package is submitted.",
+      "sortOrder": 20,
+      "entryRequirements": [
+        {
+          "key": "pricing-review-submitted",
+          "label": "Pricing Review package submitted",
+          "source": "opportunity.decision_readiness_status",
+          "requiredValue": "decision_approved"
+        }
+      ],
+      "crossEntityContributions": [
+        {
+          "key": "entity-contribution-owner-attestation",
+          "label": "Entity contribution owner attestation",
+          "ownerRoleKey": "entity_contribution_owner",
+          "required": true
+        }
+      ],
+      "profitabilityMetricKey": "expected_gross_margin_percent"
+    }
+  ],
+  "roles": [
+    {
+      "key": "operations_leader",
+      "label": "Operations Leader",
+      "family": "configured",
+      "description": "Accountable decision owner for Pricing Review readiness and Pursuit Authorization."
+    },
+    {
+      "key": "entity_contribution_owner",
+      "label": "Entity Contribution Owner",
+      "family": "configured",
+      "description": "Accountable contributor for cross-entity readiness before pursuit commitment."
+    }
+  ],
+  "permissions": [
+    {
+      "key": "pricing_review.authorize",
+      "label": "Authorize Pricing Review",
+      "scope": "decision"
+    },
+    {
+      "key": "pursuit_authorization.record",
+      "label": "Record Pursuit Authorization",
+      "scope": "decision"
+    }
+  ],
+  "evidenceTypes": [
+    {
+      "key": "qualification_decision_support",
+      "label": "Decision support evidence",
+      "completionRule": {
+        "uploadStatus": "uploaded",
+        "scanStatus": "clean",
+        "verificationStatus": "accepted",
+        "checksumRequired": true
+      }
+    },
+    {
+      "key": "pursuit_authorization_basis",
+      "label": "Pursuit authorization basis",
+      "completionRule": {
+        "source": "pricing_review_submission",
+        "required": true
+      }
+    }
+  ],
+  "gateEvidenceRequirements": [
+    {
+      "gateKey": "pricing-review",
+      "evidenceTypeKey": "qualification_decision_support",
+      "requirementLevel": "required",
+      "blocking": true
+    },
+    {
+      "gateKey": "pursuit-authorization",
+      "evidenceTypeKey": "qualification_decision_support",
+      "requirementLevel": "required",
+      "blocking": true
+    },
+    {
+      "gateKey": "pursuit-authorization",
+      "evidenceTypeKey": "pursuit_authorization_basis",
+      "requirementLevel": "required",
+      "blocking": true
+    }
+  ],
+  "kpis": [
+    {
+      "key": "expected_gross_margin_percent",
+      "label": "Expected Gross Margin %",
+      "trendDirection": "higher_is_better",
+      "formula": {
+        "source": "accepted_p1_01b_1_commercial_basis",
+        "displayUnit": "percent"
+      }
+    }
+  ],
+  "decisionRights": [
+    {
+      "key": "pricing-review-decision-owner",
+      "label": "Pricing Review decision owner",
+      "roleKey": "operations_leader",
+      "permissionKey": "pricing_review.authorize",
+      "gateKey": "pricing-review",
+      "recordScope": {
+        "accountability": "decision_owner"
+      }
+    },
+    {
+      "key": "pursuit-authorization-decision-owner",
+      "label": "Pursuit Authorization decision owner",
+      "roleKey": "operations_leader",
+      "permissionKey": "pursuit_authorization.record",
+      "gateKey": "pursuit-authorization",
+      "recordScope": {
+        "accountability": "pursuit_authority"
+      }
+    }
+  ],
+  "decisionOutcomes": [
+    {
+      "gateKey": "pursuit-authorization",
+      "outcomeKey": "pursue",
+      "label": "Pursue",
+      "outcomeType": "approve",
+      "requiresJustification": false,
+      "requiresMitigation": false,
+      "mapsToAction": "approve_pursuit"
+    },
+    {
+      "gateKey": "pursuit-authorization",
+      "outcomeKey": "hold-pending-evidence",
+      "label": "Hold pending evidence",
+      "outcomeType": "hold",
+      "requiresJustification": true,
+      "requiresMitigation": true,
+      "mapsToAction": "hold_pending_evidence"
+    },
+    {
+      "gateKey": "pursuit-authorization",
+      "outcomeKey": "no-pursue",
+      "label": "No-Pursue",
+      "outcomeType": "stop",
+      "requiresJustification": true,
+      "requiresMitigation": false,
+      "mapsToAction": "decline_pursuit"
+    }
+  ]
+}

@@ -1,0 +1,256 @@
+{
+  "packKey": "d5o-m1-proof-rotork",
+  "packName": "Synthetic pilot to rollout",
+  "version": "1.0.0",
+  "status": "released",
+  "domain": "lifecycle_service",
+  "mode": "startup_no_history",
+  "phase": {
+    "key": "authorize-rollout",
+    "label": "Pilot Review & Rollout Authorization",
+    "sortOrder": 1
+  },
+  "workType": {
+    "key": "modernization-service",
+    "label": "Modernization service",
+    "lifecycle": {
+      "gateKey": "pilot-rollout",
+      "initialState": "pilot-review",
+      "completeState": "rollout-authorized",
+      "reopenAuthority": "owner"
+    }
+  },
+  "gate": {
+    "key": "pilot-rollout",
+    "label": "Pilot-to-rollout authorization",
+    "purpose": "Review pilot outcomes, confirm commercial conditions and authorize a rollout tranche.",
+    "entryRule": {
+      "op": "all",
+      "items": [
+        {
+          "op": "fact_equals",
+          "key": "assessment_complete",
+          "value": true
+        },
+        {
+          "op": "fact_equals",
+          "key": "pilot_authorized",
+          "value": true
+        },
+        {
+          "op": "fact_equals",
+          "key": "pilot_complete",
+          "value": true
+        }
+      ]
+    },
+    "exitRule": {
+      "op": "all",
+      "items": [
+        {
+          "op": "fact_equals",
+          "key": "assessment_complete",
+          "value": true
+        },
+        {
+          "op": "fact_equals",
+          "key": "pilot_authorized",
+          "value": true
+        },
+        {
+          "op": "fact_equals",
+          "key": "pilot_complete",
+          "value": true
+        },
+        {
+          "op": "fact_equals",
+          "key": "commercial_conditions",
+          "value": true
+        },
+        {
+          "op": "decision_recorded",
+          "right": "review-pilot",
+          "outcome": "pilot-reviewed"
+        },
+        {
+          "op": "decision_recorded",
+          "right": "confirm-commercial",
+          "outcome": "commercial-confirmed"
+        },
+        {
+          "op": "evidence_valid",
+          "key": "pilot-proof"
+        }
+      ]
+    }
+  },
+  "evidence": [
+    {
+      "key": "pilot-proof",
+      "label": "Pilot outcome proof"
+    }
+  ],
+  "roles": [
+    {
+      "key": "pilot_reviewer",
+      "label": "Pilot reviewer",
+      "workspaceRoles": [
+        "project_manager"
+      ]
+    },
+    {
+      "key": "commercial_verifier",
+      "label": "Commercial verifier",
+      "workspaceRoles": [
+        "billing_commercial_lead"
+      ]
+    },
+    {
+      "key": "rollout_authority",
+      "label": "Rollout authority",
+      "workspaceRoles": [
+        "operations_leader"
+      ]
+    }
+  ],
+  "rights": [
+    {
+      "key": "review-pilot",
+      "label": "Review pilot outcome",
+      "roleKey": "pilot_reviewer",
+      "outcomeKey": "pilot-reviewed",
+      "approvalRule": {
+        "requires": {
+          "op": "all",
+          "items": [
+            {
+              "op": "fact_equals",
+              "key": "pilot_complete",
+              "value": true
+            }
+          ]
+        },
+        "forbidPreparer": true,
+        "distinctFactKeys": [
+          "pilot_complete"
+        ],
+        "distinctDecisionRights": []
+      }
+    },
+    {
+      "key": "confirm-commercial",
+      "label": "Confirm commercial readiness",
+      "roleKey": "commercial_verifier",
+      "outcomeKey": "commercial-confirmed",
+      "approvalRule": {
+        "requires": {
+          "op": "all",
+          "items": [
+            {
+              "op": "fact_equals",
+              "key": "commercial_conditions",
+              "value": true
+            }
+          ]
+        },
+        "forbidPreparer": true,
+        "distinctFactKeys": [
+          "pilot_complete"
+        ],
+        "distinctDecisionRights": []
+      }
+    },
+    {
+      "key": "authorize-rollout",
+      "label": "Authorize rollout tranche",
+      "roleKey": "rollout_authority",
+      "outcomeKey": "rollout-authorized",
+      "approvalRule": {
+        "requires": {
+          "op": "all",
+          "items": [
+            {
+              "op": "decision_recorded",
+              "right": "review-pilot",
+              "outcome": "pilot-reviewed"
+            },
+            {
+              "op": "decision_recorded",
+              "right": "confirm-commercial",
+              "outcome": "commercial-confirmed"
+            }
+          ]
+        },
+        "forbidPreparer": true,
+        "distinctFactKeys": [
+          "pilot_complete"
+        ],
+        "distinctDecisionRights": [
+          "review-pilot",
+          "confirm-commercial"
+        ]
+      }
+    },
+    {
+      "key": "hold-pilot",
+      "label": "Hold pilot review",
+      "roleKey": "pilot_reviewer",
+      "outcomeKey": "pilot-held",
+      "approvalRule": {
+        "requires": {
+          "op": "all",
+          "items": []
+        },
+        "forbidPreparer": true,
+        "distinctFactKeys": [
+          "pilot_complete"
+        ],
+        "distinctDecisionRights": []
+      }
+    }
+  ],
+  "outcomes": [
+    {
+      "key": "pilot-reviewed",
+      "label": "Pilot reviewed",
+      "type": "approve",
+      "consequence": {
+        "final": false
+      }
+    },
+    {
+      "key": "commercial-confirmed",
+      "label": "Commercial conditions confirmed",
+      "type": "approve",
+      "consequence": {
+        "final": false
+      }
+    },
+    {
+      "key": "rollout-authorized",
+      "label": "Rollout authorized",
+      "type": "terminal",
+      "consequence": {
+        "final": true,
+        "state": "rollout-authorized"
+      }
+    },
+    {
+      "key": "pilot-held",
+      "label": "Held for correction",
+      "type": "hold",
+      "consequence": {
+        "final": false
+      }
+    }
+  ],
+  "protectedValue": {
+    "label": "Authorized rollout value",
+    "metric": "contract_value",
+    "unit": "USD",
+    "currency": "USD",
+    "baseline": 0,
+    "target": 50000
+  },
+  "synthetic": true
+}

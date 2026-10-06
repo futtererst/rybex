@@ -46,9 +46,9 @@ const pageConfig: Record<SimplifiedPageId, {
   detailLabel: string;
 }> = {
   "command-center": {
-    stageLabel: "Executive workflow cockpit",
+    stageLabel: "Operating priorities",
     purpose: "See decisions, blocked work, evidence gaps, cash exposure, and where to act next.",
-    d5oPhase: "D5O lifecycle",
+    d5oPhase: "Today",
     ownerRole: "Executive / Operations leader",
     roleFocus: "For this role, focus on decisions, cash at risk, blocked work, and owner follow-up.",
     detailLabel: "Leadership metrics, module summaries, and readiness details continue below."
@@ -83,7 +83,7 @@ const pageConfig: Record<SimplifiedPageId, {
   "field-execution": {
     stageLabel: "Daily field control",
     purpose: "Capture what happened in the field and escalate issues before proof is lost.",
-    d5oPhase: "D4 Deliver",
+    d5oPhase: "Field operations",
     ownerRole: "Field Supervisor",
     roleFocus: "For this role, focus on today's report, quantities, blockers, evidence, and issue prompts.",
     workflowType: "field_execution",
@@ -92,7 +92,7 @@ const pageConfig: Record<SimplifiedPageId, {
   "rfis-submittals": {
     stageLabel: "Information control",
     purpose: "Resolve clarifications and approvals that block work or weaken entitlement.",
-    d5oPhase: "D4 Deliver",
+    d5oPhase: "Answer control",
     ownerRole: "Project Manager",
     roleFocus: "For this role, focus on overdue responses, blocked work, and linked change exposure.",
     workflowType: "information_control",
@@ -101,7 +101,7 @@ const pageConfig: Record<SimplifiedPageId, {
   changes: {
     stageLabel: "Change recovery",
     purpose: "Control notice, backup, pricing, approval, and billing recovery.",
-    d5oPhase: "D4 Deliver",
+    d5oPhase: "Commercial recovery",
     ownerRole: "Project Manager / Commercial",
     roleFocus: "For this role, focus on notice deadlines, missing backup, and approved-not-billed work.",
     workflowType: "change_recovery",
@@ -110,7 +110,7 @@ const pageConfig: Record<SimplifiedPageId, {
   billing: {
     stageLabel: "Billing and cash control",
     purpose: "Turn approved work and backup into pay applications, cash recovery, and retainage release.",
-    d5oPhase: "D4/D5 Commercial",
+    d5oPhase: "Cash control",
     ownerRole: "Finance / Project Manager",
     roleFocus: "For this role, focus on cash at risk, billing blockers, backup, lien waivers, and retainage.",
     workflowType: "billing_cash_control",
@@ -137,7 +137,7 @@ const pageConfig: Record<SimplifiedPageId, {
   closeout: {
     stageLabel: "Closeout and acceptance",
     purpose: "Prove completion, secure acceptance, protect final billing, and release retainage.",
-    d5oPhase: "D5 Document",
+    d5oPhase: "Final billing release",
     ownerRole: "Project Manager / Closeout",
     roleFocus: "For this role, focus on acceptance blockers, closeout evidence, final billing, and retainage.",
     workflowType: "closeout_acceptance",

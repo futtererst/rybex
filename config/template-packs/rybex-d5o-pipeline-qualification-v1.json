@@ -1,0 +1,65 @@
+{
+  "packKey": "rybex-d5o-pipeline-qualification",
+  "packName": "D5O Pipeline Qualification",
+  "domain": "data_center_infrastructure",
+  "version": "1.0.0",
+  "status": "released",
+  "description": "Controlled Rybex Data Center Infrastructure Template Pack compatibility slice for accepted P1-01A Pipeline Qualification Pricing Review readiness.",
+  "mode": "startup_no_history",
+  "phase": {
+    "key": "pipeline-qualification",
+    "label": "Pipeline Qualification",
+    "sortOrder": 10
+  },
+  "gate": {
+    "key": "pricing-review",
+    "label": "Pricing Review",
+    "purpose": "Confirm the accepted qualification package is ready for pricing review."
+  },
+  "roles": [
+    {
+      "key": "operations_leader",
+      "label": "Operations Leader",
+      "family": "configured",
+      "description": "Accountable decision owner for Pricing Review readiness."
+    }
+  ],
+  "permissions": [
+    {
+      "key": "pricing_review.authorize",
+      "label": "Authorize Pricing Review",
+      "scope": "decision"
+    }
+  ],
+  "evidenceTypes": [
+    {
+      "key": "qualification_decision_support",
+      "label": "Decision support evidence",
+      "completionRule": {
+        "uploadStatus": "uploaded",
+        "scanStatus": "clean",
+        "verificationStatus": "accepted",
+        "checksumRequired": true
+      }
+    }
+  ],
+  "gateEvidenceRequirements": [
+    {
+      "evidenceTypeKey": "qualification_decision_support",
+      "requirementLevel": "required",
+      "blocking": true
+    }
+  ],
+  "decisionRights": [
+    {
+      "key": "pricing-review-decision-owner",
+      "label": "Pricing Review decision owner",
+      "roleKey": "operations_leader",
+      "permissionKey": "pricing_review.authorize",
+      "gateKey": "pricing-review",
+      "recordScope": {
+        "accountability": "decision_owner"
+      }
+    }
+  ]
+}

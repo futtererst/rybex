@@ -1,0 +1,16 @@
+.panel{background:#fff;border:1px solid var(--d5o-line,#d9e3e9);border-radius:var(--d5o-card-radius,8px);overflow:hidden;min-width:0}
+.header{display:flex;justify-content:space-between;gap:18px;padding:17px 18px;border-bottom:1px solid #e2e9ed;align-items:flex-start}
+.header p{font-size:.61rem;font-weight:900;letter-spacing:.1em;color:#94701d;margin:0 0 6px}
+.header h3{font-family:Georgia,'Times New Roman',serif;color:var(--d5o-ink,#123246);font-size:1.2rem;margin:0 0 5px}
+.header span,.header b{font-size:.7rem;color:#526e7b;line-height:1.4}
+.header b{background:#eef3f5;border:1px solid #dae5e9;border-radius:5px;white-space:nowrap;padding:6px 8px}
+.alert,.ready{display:grid;gap:4px;margin:13px 16px 0;padding:10px 12px;border-radius:5px;font-size:.71rem;line-height:1.4}
+.alert{background:#fff7ed;border:1px solid #ebcda4;color:#8a4a12}.alert span{color:#805b32}
+.ready{background:#eff8f3;border:1px solid #c7e5d2;color:#276749}
+.items{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:16px}
+.items article{border:1px solid #e1e9ed;border-radius:6px;display:flex;justify-content:space-between;gap:10px;padding:11px;min-width:0}
+.items article.unmet{background:#fffbf5;border-color:#efd4ae}
+.items article div{display:grid;gap:4px;min-width:0}.items small{text-transform:uppercase;font-weight:800;letter-spacing:.06em;color:#68808a;font-size:.57rem}.items strong{font-size:.75rem;color:#173c4f}.items span{font-size:.67rem;color:#637985;line-height:1.4}.items em{font-style:normal;color:#9a651c;font-size:.62rem;font-weight:800;white-space:nowrap}
+.panel footer{border-top:1px solid #e5ecef;color:#738791;font-size:.61rem;padding:10px 16px}
+.compact .items{grid-template-columns:repeat(3,minmax(0,1fr))}.compact .items article{display:grid}.compact .header{padding:13px 16px}
+@media(max-width:900px){.items,.compact .items{grid-template-columns:1fr 1fr}}@media(max-width:620px){.items,.compact .items{grid-template-columns:1fr}.header{flex-direction:column}.header b{white-space:normal}}

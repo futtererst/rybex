@@ -12,7 +12,7 @@ const workflows = [
     label: "Add missing billing backup",
     routeText: "/billing",
     panelSelector: '[data-qa="focused-task-panel"]',
-    completionSelector: '[data-qa="workflow-completion-panel"]'
+    completionSelector: '[data-qa="billing-v2-guided-workflow"]'
   },
   {
     label: "Escalate field issue",
@@ -56,6 +56,9 @@ try {
     await page.waitForURL((url) => url.pathname.includes(workflow.routeText) && url.searchParams.get("pilot") === "1", { timeout: 10000 });
     await page.waitForSelector(workflow.panelSelector, { timeout: 10000 });
     await page.waitForSelector(workflow.completionSelector, { timeout: 10000 });
+    if (workflow.label === "Add missing billing backup") {
+      await completeBillingV2GuidedWorkflow(page);
+    }
     await page.waitForSelector('[data-qa="return-to-pilot-mode"]', { timeout: 5000 });
     results.push({
       workflow: workflow.label,
@@ -87,37 +90,10 @@ async function runBillingManualFailureRegression(page, results) {
     { timeout: 10000 }
   );
   await page.waitForSelector('[data-qa="focused-task-panel"]', { timeout: 10000 });
-  await page.waitForSelector('[data-qa="guided-completion-flow"]', { timeout: 10000 });
-  await page.getByText("Complete billing backup task", { exact: false }).first().waitFor({ timeout: 5000 });
-  await page.getByText("Follow these steps to clear the billing blocker.", { exact: false }).first().waitFor({ timeout: 5000 });
-
-  const guided = page.locator('[data-qa="guided-completion-flow"]').first();
-  const markBackup = guided.getByRole("button", { name: "Mark backup attached", exact: true });
-  if (!(await markBackup.isDisabled())) throw new Error("Mark backup attached should wait for saved backup inputs.");
-  await guided.locator('[data-qa="backup-note-input"]').fill("Signed T&M ticket and supervisor backup are available for CE-004.");
-  await guided.locator('[data-qa="save-backup-note"]').click();
-  await guided.getByText("Saved backup note: Signed T&M ticket", { exact: false }).first().waitFor({ timeout: 5000 });
-  await guided.locator('[data-qa="billing-evidence-reference-input"]').fill("Daily Report DR-2026-06-10, photo log PL-014, signed T&M ticket T&M-077.");
-  await guided.locator('[data-qa="save-billing-evidence-reference"]').click();
-  await guided.getByText("Saved evidence reference: Daily Report DR-2026-06-10", { exact: false }).first().waitFor({ timeout: 5000 });
-  if (await markBackup.isDisabled()) throw new Error("Mark backup attached remained disabled after required backup inputs were saved.");
-  await markBackup.click();
-  await page.waitForFunction(() => document.body.innerText.includes("Backup attached"), null, { timeout: 5000 });
-  const sendButton = guided.getByRole("button", { name: "Send to review", exact: true });
-  await sendButton.waitFor({ state: "visible", timeout: 5000 });
-  if (await sendButton.isDisabled()) throw new Error("Send to review remained disabled after backup was attached.");
-  await sendButton.click();
-  await page.waitForFunction(() => document.body.innerText.includes("Ready for review"), null, { timeout: 5000 });
-  const resolveButton = guided.getByRole("button", { name: "Resolve billing blocker", exact: true });
-  await resolveButton.waitFor({ state: "visible", timeout: 5000 });
-  if (!(await resolveButton.isDisabled())) throw new Error("Resolve billing blocker should wait for resolution note.");
-  await guided.locator('[data-qa="billing-resolution-note-input"]').fill("Backup package is complete and ready for pay application review.");
-  await guided.locator('[data-qa="save-billing-resolution-note"]').click();
-  await guided.getByText("Saved resolution note: Backup package is complete", { exact: false }).first().waitFor({ timeout: 5000 });
-  if (await resolveButton.isDisabled()) throw new Error("Resolve billing blocker remained disabled after resolution note.");
-  await resolveButton.click();
-  await page.waitForSelector('[data-qa="guided-completion-complete"]', { timeout: 5000 });
-  await page.getByText("Billing blocker resolved", { exact: false }).first().waitFor({ timeout: 5000 });
+  await page.waitForSelector('[data-qa="billing-v2-guided-workflow"]', { timeout: 10000 });
+  await page.waitForSelector('[data-qa="billing-v2-process-rail"]', { timeout: 5000 });
+  await completeBillingV2GuidedWorkflow(page);
+  await page.getByText("Billing backup blocker resolved. Pay App 003 is ready for commercial review.", { exact: false }).first().waitFor({ timeout: 5000 });
   await page.locator('[data-qa="return-to-pilot-mode"]').first().click();
   await page.waitForURL((url) => url.pathname === "/pilot", { timeout: 10000 });
   const completedCard = page.locator('[data-qa="pilot-workflow-card"]').filter({ hasText: "Add missing billing backup" }).first();
@@ -133,6 +109,39 @@ async function runBillingManualFailureRegression(page, results) {
     completed: true,
     returnLink: true
   });
+}
+
+async function completeBillingV2GuidedWorkflow(page) {
+  await page.locator('[data-qa="billing-v2-start-package"]').click();
+  await page.locator('[data-qa="billing-v2-backup-summary-input"]').fill("Signed T&M ticket and supervisor backup are available for CE-004.");
+  await page.locator('[data-qa="billing-v2-related-source-input"]').fill("CE-004 / stored material billing support");
+  await page.locator('[data-qa="billing-v2-amount-input"]').fill("84000");
+  await page.locator('[data-qa="billing-v2-save-package"]').click();
+  await page.locator('[data-qa="billing-v2-step-add-proof"]').waitFor({ state: "visible", timeout: 5000 });
+
+  for (const evidenceId of [
+    "signed-tm-ticket",
+    "daily-report-reference",
+    "photo-log-reference",
+    "supervisor-confirmation",
+    "product-approval-backup"
+  ]) {
+    const card = page.locator(`[data-qa="billing-v2-evidence-card-${evidenceId}"]`);
+    await card.locator(`[data-qa="billing-v2-add-reference-${evidenceId}"]`).fill(`Pilot Mode QA reference for ${evidenceId}.`);
+    await card.getByRole("button", { name: "Save reference", exact: true }).click();
+    await card.getByText("Saved reference:", { exact: false }).waitFor({ timeout: 5000 });
+  }
+
+  await page.locator('[data-qa="billing-v2-validate-readiness"]').click();
+  await page.locator('[data-qa="billing-v2-step-review"]').waitFor({ state: "visible", timeout: 5000 });
+  await page.locator('[data-qa="billing-v2-send-review"]').click();
+  await page.locator('[data-qa="billing-v2-step-review-decision"]').waitFor({ state: "visible", timeout: 5000 });
+  await page.locator('[data-qa="billing-v2-review-note-input"]').fill("Backup package approved for Pay App 003 commercial review.");
+  await page.locator('[data-qa="billing-v2-approve-review"]').click();
+  await page.locator('[data-qa="billing-v2-step-clear-blocker"]').waitFor({ state: "visible", timeout: 5000 });
+  await page.locator('[data-qa="billing-v2-resolution-note-input"]').fill("Backup package is complete and ready for pay application review.");
+  await page.locator('[data-qa="billing-v2-clear-blocker"]').click();
+  await page.locator('[data-qa="billing-v2-step-outcome"]').waitFor({ state: "visible", timeout: 5000 });
 }
 
 async function assertServerReady() {

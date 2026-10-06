@@ -1,0 +1,16 @@
+.register{margin-top:24px;border-top:1px solid #d8e3eb;padding-top:20px;font-size:13px}
+.heading{display:flex;align-items:start;justify-content:space-between;gap:12px}
+.heading h3{font-size:20px;margin:0 0 7px}.heading p{color:#536b7c;margin:0 0 13px;line-height:1.4}
+.heading button{border:1px solid #9fb9cf;background:#fff;border-radius:5px;padding:8px 10px;cursor:pointer;white-space:nowrap}
+.count{background:#eef5fa;border:1px solid #d0e0ec;border-radius:5px;padding:9px}
+.list{padding:0;list-style:none;display:grid;gap:8px}.list li{border:1px solid #d0dce6;border-radius:6px;padding:12px}
+.list li>div{display:flex;flex-wrap:wrap;gap:6px 12px;justify-content:space-between}.list span{color:#506a7d}
+.list p{margin:7px 0;color:#344e60}.list b{font-size:11px;color:#8b4b17;text-transform:uppercase}
+.form{display:grid;gap:11px;background:#f5f8fa;border:1px solid #d1dce5;padding:14px;border-radius:6px}
+.form h4{font-size:15px;margin:0}.form label{display:grid;gap:5px;font-weight:700}
+.form input,.form select,.form textarea{width:100%;box-sizing:border-box;border:1px solid #aebfcd;border-radius:5px;padding:9px;font:inherit;font-weight:400;background:#fff}
+.form button{justify-self:start;border:0;border-radius:5px;background:#205db7;color:#fff;padding:10px 14px;cursor:pointer}
+.form button:disabled{opacity:.5;cursor:not-allowed}
+.status,.readOnly{border:1px solid #b7d1e6;background:#eaf3fa;border-radius:5px;padding:10px}
+.staging{margin-top:20px;border-top:1px solid #d8e3eb;padding-top:15px}.staging h4{font-size:17px;margin:0 0 6px}.staging>p{color:#536b7c}
+@media(max-width:700px){.heading{display:block}}

@@ -1,0 +1,56 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { assignmentAssessment, personHours, shiftHours, weekdays, type Assignment, type AvailabilityBlock, type PackageCrewDemand, type PersonProfile, type ScheduleWork, type WorkspaceKey } from "./schedule-model";
+import { AvailabilityEditor } from "./AvailabilityEditor";
+
+type Filter = "all" | "scheduled" | "open" | "conflict" | "held";
+
+export function PeopleCapacityBoard({ workspaceKey, work, profiles, assignments, weekIndex, anchorDate, availabilityBlocks, packageDemands, onAvailabilityChange, onSchedule }: { workspaceKey: WorkspaceKey; work: ScheduleWork[]; profiles: PersonProfile[]; assignments: Assignment[]; weekIndex: number; anchorDate: string; availabilityBlocks: AvailabilityBlock[]; packageDemands: PackageCrewDemand[]; onAvailabilityChange: (blocks: AvailabilityBlock[]) => Promise<void>; onSchedule: () => void }) {
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
+  const [selectedName, setSelectedName] = useState("");
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!selectedName) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeRef.current?.focus();
+    return () => previous?.focus();
+  }, [selectedName]);
+  const week = assignments.filter((assignment) => assignment.week === weekIndex);
+  const scheduled = new Set(week.flatMap((assignment) => assignment.people));
+  const assessed = week.map((assignment) => ({ assignment, assessment: assignmentAssessment(assignment, assignments, workspaceKey, work, profiles, packageDemands) }));
+  const conflictedPeople = new Set(assessed.flatMap(({ assessment }) => assessment.issues.flatMap((issue) => issue.person ? [issue.person] : [])));
+  const heldPeople = new Set(assessed.filter(({ assessment }) => assessment.release === "Release held").flatMap(({ assignment }) => assignment.people));
+  const visible = profiles.filter((person) => (person.name.toLowerCase().includes(search.toLowerCase()) || person.qualifications.some((qualification) => qualification.toLowerCase().includes(search.toLowerCase()))) && (
+    filter === "all" || filter === "scheduled" && scheduled.has(person.name) || filter === "open" && !scheduled.has(person.name) || filter === "conflict" && conflictedPeople.has(person.name) || filter === "held" && heldPeople.has(person.name)
+  ));
+  const totalCapacity = profiles.reduce((sum, person) => sum + person.weeklyCapacityHours, 0);
+  const plannedHours = week.reduce((sum, assignment) => sum + assignment.people.length * shiftHours(assignment.shift), 0);
+  const selectedProfile = profiles.find((person) => person.name === selectedName);
+  const selectedAssignments = week.filter((assignment) => assignment.people.includes(selectedName)).sort((left, right) => left.day - right.day || left.shift.localeCompare(right.shift));
+
+  return <section className="d5o-capacity-board">
+    <header className="d5o-ops-heading"><div><p>PEOPLE & CAPACITY · {workspaceKey.toUpperCase()}</p><h1>Qualifications and workload</h1><span>See named capabilities, planned hours, scheduling conflicts, and release conditions together.</span></div><button className="d5o-primary" onClick={onSchedule}>Open crew schedule →</button></header>
+    <section className="d5o-ops-metrics" aria-label="People and capacity status"><article><strong>{scheduled.size}<small> / {profiles.length}</small></strong><span>People scheduled this week</span></article><article><strong>{plannedHours}<small> / {totalCapacity}h</small></strong><span>Planned person-hours</span></article><article><strong>{conflictedPeople.size}</strong><span>People needing conflict or skill review</span></article><article><strong>{heldPeople.size}</strong><span>People on held work</span></article></section>
+    <section className="d5o-capacity-days" aria-label="Daily assignment coverage"><div><p>THIS WEEK</p><h2>Daily workload</h2><span>Planned hours against the synthetic roster. Assignment does not release controlled work.</span></div>{weekdays.map((day, index) => { const dayAssignments = week.filter((assignment) => assignment.day === index); const count = new Set(dayAssignments.flatMap((assignment) => assignment.people)).size; return <article key={day}><b>{day}</b><strong>{dayAssignments.reduce((sum, assignment) => sum + assignment.people.length * shiftHours(assignment.shift), 0)}h</strong><span>{count} people scheduled</span></article>; })}</section>
+    <AvailabilityEditor profiles={profiles} blocks={availabilityBlocks} assignments={assignments} weekIndex={weekIndex} anchorDate={anchorDate} onChange={onAvailabilityChange} />
+    <section className="d5o-capacity-register"><header><div><p>RESOURCE REGISTER</p><h2>People, skills, and assignments</h2></div><label>Find person or skill<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name or qualification" /></label></header>
+      <nav aria-label="Capacity filters">{([ ["all", "All people", profiles.length], ["scheduled", "Scheduled", scheduled.size], ["open", "Not booked this week", profiles.length - scheduled.size], ["conflict", "Needs review", conflictedPeople.size], ["held", "Release held", heldPeople.size] ] as const).map(([key, label, count]) => <button key={key} className={filter === key ? "is-active" : ""} onClick={() => setFilter(key)}>{label} <b>{count}</b></button>)}</nav>
+      <div className="d5o-capacity-scroll"><div className="d5o-capacity-table d5o-capacity-table-detailed"><div className="d5o-capacity-row-head"><span>PERSON / QUALIFICATIONS</span><span>WEEK LOAD</span><span>CREW / CONTROLLED WORK</span><span>CONFLICT</span><span>RELEASE</span></div>{visible.map((person) => {
+        const personAssignments = week.filter((assignment) => assignment.people.includes(person.name));
+        const hours = personHours(assignments, person.name, weekIndex);
+        const reviews = personAssignments.map((assignment) => assignmentAssessment(assignment, assignments, workspaceKey, work, profiles, packageDemands));
+        const first = personAssignments[0];
+        const record = work.find((item) => item.id === first?.workId);
+        const workPackage = record?.packages?.find((item) => item.id === first?.packageId);
+        const hasConflict = reviews.some((assessment) => assessment.issues.some((issue) => issue.person === person.name || (!issue.person && issue.kind === "configuration")));
+        const held = reviews.find((assessment) => assessment.release === "Release held");
+        const release = held ?? reviews[0];
+        return <article key={person.name}><span><button className="d5o-person-detail-open" type="button" onClick={() => setSelectedName(person.name)}>{person.name} →</button><small>{person.qualifications.join(" · ")}</small>{person.unavailable?.filter((entry) => entry.week === weekIndex).map((entry) => <small className="d5o-person-unavailable" key={entry.day}>{weekdays[entry.day]} unavailable · {entry.reason}</small>)}</span><span><b>{hours} / {person.weeklyCapacityHours}h</b><i className="d5o-capacity-load"><i style={{ width: `${Math.min(100, Math.round(hours / person.weeklyCapacityHours * 100))}%` }} /></i><small>{personAssignments.length} assignment{personAssignments.length === 1 ? "" : "s"}</small></span><span>{first ? <><b>{first.crew}</b><small>{record?.title ?? "Work Record"} · {workPackage?.name ?? "Controlled package"}{personAssignments.length > 1 ? ` · +${personAssignments.length - 1} more` : ""}</small></> : <small>Not assigned this week</small>}</span><span className={hasConflict ? "is-held" : ""}>{hasConflict ? "Review needed" : first ? "Clear" : "—"}</span><span className={held ? "is-held" : ""}>{held ? <><b>Held</b><small>{release.releaseDetail}</small></> : release ? <><b>{release.release}</b><small>{release.nextDecision} · {release.decisionOwner}</small></> : "—"}</span></article>;
+      })}{!visible.length ? <p className="d5o-ops-empty">No people match this view.</p> : null}</div></div>
+      <footer><span>Qualifications and capacity are synthetic prototype data. Use the Work Record for governed release decisions.</span><button onClick={onSchedule}>Schedule named people →</button></footer>
+    </section>
+    {selectedProfile ? <div className="d5o-schedule-drawer-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedName(""); }} onKeyDown={(event) => { if (event.key === "Escape") setSelectedName(""); }}><aside className="d5o-schedule-drawer" role="dialog" aria-modal="true" aria-labelledby="person-detail-title"><header className="d5o-schedule-drawer-head"><div><p>PEOPLE & CAPACITY · THIS WEEK</p><h2 id="person-detail-title">{selectedProfile.name}</h2></div><button ref={closeRef} type="button" onClick={() => setSelectedName("")} aria-label="Close person details">×</button></header><div className="d5o-schedule-drawer-content"><section className="d5o-schedule-drawer-summary"><h3>Skills and workload</h3><p>{selectedProfile.qualifications.join(" · ")}</p><p><strong>{personHours(assignments, selectedName, weekIndex)} / {selectedProfile.weeklyCapacityHours}h</strong> booked this week across {selectedAssignments.length} assignment{selectedAssignments.length === 1 ? "" : "s"}. Recorded full-day absences block new assignments; credentials and expiry are outside this prototype roster.</p></section><section className="d5o-schedule-drawer-summary"><h3>Bookings this week</h3>{selectedAssignments.length ? selectedAssignments.map((assignment) => { const record = work.find((item) => item.id === assignment.workId); const workPackage = record?.packages?.find((item) => item.id === assignment.packageId); const assessment = assignmentAssessment(assignment, assignments, workspaceKey, work, profiles, packageDemands); return <article key={assignment.id}><strong>{weekdays[assignment.day]} · {assignment.shift} · {assignment.crew}</strong><p>{record?.title ?? "Work Record"} · {workPackage?.name ?? "Work Package"}</p><p>{assessment.issues.length ? assessment.issues.map((issue) => issue.message).join(" ") : "No recorded person or skill conflict."}</p><p>Work release: {assessment.release}. {assessment.releaseDetail}</p></article>; }) : <p>No bookings this week. This does not establish availability on every shift.</p>}</section><section className="d5o-schedule-drawer-summary"><h3>Recorded absences</h3>{selectedProfile.unavailable?.filter((entry) => entry.week === weekIndex).length ? selectedProfile.unavailable.filter((entry) => entry.week === weekIndex).map((entry) => <p key={entry.day}>{weekdays[entry.day]} · {entry.reason}</p>) : <p>No full-day absence recorded this week.</p>}</section><button className="d5o-schedule-back" type="button" onClick={() => { setSelectedName(""); onSchedule(); }}>Open crew schedule →</button></div></aside></div> : null}
+  </section>;
+}

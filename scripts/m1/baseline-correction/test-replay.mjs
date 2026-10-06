@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import { writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { clients,upload,receiptArgs,evidence } from './fixtures.mjs';
+const ctx=await clients({bootstrap:true});const item=await upload(ctx,'storage-version-probe');
+const before=await receiptArgs(ctx,item);assert(before.p_storage_version&&before.p_storage_updated_at);
+const ordinary=await ctx.field.storage.from(item.bucket).upload(item.objectPath,Buffer.from('forbidden'),{upsert:true});assert(ordinary.error);
+const changed=await ctx.service.storage.from(item.bucket).upload(item.objectPath,Buffer.from('synthetic replacement'),{upsert:true,contentType:'text/plain'});assert(!changed.error);
+const after=await ctx.service.storage.from(item.bucket).info(item.objectPath);assert(!after.error);assert.notEqual(after.data.version,before.p_storage_version);
+writeFileSync(resolve(evidence,'raw/storage-version-proof.json'),JSON.stringify({status:'PASS',id:before.p_storage_object_id,beforeVersion:before.p_storage_version,afterVersion:after.data.version,beforeUpdatedAt:before.p_storage_updated_at,afterUpdatedAt:after.data.lastModified??after.data.updatedAt,ordinaryOverwriteDenied:true,syntheticOnly:true},null,2));console.log('Storage version change and ordinary overwrite denial PASS');

@@ -1,0 +1,52 @@
+import assert from "node:assert/strict";
+import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { chromium } from "@playwright/test";
+import { context, evidence } from "./implementation-context.mjs";
+const c = await context();
+const plan = JSON.parse(readFileSync(resolve(evidence, "FIXTURE-PLAN-8beb15ad.json")));
+const dir = resolve(evidence, "branding-20260929-01", "browser"); mkdirSync(dir, { recursive: true });
+const browser = await chromium.launch({ headless: true }); const results = []; const errors = [];
+const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+await ctx.route("**/*", route => ["http://127.0.0.1:61430", "http://127.0.0.1:61421"].includes(new URL(route.request().url()).origin) ? route.continue() : route.abort());
+const page = await ctx.newPage(); page.on("pageerror", e => errors.push(e.message));
+const base = "http://127.0.0.1:61430";
+async function signIn(name, role, work) {
+ const fixture = plan.scenarios.find(x => x.name === name);
+ await page.goto(base + "/auth/sign-in?next=%2Fm1-proof");
+ await page.getByLabel("Email", { exact: true }).fill(fixture.actors[role].email);
+ await page.getByLabel("Password", { exact: true }).fill(c.env.FOUNDATION_0A_TEST_PASSWORD);
+ await page.getByRole("button", { name: "Sign in", exact: true }).click();
+ await page.waitForURL("**/m1-proof");
+ await page.goto(base + `/m1-proof?workspace=${fixture.workspace}&work=${work}`);
+ await page.getByRole("region", { name: "Workspace identity" }).waitFor();
+ await page.getByText("Appearance", { exact: true }).click();
+}
+const navigation = () => page.getByLabel("Navigation color", { exact: true });
+const accent = () => page.getByLabel("Accent color", { exact: true });
+try {
+ await signIn("rotork", "pilot_reviewer", "bef9715d-5156-4030-a088-756244d3b3ba");
+ assert.equal(await navigation().inputValue(), "#171717"); assert.equal(await accent().inputValue(), "#c8102e");
+ assert.match(await page.locator(".brand").innerText(), /D5O/); assert(!/RybexOS/.test(await page.locator(".brand").innerText())); results.push("Rotork default and neutral platform identity PASS");
+ assert.match(await page.getByLabel("Active workspace").innerText(), /Synthetic rotork proof/i); results.push("Active workspace shell context PASS");
+ await page.screenshot({ path: resolve(dir, "rotork.png"), fullPage: true });
+ await page.getByLabel("Color preset").selectOption("rybex"); assert.equal(await accent().inputValue(), "#d4af37");
+ assert.match(await page.getByRole("region", { name: "Workspace identity" }).innerText(), /Rotork/i); results.push("Preset changes appearance without changing workspace identity PASS");
+ await navigation().fill("#ffffff"); await accent().fill("#ffffff");
+ assert.equal(await page.locator(".sidebar").evaluate(x => getComputedStyle(x).color), "rgb(0, 0, 0)");
+ await page.reload(); await page.getByText("Appearance", { exact: true }).click();
+ await page.waitForFunction(() => document.querySelector('input[aria-label="Accent color"]').value === "#ffffff");
+ assert.equal(await navigation().inputValue(), "#ffffff"); results.push("Custom color persistence and contrast foreground PASS");
+ await signIn("rybex", "quality_verifier", "ef995191-a5d7-4f66-9320-1cd67076f447");
+ assert.equal(await navigation().inputValue(), "#102a43"); assert.equal(await accent().inputValue(), "#d4af37"); results.push("Rybex defaults and account/workspace isolation PASS");
+ await page.screenshot({ path: resolve(dir, "rybex.png"), fullPage: true });
+ await signIn("rotork", "pilot_reviewer", "bef9715d-5156-4030-a088-756244d3b3ba");
+ await page.waitForFunction(() => document.querySelector('input[aria-label="Accent color"]').value === "#ffffff");
+ await page.getByRole("button", { name: "Reset to workspace preset" }).click(); assert.equal(await accent().inputValue(), "#c8102e");
+ results.push("Returning account preference and reset PASS");
+ await page.setViewportSize({ width: 390, height: 844 });
+ assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+ await page.screenshot({ path: resolve(dir, "mobile.png"), fullPage: true }); results.push("Mobile width PASS");
+ assert.deepEqual(errors, []);
+} finally { await browser.close(); writeFileSync(resolve(dir, "RESULTS.json"), JSON.stringify({ results, errors, complete: results.length === 7 && errors.length === 0 }, null, 2)); }
+console.log(JSON.stringify({ passed: results.length, errors }));

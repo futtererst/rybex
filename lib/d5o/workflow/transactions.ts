@@ -236,6 +236,22 @@ export const workflowTransactionDefinitions: Record<WorkflowTransactionType, Wor
   }
 };
 
+export function isWorkflowTransactionType(value: unknown): value is WorkflowTransactionType {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(workflowTransactionDefinitions, value);
+}
+
+export function getWorkflowTransactionDefinition(
+  transactionType: unknown,
+  workflowType: OperatingWorkflowType
+) {
+  if (!isWorkflowTransactionType(transactionType)) {
+    return undefined;
+  }
+
+  const definition = workflowTransactionDefinitions[transactionType];
+  return definition.workflowTypes.includes(workflowType) ? definition : undefined;
+}
+
 export function getWorkflowTransactionDefinitions(workflow: OperatingWorkflow) {
   return Object.values(workflowTransactionDefinitions).filter((definition) =>
     definition.workflowTypes.includes(workflow.workflowType)

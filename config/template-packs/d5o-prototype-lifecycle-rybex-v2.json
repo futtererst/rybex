@@ -1,0 +1,45 @@
+{
+  "packKey": "d5o-prototype-lifecycle-rybex",
+  "packName": "Synthetic technical delivery lifecycle",
+  "version": "2.0.0",
+  "domain": "technical_delivery",
+  "workType": {
+    "key": "technical-delivery",
+    "label": "Technical delivery",
+    "lifecycle": {
+      "gateKey": "delivery-lifecycle",
+      "initialState": "Plan",
+      "completeState": "Closed",
+      "reopenAuthority": "owner"
+    }
+  },
+  "phase": { "key": "governed-delivery", "label": "Governed delivery" },
+  "gate": {
+    "key": "delivery-lifecycle",
+    "label": "Technical delivery controls",
+    "purpose": "Move one stable Work Record through plan, readiness, execution, verification, customer acceptance and close.",
+    "entryRule": { "op": "all", "items": [] },
+    "exitRule": { "op": "all", "items": [] }
+  },
+  "roles": [
+    { "key": "planning_authority", "label": "Planning and release authority", "workspaceRoles": ["operations_leader"] },
+    { "key": "delivery_supervisor", "label": "Delivery supervisor", "workspaceRoles": ["field_supervisor"] },
+    { "key": "quality_verifier", "label": "Independent quality verifier", "workspaceRoles": ["project_manager"] },
+    { "key": "exception_authority", "label": "Independent exception authority", "workspaceRoles": ["operations_leader"] },
+    { "key": "owner_acceptor", "label": "Synthetic owner commissioning representative", "workspaceRoles": ["project_manager"] }
+  ],
+  "evidence": [
+    { "key": "test-proof", "label": "Certification test proof" },
+    { "key": "owner-acceptance", "label": "Owner acceptance proof" }
+  ],
+  "transitions": [
+    { "right": "confirm-plan", "label": "Confirm work plan", "role": "planning_authority", "outcome": "plan-confirmed", "from": "Plan", "to": "Readiness", "requirements": [{ "op": "fact_equals", "key": "scope_planned", "value": true }] },
+    { "right": "authorize-readiness", "label": "Authorize start", "role": "planning_authority", "outcome": "work-authorized", "from": "Readiness", "to": "Execution", "requirements": [{ "op": "fact_equals", "key": "release_conditions_met", "value": true }] },
+    { "right": "record-execution", "label": "Confirm installation and testing", "role": "delivery_supervisor", "outcome": "execution-recorded", "from": "Execution", "to": "Quality verification", "requirements": [{ "op": "fact_equals", "key": "installation_complete", "value": true }, { "op": "fact_equals", "key": "testing_performed", "value": true }] },
+    { "right": "authorize-exception", "label": "Authorize bounded certification exception", "role": "exception_authority", "outcome": "exception-authorized", "from": "Quality verification", "to": null, "type": "exception", "requirements": [{ "op": "fact_equals", "key": "certification_result", "value": "failed" }], "distinctFactKeys": ["certification_result"], "exceptionRuleKey": "certification-deviation" },
+    { "right": "verify-quality", "label": "Verify certification results", "role": "quality_verifier", "outcome": "quality-verified", "from": "Quality verification", "to": "Customer acceptance", "requirements": [{ "op": "fact_equals", "key": "results_recorded", "value": true }, { "op": "exception_satisfies", "key": "certification_result", "value": "verified_pass", "exception": "certification-deviation", "scope": "package" }, { "op": "evidence_valid", "key": "test-proof" }], "distinctFactKeys": ["certification_result"], "distinctDecisionRights": ["authorize-exception"] },
+    { "right": "accept-turnover", "label": "Record owner acceptance", "role": "owner_acceptor", "outcome": "turnover-accepted", "from": "Customer acceptance", "to": "Handoff", "requirements": [{ "op": "decision_recorded_prior", "right": "verify-quality", "outcome": "quality-verified" }, { "op": "evidence_valid", "key": "owner-acceptance" }], "distinctDecisionRights": ["verify-quality", "authorize-exception"] },
+    { "right": "close-work", "label": "Close and hand over lifecycle ownership", "role": "owner_acceptor", "outcome": "work-closed", "from": "Handoff", "to": "Closed", "requirements": [{ "op": "decision_recorded_prior", "right": "accept-turnover", "outcome": "turnover-accepted" }] }
+  ],
+  "exception": { "key": "certification-deviation", "label": "Bounded certification deviation", "factKey": "certification_result", "scope": "package", "roleKey": "exception_authority" }
+}

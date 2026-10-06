@@ -39,22 +39,8 @@ console.log("Workflow business outcome QA passed: all Pilot workflows produce ou
 
 async function runBilling(page, results) {
   await openPilotWorkflow(page, "Add missing billing backup", "/billing", "billing-billing-backup-cash-recovery");
-  const guided = page.locator('[data-qa="guided-completion-flow"]').first();
-  await fillAndSave(guided, "backup-note-input", "save-backup-note", "Saved backup note", "Signed T&M ticket and supervisor backup are available for CE-004.");
-  await fillAndSave(guided, "billing-evidence-reference-input", "save-billing-evidence-reference", "Saved evidence reference", "Daily Report DR-2026-06-10, photo log PL-014, signed T&M ticket T&M-077.");
-  await guided.getByRole("button", { name: "Mark backup attached", exact: true }).click();
-  await guided.getByRole("button", { name: "Send to review", exact: true }).click();
-  await fillAndSave(guided, "billing-resolution-note-input", "save-billing-resolution-note", "Saved resolution note", "Backup package is complete and ready for pay application review.");
-  await guided.getByRole("button", { name: "Resolve billing blocker", exact: true }).click();
-  await assertOutcome(page, {
-    process: "Billing backup completion and pay application readiness",
-    object: "Pay App 003 / billing backup package",
-    input: "Signed T&M ticket and supervisor backup are available for CE-004.",
-    reference: "Daily Report DR-2026-06-10",
-    impact: "The $84K cash recovery path is no longer blocked by missing backup for this item.",
-    next: "Open pay application review",
-    record: "Pay App 003 billing backup readiness record"
-  });
+  await completeBillingV2GuidedWorkflow(page);
+  await assertBillingV2Outcome(page);
   await returnToPilot(page);
   await assertPilotOutcome(page, "Add missing billing backup", "Pay App 003", "Open pay application review", "Pay App 003 billing backup readiness record");
   pass(results, "Billing outcome record", "Outcome record, saved inputs, evidence reference, next step, and Pilot summary passed.");
@@ -144,7 +130,60 @@ async function openPilotWorkflow(page, label, route, focus) {
     url.hash === "#focused-task",
     { timeout: 10000 }
   );
-  await page.locator('[data-qa="guided-completion-flow"]').first().waitFor({ state: "visible", timeout: 10000 });
+  const selector = focus === "billing-billing-backup-cash-recovery"
+    ? '[data-qa="billing-v2-guided-workflow"]'
+    : '[data-qa="guided-completion-flow"]';
+  await page.locator(selector).first().waitFor({ state: "visible", timeout: 10000 });
+}
+
+async function completeBillingV2GuidedWorkflow(page) {
+  await page.locator('[data-qa="billing-v2-start-package"]').click();
+  await page.locator('[data-qa="billing-v2-backup-summary-input"]').fill("Signed T&M ticket and supervisor backup are available for CE-004.");
+  await page.locator('[data-qa="billing-v2-related-source-input"]').fill("CE-004 / stored material billing support");
+  await page.locator('[data-qa="billing-v2-amount-input"]').fill("84000");
+  await page.locator('[data-qa="billing-v2-save-package"]').click();
+  await page.locator('[data-qa="billing-v2-step-add-proof"]').waitFor({ state: "visible", timeout: 5000 });
+
+  for (const evidenceId of [
+    "signed-tm-ticket",
+    "daily-report-reference",
+    "photo-log-reference",
+    "supervisor-confirmation",
+    "product-approval-backup"
+  ]) {
+    const card = page.locator(`[data-qa="billing-v2-evidence-card-${evidenceId}"]`);
+    await card.locator(`[data-qa="billing-v2-add-reference-${evidenceId}"]`).fill(`Workflow outcome QA reference for ${evidenceId}.`);
+    await card.getByRole("button", { name: "Save reference", exact: true }).click();
+    await card.getByText("Saved reference:", { exact: false }).waitFor({ timeout: 5000 });
+  }
+
+  await page.locator('[data-qa="billing-v2-validate-readiness"]').click();
+  await page.locator('[data-qa="billing-v2-step-review"]').waitFor({ state: "visible", timeout: 5000 });
+  await page.locator('[data-qa="billing-v2-send-review"]').click();
+  await page.locator('[data-qa="billing-v2-step-review-decision"]').waitFor({ state: "visible", timeout: 5000 });
+  await page.locator('[data-qa="billing-v2-review-note-input"]').fill("Backup package approved for Pay App 003 commercial review.");
+  await page.locator('[data-qa="billing-v2-approve-review"]').click();
+  await page.locator('[data-qa="billing-v2-step-clear-blocker"]').waitFor({ state: "visible", timeout: 5000 });
+  await page.locator('[data-qa="billing-v2-resolution-note-input"]').fill("Backup package is complete and ready for pay application review.");
+  await page.locator('[data-qa="billing-v2-clear-blocker"]').click();
+  await page.locator('[data-qa="billing-v2-step-outcome"]').waitFor({ state: "visible", timeout: 5000 });
+}
+
+async function assertBillingV2Outcome(page) {
+  const outcome = await page.locator('[data-qa="billing-v2-outcome-record"]').innerText({ timeout: 5000 });
+  for (const value of [
+    "Billing backup blocker resolved",
+    "Pay App 003",
+    "$84,000",
+    "commercial review"
+  ]) {
+    if (!outcome.includes(value)) throw new Error(`Billing v2 outcome missing ${value}. Text: ${outcome}`);
+  }
+
+  const historicalRecord = await page.locator('[data-qa="billing-v2-historical-record"]').innerText({ timeout: 5000 });
+  for (const value of ["Saved fields", "Review task", "Review decision", "State transitions", "Local/demo status"]) {
+    if (!historicalRecord.includes(value)) throw new Error(`Billing v2 historical record missing ${value}. Text: ${historicalRecord}`);
+  }
 }
 
 async function fillAndSave(scope, inputQa, saveQa, savedLabel, value) {

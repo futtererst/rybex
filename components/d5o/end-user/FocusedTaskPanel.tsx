@@ -110,7 +110,7 @@ export function FocusedTaskPanel({ summary }: FocusedTaskPanelProps) {
         <div className="completion-related-links">
           {shouldShowPilotReturn ? (
             <a className="quiet-link" data-qa="return-to-pilot-mode" href="/pilot?refresh=completion">
-              Return to Pilot Mode
+              Return to workflow list
             </a>
           ) : null}
           <span className={`chip chip-${action.severity === "critical" ? "critical" : action.severity === "high" ? "warning" : "info"}`}>

@@ -3,6 +3,7 @@
 import { getCurrentRybexUser } from "@/lib/d5o/auth/current-user";
 import { isDatabaseMode } from "@/lib/d5o/data/data-source";
 import { hasPermission } from "@/lib/d5o/rbac";
+import { isProductionRuntime, productionLocalAdapterError } from "@/lib/d5o/security/runtime-mode";
 import {
   canUseDatabaseCompletionStore,
   persistWorkflowCompletionAction
@@ -65,11 +66,12 @@ export async function commitWorkflowCompletion(
   }
 
   const currentUser = await getCurrentRybexUser();
+  const databaseStoreEnabled = isDatabaseMode() && isDatabaseWorkflowCompletionStoreEnabled();
 
   if (!currentUser.authenticated || !currentUser.role) {
     return {
       ok: false,
-      mode: isDatabaseMode() && isDatabaseWorkflowCompletionStoreEnabled() ? "database" : "local",
+      mode: databaseStoreEnabled ? "database" : "local",
       resultMessage: currentUser.message,
       error: "unauthenticated"
     };
@@ -82,13 +84,22 @@ export async function commitWorkflowCompletion(
   if (!allowed) {
     return {
       ok: false,
-      mode: isDatabaseMode() && isDatabaseWorkflowCompletionStoreEnabled() ? "database" : "local",
+      mode: databaseStoreEnabled ? "database" : "local",
       resultMessage: `Permission required: ${action.requiredPermissions.join(" or ")}.`,
       error: "permission_denied"
     };
   }
 
-  if (!isDatabaseMode() || !isDatabaseWorkflowCompletionStoreEnabled()) {
+  if (isProductionRuntime() && !databaseStoreEnabled) {
+    return {
+      ok: false,
+      mode: "database",
+      resultMessage: productionLocalAdapterError("Workflow completions"),
+      error: "production_local_adapter_blocked"
+    };
+  }
+
+  if (!databaseStoreEnabled) {
     return {
       ok: false,
       mode: "local",

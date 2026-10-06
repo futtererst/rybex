@@ -9,6 +9,10 @@ export function getEvidenceStoreMode(): RybexEvidenceStoreMode {
     return configuredMode as RybexEvidenceStoreMode;
   }
 
+  if (process.env.RYBEXOS_RUNTIME_MODE === "production") {
+    return "database";
+  }
+
   return "local";
 }
 

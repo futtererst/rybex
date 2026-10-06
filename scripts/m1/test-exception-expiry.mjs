@@ -1,0 +1,8 @@
+import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import {randomUUID} from 'node:crypto';
+import {context,save,rpc,loadWork} from './implementation-context.mjs';import {prepare,decide} from './proof-fixtures.mjs';
+const plan=JSON.parse(readFileSync(process.argv[2])),c=await context(),f=plan.scenarios[0],tag=new Date().toISOString().replaceAll(/[:.]/g,'-');
+try{const p=await prepare(c,f,{failed:true}),actor=await c.login(f.actors.exception_authority.email),w=await loadWork(p.owner,f,p.work);
+ const expiresAt=new Date(Date.now()+4000).toISOString();await rpc(actor,'d5o_execute_work_command_v1',{p_workspace_id:f.workspace,p_work_id:p.work,p_expected_version:w.work.record_version,p_proof_revision:1,p_command_id:randomUUID(),p_kind:'decide',p_payload:{rightKey:'authorize-exception',reason:'Synthetic expiry boundary',scopeKey:'package',expiresAt}});
+ const authorized=await loadWork(p.owner,f,p.work);assert.equal(authorized.decisions.length,1);assert.equal(authorized.decisions[0].outcome_type,'exception');await new Promise(r=>setTimeout(r,Math.max(0,Date.parse(expiresAt)-Date.now()+250)));
+ await assert.rejects(()=>decide(c,f,p.work,'verify-quality'),/readiness_blocked/);const after=await loadWork(p.owner,f,p.work);assert.deepEqual(after.decisions,authorized.decisions);assert.equal(after.work.lifecycle_state,w.work.lifecycle_state);save('EXCEPTION-EXPIRY-'+tag+'.json',{status:'PASS',work:p.work,expiresAt,result:'Expired authorized exception remains historical but cannot satisfy current readiness'});console.log('exception expiry PASS');
+}catch(e){save('EXCEPTION-EXPIRY-'+tag+'.json',{status:'FAIL',error:e.message});console.error(e.message);process.exitCode=1;}

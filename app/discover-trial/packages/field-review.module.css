@@ -1,0 +1,12 @@
+.review{margin-top:24px;border-top:1px solid #d8e3eb;padding-top:22px;font-size:13px}
+.review h3{font-size:20px;margin:0 0 8px}
+.review>p{color:#536b7c;line-height:1.45}
+.reviewState{background:#f1f7fa;border:1px solid #c4d9e6;border-radius:6px;padding:12px;margin:13px 0}
+.reviewState strong{display:block;margin-bottom:7px}
+.reviewState p{margin:5px 0;line-height:1.42}
+.review button{background:#205db7;color:#fff;border:0;border-radius:5px;padding:10px 13px;cursor:pointer}
+.review button:disabled{opacity:.5;cursor:not-allowed}
+.responseForm{display:grid;gap:11px;margin-top:14px;padding:13px;border:1px solid #bed7e6;border-radius:6px}
+.responseForm label{display:grid;gap:5px;font-size:12px;font-weight:700}
+.responseForm select,.responseForm textarea{border:1px solid #b9cada;border-radius:5px;padding:9px;font:inherit}
+.responseForm button{justify-self:start}

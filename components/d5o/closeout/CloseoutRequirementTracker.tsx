@@ -12,8 +12,8 @@ export function CloseoutRequirementTracker({ requirements }: { requirements: Clo
         <p className="ready-callout">All required closeout documents are accepted or archived.</p>
       ) : (
         <ul className="record-list">
-          {open.slice(0, 12).map((item, index) => (
-            <li key={`closeout-requirement-${item.packageId}-${item.id}-${index}`}>
+          {open.slice(0, 12).map((item) => (
+            <li key={item.id}>
               <div>
                 <strong>{item.title}</strong>
                 <span>{closeoutRequirementCategoryLabels[item.category]} | {closeoutSourceModuleLabels[item.sourceModule]} | due {dateLabel(item.dueDate)}</span>

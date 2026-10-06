@@ -1,0 +1,258 @@
+{
+  "packKey": "d5o-m1-proof-rybex",
+  "packName": "Synthetic certification and turnover",
+  "version": "1.0.0",
+  "status": "released",
+  "domain": "technical_delivery",
+  "mode": "startup_no_history",
+  "phase": {
+    "key": "verify-handoff",
+    "label": "Verify & Handoff",
+    "sortOrder": 1
+  },
+  "workType": {
+    "key": "technical-delivery",
+    "label": "Technical delivery",
+    "lifecycle": {
+      "gateKey": "certification-turnover",
+      "initialState": "awaiting-verification",
+      "completeState": "accepted",
+      "reopenAuthority": "owner"
+    }
+  },
+  "gate": {
+    "key": "certification-turnover",
+    "label": "Certification and turnover",
+    "purpose": "Verify technical delivery and obtain owner acceptance of the turnover package.",
+    "entryRule": {
+      "op": "all",
+      "items": [
+        {
+          "op": "fact_equals",
+          "key": "installation_complete",
+          "value": true
+        },
+        {
+          "op": "fact_equals",
+          "key": "testing_performed",
+          "value": true
+        },
+        {
+          "op": "fact_equals",
+          "key": "results_recorded",
+          "value": true
+        }
+      ]
+    },
+    "exitRule": {
+      "op": "all",
+      "items": [
+        {
+          "op": "fact_equals",
+          "key": "installation_complete",
+          "value": true
+        },
+        {
+          "op": "fact_equals",
+          "key": "testing_performed",
+          "value": true
+        },
+        {
+          "op": "fact_equals",
+          "key": "results_recorded",
+          "value": true
+        },
+        {
+          "op": "exception_satisfies",
+          "key": "certification_result",
+          "value": "verified_pass",
+          "exception": "certification-deviation",
+          "scope": "package"
+        },
+        {
+          "op": "decision_recorded",
+          "right": "verify-quality",
+          "outcome": "quality-verified"
+        },
+        {
+          "op": "evidence_valid",
+          "key": "turnover-proof"
+        }
+      ]
+    }
+  },
+  "evidence": [
+    {
+      "key": "turnover-proof",
+      "label": "Certification and turnover proof"
+    }
+  ],
+  "roles": [
+    {
+      "key": "quality_verifier",
+      "label": "Internal quality verifier",
+      "workspaceRoles": [
+        "project_manager"
+      ]
+    },
+    {
+      "key": "exception_authority",
+      "label": "Exception authority",
+      "workspaceRoles": [
+        "operations_leader"
+      ]
+    },
+    {
+      "key": "owner_acceptor",
+      "label": "Owner commissioning representative",
+      "workspaceRoles": [
+        "project_manager"
+      ]
+    }
+  ],
+  "rights": [
+    {
+      "key": "verify-quality",
+      "label": "Verify internal quality",
+      "roleKey": "quality_verifier",
+      "outcomeKey": "quality-verified",
+      "approvalRule": {
+        "requires": {
+          "op": "all",
+          "items": [
+            {
+              "op": "exception_satisfies",
+              "key": "certification_result",
+              "value": "verified_pass",
+              "exception": "certification-deviation",
+              "scope": "package"
+            }
+          ]
+        },
+        "forbidPreparer": true,
+        "distinctFactKeys": [
+          "certification_result"
+        ],
+        "distinctDecisionRights": []
+      }
+    },
+    {
+      "key": "authorize-exception",
+      "label": "Authorize bounded exception",
+      "roleKey": "exception_authority",
+      "outcomeKey": "exception-authorized",
+      "approvalRule": {
+        "requires": {
+          "op": "all",
+          "items": [
+            {
+              "op": "fact_equals",
+              "key": "certification_result",
+              "value": "failed"
+            }
+          ]
+        },
+        "forbidPreparer": true,
+        "distinctFactKeys": [
+          "certification_result"
+        ],
+        "distinctDecisionRights": [],
+        "exceptionRuleKey": "certification-deviation"
+      }
+    },
+    {
+      "key": "accept-turnover",
+      "label": "Accept complete turnover",
+      "roleKey": "owner_acceptor",
+      "outcomeKey": "turnover-accepted",
+      "approvalRule": {
+        "requires": {
+          "op": "all",
+          "items": [
+            {
+              "op": "decision_recorded",
+              "right": "verify-quality",
+              "outcome": "quality-verified"
+            }
+          ]
+        },
+        "forbidPreparer": true,
+        "distinctFactKeys": [
+          "certification_result"
+        ],
+        "distinctDecisionRights": [
+          "verify-quality",
+          "authorize-exception"
+        ]
+      }
+    },
+    {
+      "key": "hold-quality",
+      "label": "Hold for correction",
+      "roleKey": "quality_verifier",
+      "outcomeKey": "quality-held",
+      "approvalRule": {
+        "requires": {
+          "op": "all",
+          "items": []
+        },
+        "forbidPreparer": true,
+        "distinctFactKeys": [
+          "certification_result"
+        ],
+        "distinctDecisionRights": []
+      }
+    }
+  ],
+  "outcomes": [
+    {
+      "key": "quality-verified",
+      "label": "Quality verified",
+      "type": "approve",
+      "consequence": {
+        "final": false
+      }
+    },
+    {
+      "key": "exception-authorized",
+      "label": "Bounded exception authorized",
+      "type": "exception",
+      "consequence": {
+        "final": false
+      }
+    },
+    {
+      "key": "turnover-accepted",
+      "label": "Turnover accepted",
+      "type": "terminal",
+      "consequence": {
+        "final": true,
+        "state": "accepted"
+      }
+    },
+    {
+      "key": "quality-held",
+      "label": "Held for correction",
+      "type": "hold",
+      "consequence": {
+        "final": false
+      }
+    }
+  ],
+  "exception": {
+    "key": "certification-deviation",
+    "label": "Permitted certification deviation",
+    "factKey": "certification_result",
+    "scope": "package",
+    "roleKey": "exception_authority"
+  },
+  "protectedValue": {
+    "label": "Acceptance and commercial release protected",
+    "metric": "contract_value",
+    "unit": "USD",
+    "currency": "USD",
+    "baseline": 0,
+    "target": 100000
+  },
+  "synthetic": true
+}

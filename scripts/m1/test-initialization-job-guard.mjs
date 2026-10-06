@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import { writeFileSync } from 'node:fs';
+import { identifyInitializationJob as check } from './initialization-job-guard.mjs';
+const project='rybex-cfg03-q-m1-s1-20260928', network='owned-test-network';
+const base={Image:'public.ecr.aws/supabase/gotrue:v2.192.0',Cmd:['gotrue','migrate'],Env:[`GOTRUE_DB_DATABASE_URL=postgresql://synthetic:synthetic@supabase_db_${project}:5432/postgres`],Labels:{'com.supabase.cli.project':project},HostConfig:{NetworkMode:network}};
+assert.equal(check(base,project,new Set([network])),'auth');
+const cases=[{...base,Labels:{}},{...base,Image:'unapproved'},{...base,Cmd:['sh']},{...base,Env:['GOTRUE_DB_DATABASE_URL=postgresql://synthetic@excluded:5432/postgres']},...['Privileged','Binds','Mounts','PortBindings','PidMode','CapAdd','Devices'].map(key=>({...base,HostConfig:{...base.HostConfig,[key]:({Privileged:true,Binds:['x:y'],Mounts:[{}],PortBindings:{'1/tcp':[]},PidMode:'host',CapAdd:['ALL'],Devices:[{}]})[key]}})),{...base,HostConfig:{NetworkMode:'host'}}];
+for(const c of cases)assert.throws(()=>check(c,project,new Set([network])));
+const result={positive:1,negative:cases.length,status:'PASS',scope:'initialization guard only; not M1 security acceptance'};
+writeFileSync('artifacts/d5o-m1-s1-implementation-20260928T004316Z/retry-20260928/raw/initialization-guard-tests.json',JSON.stringify(result,null,2));console.log(result);

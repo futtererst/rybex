@@ -67,7 +67,7 @@ for (const expected of [
   "0 of 3 workflows complete",
   "1 of 3 workflows complete",
   "Add missing billing backup",
-  "Resolve billing blocker",
+  "billing-v2-clear-blocker",
   "PilotProgressSummary"
 ]) {
   if (!qa.includes(expected)) {

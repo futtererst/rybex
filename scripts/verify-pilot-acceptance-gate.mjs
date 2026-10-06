@@ -102,9 +102,12 @@ for (const workflowId of [
 
 const workflowExecutionQa = read("scripts/qa-workflow-execution.mjs");
 for (const selector of [
-  "backup-note-input",
-  "billing-evidence-reference-input",
-  "billing-resolution-note-input",
+  "billing-v2-backup-summary-input",
+  "billing-v2-related-source-input",
+  "billing-v2-amount-input",
+  "billing-v2-add-reference",
+  "billing-v2-review-note-input",
+  "billing-v2-resolution-note-input",
   "field-escalation-note-input",
   "field-control-path-input",
   "rfi-draft-title-input",

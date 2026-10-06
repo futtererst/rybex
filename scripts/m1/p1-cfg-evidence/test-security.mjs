@@ -1,0 +1,22 @@
+import assert from "node:assert/strict";
+import {writeFileSync} from "node:fs";
+import {context,createOpportunity,stage,attachArgs,ok} from "./fixtures.mjs";
+const c=await context(),results=[];const opp=await createOpportunity(c);const other=await createOpportunity(c);
+async function test(name,fn){try{await fn();results.push({name,status:"PASS"});}catch(e){results.push({name,status:"FAIL",error:e.message});throw e;}finally{writeFileSync(process.env.P1_CFG_RESULT_PATH,JSON.stringify(results,null,2));}}
+const intent={p_opportunity_id:opp.id,p_purpose:"decision_support",p_relationship_type:"qualification_decision_support",p_expected_version:opp.version,p_original_filename:"proof.txt",p_mime_type:"text/plain",p_size_bytes:12};
+await test("Cross-workspace intent denied",async()=>{const x=await c.userB.rpc("create_opportunity_evidence_upload_intent_v1",intent);assert.equal(x.data?.error,"forbidden");});
+await test("Auditor lacks content-fitness authority",async()=>{const x=await c.auditor.rpc("create_opportunity_evidence_upload_intent_v1",intent);assert.equal(x.data?.error,"forbidden");});
+await test("Stale record intent denied",async()=>{const x=await c.bd.rpc("create_opportunity_evidence_upload_intent_v1",{...intent,p_expected_version:opp.version-1});assert.equal(x.data?.error,"concurrency_conflict");});
+await test("Oversize denied without widening bucket",async()=>{const x=await c.bd.rpc("create_opportunity_evidence_upload_intent_v1",{...intent,p_size_bytes:1048577});assert.equal(x.data?.error,"unsupported_evidence_file");});
+await test("Unsupported Office document denied",async()=>{const x=await c.bd.rpc("create_opportunity_evidence_upload_intent_v1",{...intent,p_mime_type:"application/vnd.openxmlformats-officedocument.wordprocessingml.document"});assert.equal(x.data?.error,"unsupported_evidence_file");});
+await test("No custody cannot become authoritative",async()=>{const item=await ok(c.bd,"create_opportunity_evidence_upload_intent_v1",intent);const x=await c.bd.rpc("attach_opportunity_decision_support_evidence_v1",attachArgs(opp,{payload:{evidenceId:item.evidenceId,expectedEvidenceVersion:1}}));assert.equal(x.data?.error,"evidence_not_finalized");});
+await test("Uploaded bytes without receipt rejected",async()=>{const item=await stage(c,c.bd,opp,{scan:false,finalize:false});const x=await c.bd.rpc("attach_opportunity_decision_support_evidence_v1",attachArgs(opp,item));assert.equal(x.data?.error,"evidence_not_finalized");});
+await test("Infected scan cannot finalize",async()=>{await assert.rejects(()=>stage(c,c.bd,opp,{bytes:Buffer.from("EICAR-STANDARD-ANTIVIRUS-TEST-FILE")}),/scan|clean|receipt/);});
+const item=await stage(c,c.bd,opp);
+await test("Wrong same-workspace opportunity denied",async()=>{const x=await c.bd.rpc("attach_opportunity_decision_support_evidence_v1",attachArgs(other,item));assert.equal(x.data?.error,"evidence_scope_mismatch");});
+await test("Stale evidence version denied",async()=>{const x=await c.bd.rpc("attach_opportunity_decision_support_evidence_v1",attachArgs(opp,{payload:{...item.payload,expectedEvidenceVersion:1}}));assert.equal(x.data?.error,"concurrency_conflict");});
+await test("Another actor cannot accept uploader-bound receipt",async()=>{const x=await c.ops.rpc("attach_opportunity_decision_support_evidence_v1",attachArgs(opp,item));assert.equal(x.data?.error,"evidence_scope_mismatch");});
+const args=attachArgs(opp,item);await ok(c.bd,"attach_opportunity_decision_support_evidence_v1",args);
+await test("Changed idempotent payload denied",async()=>{const x=await c.bd.rpc("attach_opportunity_decision_support_evidence_v1",{...args,p_payload:{...args.p_payload,unexpected:"tamper"}});assert.equal(x.data?.error,"evidence_already_accepted");});
+await test("Revoked membership cannot replay",async()=>{const actor=(await c.bd.auth.getUser()).data.user.id;const changed=await c.service.from("workspace_memberships").update({status:"suspended"}).eq("user_id",actor).eq("workspace_id","10000000-0000-4000-8000-000000000001");assert.equal(changed.error,null);try{const x=await c.bd.rpc("attach_opportunity_decision_support_evidence_v1",args);assert.notEqual(x.data?.success,true);}finally{const restored=await c.service.from("workspace_memberships").update({status:"active"}).eq("user_id",actor).eq("workspace_id","10000000-0000-4000-8000-000000000001");assert.equal(restored.error,null);}});
+console.log(JSON.stringify({total:results.length,pass:results.length}));

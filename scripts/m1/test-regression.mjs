@@ -1,0 +1,8 @@
+import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
+import {readFileSync} from 'node:fs';
+import {resolve} from 'node:path';
+import {context,evidence,save} from './implementation-context.mjs';
+const {env}=await context(),tag=new Date().toISOString().replaceAll(/[:.]/g,'-'),results=[];
+const suites=[['evidence','qa-foundation-0b-evidence-security.mjs','FOUNDATION_0B_RESULTS_PATH',23],['foundation','qa-foundation-0a-security.mjs','FOUNDATION_0A_RESULTS_PATH',39],['command','qa-foundation-0b-command-security.mjs','FOUNDATION_0B_RESULTS_PATH',18],['billing','qa-foundation-0c-billing-persistence.mjs','FOUNDATION_0C_RESULTS_PATH',14],['field','qa-foundation-0d-field-rfi-change-persistence.mjs','FOUNDATION_0D_RESULTS_PATH',24],['closeout','qa-foundation-0e-closeout-persistence.mjs','FOUNDATION_0E_RESULTS_PATH',20]];
+try{for(const [suite,file,key,total]of suites){const path=resolve(evidence,`${suite}-${tag}-results.json`);const p=spawnSync(process.execPath,['scripts/'+file],{env:{...env,[key]:path},encoding:'utf8',windowsHide:true,maxBuffer:8*1024*1024});save(`${suite}-${tag}-run.json`,{exit:p.status,stdout:p.stdout,stderr:p.stderr});assert.equal(p.status,0,suite+' failed');const data=JSON.parse(readFileSync(path));assert.equal(data.passedTests,total);assert.equal(data.failedTests,0);results.push({suite,pass:data.passedTests,total:data.totalTests,status:'PASS'});console.log(suite,data.passedTests+'/'+total);}save('REGRESSION-'+tag+'.json',{status:'PASS',results});}catch(e){save('REGRESSION-'+tag+'.json',{status:'FAIL',error:e.message,results});console.error(e.message);process.exitCode=1;}

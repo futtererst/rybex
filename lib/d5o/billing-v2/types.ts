@@ -36,7 +36,7 @@ export type BillingReviewStatus =
 
 export type BillingReviewDecisionType = "approved" | "changes_requested" | "rejected";
 
-export type BillingStorageMode = "local_demo" | "database_pilot" | "production_future";
+export type BillingStorageMode = "local_demo" | "file_adapter" | "database_pilot" | "production_future";
 
 export type BillingSourceRecord = {
   id?: string;
@@ -247,6 +247,7 @@ export type BillingBackupPackage = {
   history: BillingHistoryEntry[];
   localDemoOnly: boolean;
   databaseBacked: boolean;
+  storageMode?: BillingStorageMode;
   createdAt: string;
   updatedAt: string;
 };

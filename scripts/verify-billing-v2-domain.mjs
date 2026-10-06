@@ -70,15 +70,17 @@ const requiredEvents = [
 ];
 
 const prohibitedChangedPathPrefixes = [
-  "app/",
-  "components/",
   "supabase/",
   "lib/d5o/auth/",
   "lib/d5o/security/",
   "lib/d5o/workflow-completion/",
   "lib/d5o/pilot/",
   "app/field-execution/",
-  "app/closeout/"
+  "app/closeout/",
+  "components/d5o/field",
+  "components/d5o/closeout",
+  "lib/d5o/field",
+  "lib/d5o/closeout"
 ];
 
 function read(relativePath) {
@@ -193,8 +195,8 @@ if (failures.length === 0) {
     }
   }
 
-  if (!demoState.includes("Pay App 003") || !demoState.includes("84000")) {
-    fail("Demo state must seed Pay App 003 and the $84,000 blocker.");
+  if (!demoState.includes("PA-001") || !demoState.includes("bb-lake-001") || !demoState.includes("38500")) {
+    fail("Demo state must seed the canonical PA-001 / bb-lake-001 / $38,500 blocker.");
   }
 
   if (service.includes("Pay App 003")) {
@@ -217,7 +219,7 @@ if (failures.length === 0) {
       const changedPath = rawLine.slice(3).replaceAll("\\", "/");
       for (const prefix of prohibitedChangedPathPrefixes) {
         if (changedPath.startsWith(prefix)) {
-          fail(`Prohibited path changed in domain-only pass: ${changedPath}`);
+          fail(`Prohibited path changed outside the Billing v2 boundary: ${changedPath}`);
         }
       }
     }

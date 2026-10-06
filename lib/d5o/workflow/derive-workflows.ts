@@ -14,6 +14,11 @@ import type {
 } from "./types";
 
 const operatingDate = "2026-06-11";
+const canonicalFieldIssueWorkflowBlockerId = "field-issue-lake-001";
+const canonicalCloseoutFinalBillingWorkflowBlockerId = "closeout-final-billing-lake-001";
+const canonicalCloseoutFinalBillingPackageId = "cop-bluegrass-001";
+const canonicalCloseoutFinalBillingRequirementIds = new Set(["cor-blue-restoration", "cor-blue-waiver", "cor-blue-retainage"]);
+const canonicalCloseoutFinalBillingHref = `/closeout?focus=${canonicalCloseoutFinalBillingWorkflowBlockerId}#closeout-final-billing`;
 
 type WorkflowSeedData = Partial<typeof seedData>;
 
@@ -214,31 +219,31 @@ function groupByOwner(workflows: OperatingWorkflow[]) {
 
 export function deriveOperatingWorkflows(data: WorkflowSeedData = seedData): DerivedWorkflowSummary {
   const workflows: OperatingWorkflow[] = [];
-  const projects = data.projects ?? [];
-  const opportunities = data.opportunities ?? [];
-  const mobilizationPlans = data.mobilizationPlans ?? [];
-  const dailyReports = data.dailyReports ?? [];
-  const rfis = data.rfis ?? [];
-  const submittals = data.submittals ?? [];
-  const changeEvents = data.changeEvents ?? [];
-  const payApplications = data.payApplications ?? [];
-  const billingBackupItems = data.billingBackupItems ?? [];
-  const lienWaivers = data.lienWaivers ?? [];
-  const commercialExposureItems = data.commercialExposureItems ?? [];
-  const safetyObservations = data.safetyObservations ?? [];
-  const safetyIncidents = data.safetyIncidents ?? [];
-  const correctiveActions = data.correctiveActions ?? [];
-  const jhaRecords = data.jhaRecords ?? [];
-  const qualityInspections = data.qualityInspections ?? [];
-  const qualityDeficiencies = data.qualityDeficiencies ?? [];
-  const testRecords = data.testRecords ?? [];
-  const punchItems = data.punchItems ?? [];
-  const closeoutPackages = data.closeoutPackages ?? [];
-  const closeoutRequirements = data.closeoutRequirements ?? [];
-  const lessonsLearned = data.lessonsLearned ?? [];
-  const productionRateRecords = data.productionRateRecords ?? [];
-  const improvementActions = data.improvementActions ?? [];
-  const operatingActions = data.operatingActions ?? [];
+  const projects = data.projects ?? seedData.projects;
+  const opportunities = data.opportunities ?? seedData.opportunities;
+  const mobilizationPlans = data.mobilizationPlans ?? seedData.mobilizationPlans;
+  const dailyReports = data.dailyReports ?? seedData.dailyReports;
+  const rfis = data.rfis ?? seedData.rfis;
+  const submittals = data.submittals ?? seedData.submittals;
+  const changeEvents = data.changeEvents ?? seedData.changeEvents;
+  const payApplications = data.payApplications ?? seedData.payApplications;
+  const billingBackupItems = data.billingBackupItems ?? seedData.billingBackupItems;
+  const lienWaivers = data.lienWaivers ?? seedData.lienWaivers;
+  const commercialExposureItems = data.commercialExposureItems ?? seedData.commercialExposureItems;
+  const safetyObservations = data.safetyObservations ?? seedData.safetyObservations;
+  const safetyIncidents = data.safetyIncidents ?? seedData.safetyIncidents;
+  const correctiveActions = data.correctiveActions ?? seedData.correctiveActions;
+  const jhaRecords = data.jhaRecords ?? seedData.jhaRecords;
+  const qualityInspections = data.qualityInspections ?? seedData.qualityInspections;
+  const qualityDeficiencies = data.qualityDeficiencies ?? seedData.qualityDeficiencies;
+  const testRecords = data.testRecords ?? seedData.testRecords;
+  const punchItems = data.punchItems ?? seedData.punchItems;
+  const closeoutPackages = data.closeoutPackages ?? seedData.closeoutPackages;
+  const closeoutRequirements = data.closeoutRequirements ?? seedData.closeoutRequirements;
+  const lessonsLearned = data.lessonsLearned ?? seedData.lessonsLearned;
+  const productionRateRecords = data.productionRateRecords ?? seedData.productionRateRecords;
+  const improvementActions = data.improvementActions ?? seedData.improvementActions;
+  const operatingActions = data.operatingActions ?? seedData.operatingActions;
 
   operatingActions.forEach((action) => workflows.push(actionToWorkflow(action, projects)));
 
@@ -378,7 +383,9 @@ export function deriveOperatingWorkflows(data: WorkflowSeedData = seedData): Der
         businessImpact: "Daily field proof protects production tracking, billing backup, safety/quality evidence, and change recovery.",
         consequenceIfMissed: consequenceByType("field_execution"),
         targetModule: "Field Execution",
-        targetHref: "/field-execution",
+        targetHref: report.blockers.some((blocker) => blocker.id === canonicalFieldIssueWorkflowBlockerId)
+          ? "/field-execution?focus=field-issue-lake-001#field-issue-escalation"
+          : "/field-execution",
         nextGateOrStatus: { from: "D4 field work", to: "Controlled field record", label: "D4 control movement" },
         severity: report.changeEventNeeded || report.reportStatus === "missing" || report.productionStatus === "blocked" ? "critical" : "high",
         createdAt: report.createdAt,
@@ -526,7 +533,7 @@ export function deriveOperatingWorkflows(data: WorkflowSeedData = seedData): Der
       });
     });
 
-  [...billingBackupItems.filter((item) => item.status !== "complete" && item.requiredForBilling), ...lienWaivers.filter((waiver) => ["missing", "rejected", "required", "pending"].includes(waiver.status)), ...commercialExposureItems.filter((item) => !["recovered", "written_off"].includes(item.status))]
+  [...billingBackupItems.filter((item) => !["complete", "verified"].includes(item.status) && item.requiredForBilling), ...lienWaivers.filter((waiver) => ["missing", "rejected", "required", "pending"].includes(waiver.status)), ...commercialExposureItems.filter((item) => !["recovered", "written_off"].includes(item.status))]
     .slice(0, 16)
     .forEach((item) => {
       const isExposure = "estimatedValue" in item;
@@ -762,7 +769,7 @@ export function deriveOperatingWorkflows(data: WorkflowSeedData = seedData): Der
         businessImpact: "Closeout blockers delay acceptance, final billing, retainage release, and archive readiness.",
         consequenceIfMissed: consequenceByType("closeout_acceptance"),
         targetModule: "Closeout",
-        targetHref: "/closeout",
+        targetHref: item.id === canonicalCloseoutFinalBillingPackageId ? canonicalCloseoutFinalBillingHref : "/closeout",
         nextGateOrStatus: { from: "D5 assembling", to: "Acceptance / archive ready", label: "D5 gate movement" },
         severity: item.retainageReleaseStatus === "blocked" || item.blockers.length > 0 ? "critical" : "high",
         createdAt: item.createdAt,
@@ -796,7 +803,7 @@ export function deriveOperatingWorkflows(data: WorkflowSeedData = seedData): Der
         businessImpact: item.finalBillingImpact || item.retainageImpact ? "This closeout requirement affects final billing or retainage release." : "This closeout requirement affects acceptance readiness.",
         consequenceIfMissed: consequenceByType("closeout_acceptance"),
         targetModule: "Closeout",
-        targetHref: "/closeout",
+        targetHref: canonicalCloseoutFinalBillingRequirementIds.has(item.id) ? canonicalCloseoutFinalBillingHref : "/closeout",
         nextGateOrStatus: { to: "Closeout requirement accepted", label: "D5 evidence movement" },
         severity: item.finalBillingImpact || item.retainageImpact || item.status === "blocked" ? "critical" : "high",
         createdAt: item.createdAt,

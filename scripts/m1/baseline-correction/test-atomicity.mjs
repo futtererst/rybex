@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';import {writeFileSync} from 'node:fs';import {resolve} from 'node:path';
+import {clients,upload,receiptArgs,finalizeArgs,evidence,sql} from './fixtures.mjs';
+const results=[];const ctx=await clients();
+const snap=id=>JSON.parse(sql(`select json_build_object('row',(select row_to_json(e) from evidence_objects e where id='${id}'),'links',(select count(*) from evidence_links where evidence_object_id='${id}'),'audit',(select count(*) from audit_events where entity_id='${id}'),'events',(select count(*) from domain_events where aggregate_id='${id}'),'commands',(select count(*) from command_idempotency where entity_id='${id}'),'receipts',(select count(*) from rybex_internal.evidence_scan_receipts where evidence_object_id='${id}'))`));
+function save(){writeFileSync(resolve(evidence,'raw/atomicity-results.json'),JSON.stringify({results},null,2));}
+try{
+ const item=await upload(ctx,'late-link-failure');const receipt=await ctx.service.rpc('record_evidence_scan_receipt_v1',await receiptArgs(ctx,item));assert(!receipt.error,receipt.error?.message);
+ const before=snap(item.evidenceId);const r=await ctx.field.rpc('finalize_evidence_upload_v1',{...finalizeArgs(item),p_entity_id:null});assert(r.error?.message.includes('null value'),r.error?.message??JSON.stringify(r.data));assert.deepEqual(snap(item.evidenceId),before);results.push({test:'link insertion exception rolls back preceding evidence update and command claim, preserving receipt and bytes',status:'PASS',evidenceId:item.evidenceId,error:r.error.message});save();
+ const args=finalizeArgs(item);const race=await Promise.all([ctx.field.rpc('finalize_evidence_upload_v1',args),ctx.field.rpc('finalize_evidence_upload_v1',finalizeArgs(item))]);assert.equal(race.filter(x=>x.data?.success).length,1);assert.equal(race.filter(x=>x.data?.error==='concurrency_conflict').length,1);const after=snap(item.evidenceId);assert.equal(after.row.version,2);assert.equal(after.links,1);assert.equal(after.commands,1);assert.equal(after.audit,1);assert.equal(after.events,1);results.push({test:'two concurrent authenticated finalizers yield one commit and one stale rejection',status:'PASS',evidenceId:item.evidenceId,results:race.map(x=>x.data)});save();
+ console.log('2 atomicity/concurrency assertions PASS');
+}catch(e){results.push({status:'FAIL',error:e.message});save();throw e;}

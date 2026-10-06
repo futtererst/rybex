@@ -1,0 +1,31 @@
+"use client";
+
+import { useState } from "react";
+import { dateForSchedule, publishedWeekStatus, type WorkspaceKey } from "./schedule-model";
+import type { useSharedSchedule } from "./useSharedSchedule";
+
+export function SchedulePublicationPanel({ shared, week, workspace }: { shared: ReturnType<typeof useSharedSchedule>; week: number; workspace: WorkspaceKey }) {
+  const [viewPublicationId, setViewPublicationId] = useState("");
+  const [message, setMessage] = useState("");
+  const state = shared.schedule;
+  if (!state) return <section className="d5o-schedule-publication"><h2>Published plan</h2><p>{shared.error || "Loading the workspace plan…"}</p><button onClick={() => shared.refresh().catch(() => undefined)}>Retry</button></section>;
+  const publications = state.publications.filter((item) => item.week === week);
+  const latest = publications.at(-1);
+  const latestStatus = publishedWeekStatus(state, week);
+  const viewed = publications.find((item) => item.id === viewPublicationId) ?? latest;
+  const receipts = viewed ? state.receipts.filter((item) => item.publicationId === viewed.id) : [];
+  const expected = viewed?.assignments.reduce((sum, item) => sum + item.people.length, 0) ?? 0;
+  const acknowledged = receipts.filter((item) => item.response !== "cannot-attend").length;
+  const attendanceIssues = receipts.filter((item) => item.response === "cannot-attend").length;
+  const current = latestStatus.current;
+  return <section className="d5o-schedule-publication" aria-label="Shared plan and worker responses">
+    <header><div><p>CREW PLAN · {workspace.toUpperCase()}</p><h2>Worker responses</h2><span>{dateForSchedule(state.anchorDate, week, 0).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })} week · schedule revision {state.draftRevision}</span></div><div className="d5o-schedule-publication-status"><strong>{latest ? current ? "Shared with workers" : "Bookings changed since last share" : "No shared bookings"}</strong><small>{latest ? `${latestStatus.acknowledged}/${latestStatus.responses.length} accepted · ${latestStatus.cannotAttend.length} declined · ${latestStatus.awaiting.length} awaiting worker response` : "No worker responses yet"}</small></div></header>
+    <button onClick={() => shared.refresh().then(() => setMessage("Latest worker responses loaded.")).catch((error) => setMessage(error instanceof Error ? error.message : "Refresh failed."))}>Refresh responses</button>
+    <p>Saving a booking or calendar move shares the reviewed schedule with assigned workers immediately in My crew schedule. They accept or decline while signed in; responses update here automatically while this page is open. Unchanged bookings retain their previous responses. Workers can choose email, SMS and browser push alerts from Account → Notification preferences when a verified destination and delivery provider are available. Saving does not release controlled work.</p>
+    {shared.delivery ? <p role="status">External alerts: {shared.delivery.sent} handed to providers · {shared.delivery.failed} failed · {shared.delivery.attempting} awaiting a confirmed result{shared.delivery.unavailable ? " · delivery status unavailable" : ""}. Worker preferences control who receives alerts; the in-app schedule is authoritative.</p> : null}
+    {shared.deliveryWarning ? <p role="alert" className="d5o-crew-message">{shared.deliveryWarning}</p> : null}
+    {shared.legacyPlan ? <div className="d5o-schedule-legacy"><strong>Previous browser plan found</strong><span>{shared.legacyPlan.length} bookings are preserved in this browser. Importing them replaces and shares the saved calendar plan; earlier publications remain in history.</span><button disabled={!shared.canEdit} onClick={async () => { try { await shared.mutate({ action: "save-assignments", assignments: shared.legacyPlan! }); shared.dismissLegacy(); setMessage("Previous browser plan imported and shared with assigned workers."); } catch (error) { setMessage(error instanceof Error ? error.message : "Import failed."); } }}>Import previous plan</button><button onClick={shared.dismissLegacy}>Keep shared plan</button></div> : null}
+    {viewed ? <div className="d5o-schedule-receipts"><header><div><strong>Shared revision {publications.findIndex((item) => item.id === viewed.id) + 1}</strong><span>Schedule {viewed.draftRevision} · {new Date(viewed.publishedAt).toLocaleString()} · {viewed.publishedBy.name}</span></div><label>View revision <select value={viewed.id} onChange={(event) => setViewPublicationId(event.target.value)}>{publications.map((item, index) => <option key={item.id} value={item.id}>Share {index + 1} · schedule {item.draftRevision}</option>)}</select></label><small>{acknowledged} accepted · {attendanceIssues} declined · {expected - receipts.length} awaiting worker response</small></header><div className="d5o-schedule-receipt-list">{viewed.assignments.flatMap((assignment) => assignment.people.map((recipient) => { const receipt = receipts.find((item) => item.assignmentId === assignment.id && item.recipient === recipient); return <div key={`${assignment.id}:${recipient}`}><span><strong>{recipient}</strong><small>{assignment.crew} · {assignment.date} · {assignment.shift}</small></span>{receipt ? <em className={receipt.response === "cannot-attend" ? "is-attendance-issue" : ""}>{receipt.response === "cannot-attend" ? receipt.source === "carried" ? "Earlier decline still needs action" : "Declined — reschedule needed" : receipt.source === "carried" ? "Earlier acceptance retained; booking unchanged" : receipt.source === "self" ? "Accepted by worker" : "Historical coordinator receipt"}<br />{new Date(receipt.recordedAt).toLocaleString()} · {receipt.recordedBy.name}</em> : <em className="is-awaiting">Awaiting worker response</em>}</div>; }))}</div></div> : null}
+    {message || shared.error ? <p role="status" className="d5o-crew-message">{message || shared.error}</p> : null}
+  </section>;
+}
