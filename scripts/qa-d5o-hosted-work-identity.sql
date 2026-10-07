@@ -4,22 +4,44 @@
 \i /tmp/d5o-hosted-authority-test.sql
 \i /tmp/d5o-hosted-work-identity.sql
 \i /tmp/d5o-hosted-create-authority.sql
+\i /tmp/d5o-hosted-config-manifest.sql
 
 update d5o_hosted.workspaces set status = 'active' where workspace_key = 'rybex';
 insert into d5o_hosted.configuration_tenants(id, workspace_id, status) values
   ('20000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'active');
 insert into d5o_hosted.configuration_versions(id, tenant_id, version_number, status,
-  source_sha256, effective_from) values
+  source_sha256, effective_from, manifest_json) values
   ('30000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001',
-    1, 'published', repeat('a',64), now() - interval '1 day'),
+    1, 'draft', repeat('a',64), now() - interval '1 day',
+    '{"schemaVersion":1,"workTypes":[{"key":"technical_delivery"}]}'::jsonb),
   ('30000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000001',
-    2, 'draft', repeat('b',64), now() - interval '1 day');
+    2, 'draft', repeat('b',64), now() - interval '1 day', '{}'::jsonb);
 insert into d5o_hosted.configuration_work_types(configuration_version_id, work_type_key,
   display_name, status) values
   ('30000000-0000-4000-8000-000000000001', 'technical_delivery', 'Technical delivery', 'active');
+insert into d5o_hosted.configuration_create_rights(configuration_version_id,
+  work_type_key, workspace_role) values
+  ('30000000-0000-4000-8000-000000000001', 'technical_delivery', 'admin');
+update d5o_hosted.configuration_versions set status = 'published'
+  where id = '30000000-0000-4000-8000-000000000001';
+insert into d5o_hosted.memberships(workspace_id, actor_user_id, role) values
+  ('10000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'field_supervisor');
+
+do $$ begin
+  begin
+    update d5o_hosted.configuration_versions set manifest_json = '{"workTypes":[]}'::jsonb
+      where id = '30000000-0000-4000-8000-000000000001';
+    raise exception 'published_manifest_mutated';
+  exception when check_violation then null; end;
+  begin
+    delete from d5o_hosted.configuration_create_rights
+      where configuration_version_id = '30000000-0000-4000-8000-000000000001';
+    raise exception 'published_right_deleted';
+  exception when check_violation then null; end;
+end $$;
 
 set role authenticated;
-select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000001', false);
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', false);
 do $$ begin
   begin
     perform public.d5o_hosted_create_work_v1('rybex', 'create-rybex-denied',
@@ -28,9 +50,6 @@ do $$ begin
   exception when insufficient_privilege then null; end;
 end $$;
 reset role;
-insert into d5o_hosted.configuration_create_rights(configuration_version_id,
-  work_type_key, workspace_role) values
-  ('30000000-0000-4000-8000-000000000001', 'technical_delivery', 'admin');
 
 do $$ begin
   if has_table_privilege('authenticated', 'd5o_hosted.work_records', 'insert')
