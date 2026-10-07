@@ -10,7 +10,10 @@ type Change =
   | { action: "save-demand"; demand: PackageCrewDemand }
   | { action: "publish"; week: number };
 
-export function useSharedSchedule(workspace: WorkspaceKey) {
+export function useSharedSchedule(workspace: WorkspaceKey, hostedPreview = false) {
+  const endpoint = hostedPreview
+    ? `/api/d5o-hosted/prototype-schedule?workspace=${encodeURIComponent(workspace)}`
+    : "/api/work/schedule";
   const [schedule, setSchedule] = useState<SharedSchedule | null>(null);
   const [canEdit, setCanEdit] = useState(false);
   const [error, setError] = useState("");
@@ -19,7 +22,7 @@ export function useSharedSchedule(workspace: WorkspaceKey) {
   const [legacyPlan, setLegacyPlan] = useState<Assignment[] | null>(null);
   const current = useRef<SharedSchedule | null>(null);
   const refresh = useCallback(async () => {
-    const response = await fetch("/api/work/schedule", { cache: "no-store" });
+    const response = await fetch(endpoint, { cache: "no-store" });
     if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "Sign in to your authorized workspace to view the shared schedule." : "The shared schedule is unavailable.");
     const payload = await response.json() as { schedule: SharedSchedule; canEdit: boolean; delivery?: { sent: number; failed: number; attempting: number; unavailable?: boolean } };
     if (payload.schedule.workspace !== workspace) throw new Error("Schedule workspace mismatch.");
@@ -29,12 +32,13 @@ export function useSharedSchedule(workspace: WorkspaceKey) {
     setDelivery(payload.delivery ?? null);
     setError("");
     return payload.schedule;
-  }, [workspace]);
+  }, [workspace, endpoint]);
   useEffect(() => {
     let active = true;
     const frame = requestAnimationFrame(() => refresh().then((loaded) => {
       if (!active) return;
       try {
+        if (hostedPreview) return;
         const raw = localStorage.getItem(`d5o.crew-board.v1:${workspace}`);
         const dismissed = localStorage.getItem(`d5o.crew-board-import-dismissed.v1:${workspace}`);
         if (!raw || dismissed) return;
@@ -46,7 +50,7 @@ export function useSharedSchedule(workspace: WorkspaceKey) {
       } catch { /* Invalid legacy browser data is left untouched. */ }
     }).catch((failure) => { if (active) setError(failure instanceof Error ? failure.message : "Schedule unavailable."); }));
     return () => { active = false; cancelAnimationFrame(frame); };
-  }, [refresh, workspace]);
+  }, [refresh, workspace, hostedPreview]);
   useEffect(() => {
     const update = () => { if (document.visibilityState === "visible") void refresh().catch(() => undefined); };
     const timer = window.setInterval(update, 15000);
@@ -59,7 +63,7 @@ export function useSharedSchedule(workspace: WorkspaceKey) {
     const payload = change.action === "save-assignments" ? { ...change, assignments: datedAssignments(change.assignments, state.anchorDate) }
       : change.action === "save-booking" ? { ...change, assignment: datedAssignments([change.assignment], state.anchorDate)[0] }
       : change.action === "save-availability" ? { ...change, availabilityBlocks: datedAvailability(change.availabilityBlocks, state.anchorDate) } : change;
-    const response = await fetch("/api/work/schedule", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...payload, expectedRevision: state.revision }) });
+    const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...payload, expectedRevision: state.revision }) });
     const result = await response.json() as { schedule?: SharedSchedule; error?: string; message?: string; delivery?: { sent: number; failed: number; attempting: number; unavailable?: boolean }; deliveryWarning?: string };
     if (!response.ok || !result.schedule) {
       if (response.status === 409) await refresh();
@@ -73,7 +77,7 @@ export function useSharedSchedule(workspace: WorkspaceKey) {
     setDeliveryWarning(result.deliveryWarning ?? "");
     setError("");
     return result.schedule;
-  }, [refresh]);
+  }, [refresh, endpoint]);
   const dismissLegacy = useCallback(() => {
     localStorage.setItem(`d5o.crew-board-import-dismissed.v1:${workspace}`, "1");
     setLegacyPlan(null);

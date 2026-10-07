@@ -12,6 +12,9 @@ export class CatalogError extends Error { constructor(public code: string, publi
 function initial(workspace: WorkspaceKey): SharedWorkCatalog {
   return { schemaVersion: 1, workspace, revision: 1, records: [], packages: [] };
 }
+export function initialHostedCatalog(workspace: WorkspaceKey): SharedWorkCatalog {
+  return { ...initial(workspace), revision: 0 };
+}
 async function readUnlocked(workspace: WorkspaceKey): Promise<SharedWorkCatalog | null> {
   let raw: string;
   try { raw = await readFile(fileFor(workspace), "utf8"); }
@@ -88,10 +91,18 @@ export async function hasCatalogPackage(workspace: WorkspaceKey, workId: string,
 export async function mutateWorkCatalog(workspace: WorkspaceKey, actor: { id: string; name: string }, input: CatalogMutation) {
   return locked(workspace, async () => {
     const state = await readUnlocked(workspace) ?? initial(workspace);
-    if (!Number.isInteger(input.expectedRevision) || input.expectedRevision !== state.revision)
-      throw new CatalogError("stale_catalog", 409, "Another session changed the shared work plan. Refresh and retry.");
-    let created: CatalogWorkRecord | CatalogWorkPackage;
-    if (input.action === "create-record") {
+    const result = applyCatalogMutation(workspace, actor, state, input);
+    if (result.changed) await writeUnlocked(workspace, state);
+    return { catalog: state, created: result.created };
+  });
+}
+
+/** Shared validation and transition logic; persistence is selected by the caller. */
+export function applyCatalogMutation(workspace: WorkspaceKey, actor: { id: string; name: string }, state: SharedWorkCatalog, input: CatalogMutation): { created: CatalogWorkRecord | CatalogWorkPackage; changed: boolean } {
+  if (state.workspace !== workspace || !Number.isInteger(input.expectedRevision) || input.expectedRevision !== state.revision)
+    throw new CatalogError("stale_catalog", 409, "Another session changed the shared work plan. Refresh and retry.");
+  let created: CatalogWorkRecord | CatalogWorkPackage;
+  if (input.action === "create-record") {
       const title = required(input.title, "Title");
       const type = required(input.type, "Work Type");
       const customer = optional(input.customer) || "Customer to be confirmed";
@@ -106,12 +117,12 @@ export async function mutateWorkCatalog(workspace: WorkspaceKey, actor: { id: st
         createdAt: new Date().toISOString(), createdBy: actor.id
       };
       state.records.push(created);
-    } else if (input.action === "register-record") {
+  } else if (input.action === "register-record") {
       const existing = state.records.find((item) => item.id === input.record?.id);
-      if (existing) return { catalog: state, created: existing };
+      if (existing) return { created: existing, changed: false };
       created = registeredRecord(input.record, workspace, actor);
       state.records.push(created);
-    } else if (input.action === "create-package") {
+  } else if (input.action === "create-package") {
       if (!seededWorkIds[workspace].includes(input.workId) && !state.records.some((item) => item.id === input.workId))
         throw new CatalogError("record_unavailable", 404, "The Work Record must be shared before a package can be added.");
       if (state.packages.length >= 500) throw new CatalogError("catalog_full", 409, "The prototype shared package catalog is full.");
@@ -122,9 +133,7 @@ export async function mutateWorkCatalog(workspace: WorkspaceKey, actor: { id: st
         createdAt: new Date().toISOString(), createdBy: actor.id
       };
       state.packages.push(created);
-    } else throw new CatalogError("invalid_action", 400, "Unknown work catalog action.");
-    state.revision++;
-    await writeUnlocked(workspace, state);
-    return { catalog: state, created };
-  });
+  } else throw new CatalogError("invalid_action", 400, "Unknown work catalog action.");
+  state.revision++;
+  return { created, changed: true };
 }

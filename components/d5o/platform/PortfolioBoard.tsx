@@ -8,9 +8,9 @@ type Work = { id: string; workspace: WorkspaceKey; title: string; type: string; 
 type Filter = "all" | "blocked" | "attention" | "moving" | "complete";
 type Page = { records: Work[]; total: number; nextCursor: string | null; overview: { total: number; attention: number; stages: Record<string, number> } };
 
-export function PortfolioBoard({ workspaceKey, work, scheduleAssignments, search, setSearch, filter, setFilter, onOpen }: {
+export function PortfolioBoard({ workspaceKey, work, scheduleAssignments, search, setSearch, filter, setFilter, onOpen, hostedPreview = false }: {
   workspaceKey: WorkspaceKey; work: Work[]; scheduleAssignments: Assignment[]; search: string;
-  setSearch: (value: string) => void; filter: Filter; setFilter: (value: Filter) => void; onOpen: (item: Work) => void;
+  setSearch: (value: string) => void; filter: Filter; setFilter: (value: Filter) => void; onOpen: (item: Work) => void; hostedPreview?: boolean;
 }) {
   const [view, setView] = useState<"register" | "lifecycle">("register");
   const [selectedStage, setSelectedStage] = useState<number | null>(null);
@@ -27,7 +27,8 @@ export function PortfolioBoard({ workspaceKey, work, scheduleAssignments, search
       try {
         const params = new URLSearchParams({ view: "portfolio", q: search, filter });
         if (selectedStage !== null) params.set("position", String(selectedStage));
-        const response = await fetch(`/api/work/search?${params}`, { cache: "no-store", signal: controller.signal });
+        if (hostedPreview) params.set("workspace", workspaceKey);
+        const response = await fetch(`${hostedPreview ? "/api/d5o-hosted/prototype-search" : "/api/work/search"}?${params}`, { cache: "no-store", signal: controller.signal });
         if (!response.ok) throw new Error("Portfolio is unavailable.");
         const next = await response.json() as Page;
         if (!controller.signal.aborted) setPage(next);
@@ -36,7 +37,7 @@ export function PortfolioBoard({ workspaceKey, work, scheduleAssignments, search
       } finally { if (!controller.signal.aborted) setLoading(false); }
     }, 180);
     return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [workspaceKey, search, filter, selectedStage, work]);
+  }, [workspaceKey, search, filter, selectedStage, work, hostedPreview]);
 
   async function loadMore() {
     if (!page?.nextCursor || loading) return;
@@ -45,7 +46,8 @@ export function PortfolioBoard({ workspaceKey, work, scheduleAssignments, search
     try {
       const params = new URLSearchParams({ view: "portfolio", q: search, filter, cursor: page.nextCursor });
       if (selectedStage !== null) params.set("position", String(selectedStage));
-      const response = await fetch(`/api/work/search?${params}`, { cache: "no-store" });
+      if (hostedPreview) params.set("workspace", workspaceKey);
+      const response = await fetch(`${hostedPreview ? "/api/d5o-hosted/prototype-search" : "/api/work/search"}?${params}`, { cache: "no-store" });
       if (!response.ok) throw new Error("The register changed.");
       const next = await response.json() as Page;
       setPage({ ...next, records: [...page.records, ...next.records] });

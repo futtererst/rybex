@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { NotificationSettingsView } from "@/app/work/settings/NotificationSettingsView";
 import type { WorkspaceKey } from "./schedule-model";
 
-export function AccountMenu({ workspace, onExportSnapshot, snapshotReady = false }: { workspace: WorkspaceKey; onExportSnapshot?: () => void; snapshotReady?: boolean }) {
+export function AccountMenu({ workspace, onExportSnapshot, snapshotReady = false, hostedPreview = false }: { workspace: WorkspaceKey; onExportSnapshot?: () => void; snapshotReady?: boolean; hostedPreview?: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -63,7 +63,7 @@ export function AccountMenu({ workspace, onExportSnapshot, snapshotReady = false
       <section ref={drawerRef} className={`d5o-account-drawer d5o-account-drawer-${workspace}`} role="dialog" aria-modal="true" aria-label="Notification preferences">
         <header className="d5o-account-drawer-header"><div><span>YOUR ACCOUNT</span><h2>Notification preferences</h2></div>
           <button ref={closeRef} type="button" aria-label="Close notification preferences" onClick={() => setDrawerOpen(false)}>×</button></header>
-        <NotificationSettingsView />
+        {hostedPreview ? <div className="d5o-notification-settings"><div className="d5o-notification-content"><div className="d5o-notification-intro"><p>ACCOUNT PREFERENCES · ALL WORKSPACES</p><h2>External delivery is not connected in this preview.</h2><span>Bookings are saved to the shared synthetic schedule. Email, SMS and push delivery require verified account destinations and configured providers before choices can be enabled.</span></div></div></div> : <NotificationSettingsView />}
       </section>
     </div>, document.body) : null}
   </div>;

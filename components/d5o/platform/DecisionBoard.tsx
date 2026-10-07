@@ -9,7 +9,7 @@ type Filter = "all" | "blocked" | "actionable" | "completed";
 type QueuePage<T> = { records: T[]; total: number; nextCursor: string | null;
   overview: { total: number; blocked: number; actionable: number; completed: number } };
 
-export function DecisionBoard<T extends Work>({ work: localWork, getDecisionContext, onOpen }: { work: T[]; getDecisionContext: (item: T) => DecisionQueueContext; onOpen: (item: T) => void }) {
+export function DecisionBoard<T extends Work>({ work: localWork, getDecisionContext, onOpen, hostedWorkspace }: { work: T[]; getDecisionContext: (item: T) => DecisionQueueContext; onOpen: (item: T) => void; hostedWorkspace?: string }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [selectedId, setSelectedId] = useState("");
   const [result, setResult] = useState<{ key: string; page: QueuePage<T> } | null>(null);
@@ -23,18 +23,20 @@ export function DecisionBoard<T extends Work>({ work: localWork, getDecisionCont
   useEffect(() => {
     const controller = new AbortController();
     const params = new URLSearchParams({ view: "decisions", filter });
-    void fetch(`/api/work/search?${params}`, { cache: "no-store", signal: controller.signal })
+    if (hostedWorkspace) params.set("workspace", hostedWorkspace);
+    void fetch(`${hostedWorkspace ? "/api/d5o-hosted/prototype-search" : "/api/work/search"}?${params}`, { cache: "no-store", signal: controller.signal })
       .then((response) => { if (!response.ok) throw new Error("Decision queue unavailable"); return response.json() as Promise<QueuePage<T>>; })
       .then((next) => { if (!controller.signal.aborted) { setResult({ key: requestKey, page: next }); setFailure(null); } })
       .catch(() => { if (!controller.signal.aborted) setFailure({ key: requestKey, message: "Decision queue unavailable. Try again." }); });
     return () => controller.abort();
-  }, [filter, requestKey]);
+  }, [filter, requestKey, hostedWorkspace]);
   async function loadMore() {
     if (!page?.nextCursor || loading) return;
     setLoadingMore(true);
     try {
       const params = new URLSearchParams({ view: "decisions", filter, cursor: page.nextCursor });
-      const response = await fetch(`/api/work/search?${params}`, { cache: "no-store" });
+      if (hostedWorkspace) params.set("workspace", hostedWorkspace);
+      const response = await fetch(`${hostedWorkspace ? "/api/d5o-hosted/prototype-search" : "/api/work/search"}?${params}`, { cache: "no-store" });
       if (!response.ok) throw new Error("Decision queue changed");
       const next = await response.json() as QueuePage<T>;
       setResult({ key: requestKey, page: { ...next, records: [...page.records, ...next.records] } });

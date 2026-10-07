@@ -4,6 +4,7 @@ const DEFAULT_AUTH_REDIRECT = "/command-center";
 // signs in without a supplied proof URL must never be dropped into preserved
 // legacy work surfaces merely because that is the normal application default.
 function defaultAuthRedirect() {
+  if (process.env.D5O_HOSTED_ENABLED === "1") return "/work";
   return process.env.M1_PROOF_ENABLED === "1" && process.env.RYBEXOS_RUNTIME_MODE === "test"
     ? "/m1-proof"
     : DEFAULT_AUTH_REDIRECT;

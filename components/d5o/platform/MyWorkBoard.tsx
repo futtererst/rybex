@@ -29,7 +29,7 @@ const isPricingReview = (item: WorkLike) => item.discovery?.estimate.status === 
 const isProposalReview = (item: WorkLike) => item.discovery?.proposal?.status === "Internal review" && Number.isInteger(item.discovery.proposal.package?.revision) && item.discovery.proposal.review?.revision === item.discovery.proposal.package?.revision;
 const money = (value: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
 
-export function MyWorkBoard<T extends WorkLike>({ actions: localActions, currentOwner, initialFilter = "all", onOpen, onReviewPricing, onReviewProposal, onReviewDefinition, getDecisionContext }: {
+export function MyWorkBoard<T extends WorkLike>({ actions: localActions, currentOwner, initialFilter = "all", onOpen, onReviewPricing, onReviewProposal, onReviewDefinition, getDecisionContext, hostedWorkspace }: {
   actions: T[];
   currentOwner: string;
   initialFilter?: Filter;
@@ -38,6 +38,7 @@ export function MyWorkBoard<T extends WorkLike>({ actions: localActions, current
   onReviewProposal: (item: T) => void;
   onReviewDefinition: (item: T, role: "commercial" | "delivery") => void;
   getDecisionContext: (item: T) => DecisionQueueContext;
+  hostedWorkspace?: string;
 }) {
   const [filter, setFilter] = useState<Filter>(initialFilter);
   const [proposalRoleFilter, setProposalRoleFilter] = useState("all");
@@ -54,18 +55,20 @@ export function MyWorkBoard<T extends WorkLike>({ actions: localActions, current
   useEffect(() => {
     const controller = new AbortController();
     const params = new URLSearchParams({ view: "actions", filter, owner: currentOwner, role: proposalRoleFilter });
-    void fetch(`/api/work/search?${params}`, { cache: "no-store", signal: controller.signal })
+    if (hostedWorkspace) params.set("workspace", hostedWorkspace);
+    void fetch(`${hostedWorkspace ? "/api/d5o-hosted/prototype-search" : "/api/work/search"}?${params}`, { cache: "no-store", signal: controller.signal })
       .then((response) => { if (!response.ok) throw new Error("Action queue unavailable"); return response.json() as Promise<QueuePage<T>>; })
       .then((next) => { if (!controller.signal.aborted) { setResult({ key: requestKey, page: next }); setFailure(null); } })
       .catch(() => { if (!controller.signal.aborted) setFailure({ key: requestKey, message: "Action queue unavailable. Try again." }); });
     return () => controller.abort();
-  }, [filter, currentOwner, proposalRoleFilter, requestKey]);
+  }, [filter, currentOwner, proposalRoleFilter, requestKey, hostedWorkspace]);
   async function loadMore() {
     if (!page?.nextCursor || loading) return;
     setLoadingMore(true);
     try {
       const params = new URLSearchParams({ view: "actions", filter, owner: currentOwner, role: proposalRoleFilter, cursor: page.nextCursor });
-      const response = await fetch(`/api/work/search?${params}`, { cache: "no-store" });
+      if (hostedWorkspace) params.set("workspace", hostedWorkspace);
+      const response = await fetch(`${hostedWorkspace ? "/api/d5o-hosted/prototype-search" : "/api/work/search"}?${params}`, { cache: "no-store" });
       if (!response.ok) throw new Error("The action queue changed.");
       const next = await response.json() as QueuePage<T>;
       setResult({ key: requestKey, page: { ...next, records: [...page.records, ...next.records] } });

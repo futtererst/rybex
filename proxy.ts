@@ -26,7 +26,10 @@ export async function proxy(request: NextRequest) {
   // application. Hosted mode exposes only isolated D5O API routes; it must not
   // make legacy production modules available through the same credentials.
   const hostedD5O = process.env.D5O_HOSTED_ENABLED === "1";
-  if (hostedD5O && !pathname.startsWith("/api/d5o-hosted/")) {
+  if (hostedD5O && pathname === "/") {
+    return NextResponse.redirect(new URL("/work", request.url));
+  }
+  if (hostedD5O && pathname !== "/work" && !pathname.startsWith("/api/d5o-hosted/")) {
     return new NextResponse("The hosted D5O work surface is not yet available.", {
       status: 503,
       headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" }

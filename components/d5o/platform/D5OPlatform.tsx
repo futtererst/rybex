@@ -1,6 +1,7 @@
 "use client";
 
 import { type CSSProperties, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { CrewPlanningBoard } from "./CrewPlanningBoard";
 import { PortfolioBoard } from "./PortfolioBoard";
 import { HandoffControlBoard } from "./HandoffControlBoard";
@@ -166,7 +167,7 @@ function mergeSharedWork(local: Work[], catalog: SharedWorkCatalog): Work[] {
   return changed ? merged : local;
 }
 
-export function D5OPlatform({ initialWorkspace, configurationInventory, actorLabel }: { initialWorkspace: WorkspaceKey; configurationInventory: ConfigurationInventory; actorLabel?: string }) {
+export function D5OPlatform({ initialWorkspace, configurationInventory, actorLabel, hostedPreview = false }: { initialWorkspace: WorkspaceKey; configurationInventory: ConfigurationInventory; actorLabel?: string; hostedPreview?: boolean }) {
   const [activeWorkspace] = useState<WorkspaceKey>(initialWorkspace);
   const [accent, setAccent] = useState<string>(workspace[initialWorkspace].color);
   const [workspaceDark, setWorkspaceDark] = useState<string>(workspace[initialWorkspace].dark);
@@ -201,8 +202,11 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [portfolioSearch, setPortfolioSearch] = useState("");
   const [portfolioFilter, setPortfolioFilter] = useState<"all" | "blocked" | "attention" | "moving" | "complete">("all");
-  const sharedSchedule = useSharedSchedule(initialWorkspace);
-  const sharedWork = useSharedWorkCatalog(initialWorkspace);
+  const sharedSchedule = useSharedSchedule(initialWorkspace, hostedPreview);
+  const sharedWork = useSharedWorkCatalog(initialWorkspace, hostedPreview);
+  const workStateEndpoint = hostedPreview
+    ? `/api/d5o-hosted/prototype-state?workspace=${encodeURIComponent(initialWorkspace)}&key=work`
+    : "/api/work/prototype-state";
   const scheduleAssignments = sharedSchedule.schedule?.assignments ?? [];
   const availabilityBlocks = sharedSchedule.schedule?.availabilityBlocks ?? initialAvailabilityBlocks[initialWorkspace];
   const scheduleWeek = sharedSchedule.schedule ? currentScheduleWeek(sharedSchedule.schedule.anchorDate) : 0;
@@ -210,21 +214,21 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
   useEffect(() => {
     let active = true;
     const restore = async () => {
-      let restored = seed.map(hydrate);
+      let restored = seed.filter((record) => !hostedPreview || record.workspace === initialWorkspace).map(hydrate);
       let revision: number | null = null;
       let fromShared = false;
       try {
-        const response = await fetch("/api/work/prototype-state", { cache: "no-store" });
+        const response = await fetch(workStateEndpoint, { cache: "no-store" });
         if (response.ok) {
           const payload = await response.json() as { state?: { revision: number; records: Work[] }; canEdit?: boolean };
           if (active) setCanEditWork(payload.canEdit === true);
           if (payload.state && Array.isArray(payload.state.records)) {
             revision = payload.state.revision;
             if (payload.state.records.length) { restored = payload.state.records.map(hydrate); fromShared = true; }
-          }
+          } else if (hostedPreview && response.ok) revision = 0;
         }
       } catch { /* The browser-local copy remains a usable offline fallback. */ }
-      if (!fromShared) {
+      if (!fromShared && !hostedPreview) {
         try {
           const saved = localStorage.getItem(`d5o.full-prototype.v3:${initialWorkspace}`);
           if (saved) {
@@ -243,7 +247,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     };
     void restore();
     return () => { active = false; };
-  }, [initialWorkspace]);
+  }, [initialWorkspace, hostedPreview, workStateEndpoint]);
 
   useEffect(() => {
     let savedAccent: string = workspace[initialWorkspace].color;
@@ -275,8 +279,8 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
 
   useEffect(() => {
     if (!workLoaded) return;
-    try { localStorage.setItem(`d5o.full-prototype.v3:${activeWorkspace}`, JSON.stringify({ work })); } catch { /* local-only preference */ }
-  }, [work, activeWorkspace, workLoaded]);
+    if (!hostedPreview) try { localStorage.setItem(`d5o.full-prototype.v3:${activeWorkspace}`, JSON.stringify({ work })); } catch { /* local-only preference */ }
+  }, [work, activeWorkspace, workLoaded, hostedPreview]);
 
   useEffect(() => {
     if (!workLoaded || sharedWorkRevision === null) return;
@@ -284,18 +288,21 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     if (serialized === lastSharedWork.current) return;
     const timer = window.setTimeout(async () => {
       try {
-        const response = await fetch("/api/work/prototype-state", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedRevision: sharedWorkRevisionRef.current, records: work }) });
+        const response = await fetch(workStateEndpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: hostedPreview
+          ? JSON.stringify({ workspace: activeWorkspace, key: "work", expectedRevision: sharedWorkRevisionRef.current,
+              state: { schemaVersion: 1, workspace: activeWorkspace, revision: (sharedWorkRevisionRef.current ?? 0) + 1, records: work } })
+          : JSON.stringify({ expectedRevision: sharedWorkRevisionRef.current, records: work }) });
         const payload = await response.json() as { state?: { revision: number }; message?: string };
         if (!response.ok || !payload.state) {
           pendingReviewQueue.current = null;
           if (response.status === 409) setNotice("This Work Record changed in another browser. Your current edits are preserved here; refresh to load the latest shared workspace state.");
-          else if (pendingDiscoverSave.current) setNotice("The Discover change remains in this browser but was not saved to the shared workspace. Retry after the local service is available.");
+          else if (pendingDiscoverSave.current) setNotice("The Discover change was not saved to the shared workspace. Retry after the service is available.");
           return;
         }
         lastSharedWork.current = serialized;
         sharedWorkRevisionRef.current = payload.state.revision;
         setSharedWorkRevision(payload.state.revision);
-        if (pendingDiscoverSave.current) { setNotice(`Discover Work Record ${pendingDiscoverSave.current} saved to shared local revision ${payload.state.revision}.`); pendingDiscoverSave.current = null; }
+        if (pendingDiscoverSave.current) { setNotice(`Discover Work Record ${pendingDiscoverSave.current} saved to shared revision ${payload.state.revision}.`); pendingDiscoverSave.current = null; }
         if (pendingReviewQueue.current) {
           const review = pendingReviewQueue.current;
           pendingReviewQueue.current = null;
@@ -306,17 +313,17 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
         }
       } catch {
         pendingReviewQueue.current = null;
-        if (pendingDiscoverSave.current) setNotice("The Discover change remains in this browser but was not saved to the shared workspace. Retry after the local service is available.");
+        if (pendingDiscoverSave.current) setNotice("The Discover change was not saved to the shared workspace. Retry after the service is available.");
       }
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [work, activeWorkspace, workLoaded, sharedWorkRevision]);
+  }, [work, activeWorkspace, workLoaded, sharedWorkRevision, hostedPreview, workStateEndpoint]);
 
   useEffect(() => {
     if (!workLoaded || sharedWorkRevision === null) return;
     const timer = window.setInterval(async () => {
       try {
-        const response = await fetch("/api/work/prototype-state", { cache: "no-store" });
+        const response = await fetch(workStateEndpoint, { cache: "no-store" });
         if (!response.ok) return;
         const payload = await response.json() as { state?: { revision: number; records: Work[] } };
         const remote = payload.state;
@@ -335,7 +342,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       } catch { /* Shared refresh is opportunistic; local work stays available. */ }
     }, 4000);
     return () => window.clearInterval(timer);
-  }, [work, workLoaded, sharedWorkRevision]);
+  }, [work, workLoaded, sharedWorkRevision, workStateEndpoint]);
 
   useEffect(() => {
     if (!workLoaded || !sharedWork.catalog) return;
@@ -421,7 +428,10 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       return false;
     }
     try {
-      const response = await fetch("/api/work/commercial-command", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...command, expectedRevision }) });
+      const endpoint = hostedPreview
+        ? `/api/d5o-hosted/prototype-commercial-command?workspace=${encodeURIComponent(activeWorkspace)}`
+        : "/api/work/commercial-command";
+      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...command, expectedRevision }) });
       const payload = await response.json() as { state?: { revision: number; records: Work[] }; message?: string; error?: string };
       if (!response.ok || !payload.state) {
         setNotice(response.status === 409 && payload.error === "stale_state" ? "This Work Record changed in another browser. Refresh before recording a decision." : payload.message ?? "The commercial command was not saved. Review the current basis and retry.");
@@ -438,10 +448,10 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
         setScreen("my-work");
         setMobileMenuOpen(false);
       }
-      setNotice(`${command.action.replaceAll("-", " ")} recorded in shared local revision ${payload.state.revision}. The role queue is synthetic; this is not real delegated approval authority.`);
+      setNotice(`${command.action.replaceAll("-", " ")} recorded in shared synthetic revision ${payload.state.revision}. The role queue does not represent delegated business authority.`);
       return true;
     } catch {
-      setNotice("The commercial command could not reach the local service. No decision was recorded.");
+      setNotice("The commercial command could not reach the service. No decision was recorded.");
       return false;
     }
   }
@@ -544,7 +554,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       setNotice("Work Record started in the shared workspace. Complete Discover intake before qualification.");
     } catch (error) { setNotice(error instanceof Error ? error.message : "Work Record could not be shared."); }
   }
-  function resetDemo() { setWork(sharedWork.catalog ? mergeSharedWork(seed.map(hydrate), sharedWork.catalog) : seed.map(hydrate)); setSelectedId(activeWorkspace === "rybex" ? "rybex-1" : "rotork-1"); setScreen("my-work"); setNotice("Sample Work Record views restored. Shared Work Records, packages and crew publications were preserved."); }
+  function resetDemo() { const sample = seed.filter((record) => !hostedPreview || record.workspace === activeWorkspace).map(hydrate); setWork(sharedWork.catalog ? mergeSharedWork(sample, sharedWork.catalog) : sample); setSelectedId(activeWorkspace === "rybex" ? "rybex-1" : "rotork-1"); setScreen("my-work"); setNotice("Sample Work Record views restored. Shared Work Records, packages and crew publications were preserved."); }
   function addEvidence(item: Work, event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -676,7 +686,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       <p className="d5o-nav-caption">WORKSPACE</p>
       <div className="d5o-workspace-switcher"><div className="is-current"><i style={{ background: palette.color }} /><span>{palette.name}<small>{palette.story}</small></span></div></div>
       <nav className="d5o-full-nav d5o-sidebar-hub-nav" aria-label="Workspace overview"><button type="button" aria-current={screen === "home" ? "page" : undefined} className={screen === "home" ? "is-active" : ""} onClick={() => go("home")}><PlatformIcon name="hub" /><span>Work hub</span></button></nav>
-      <WorkRecordSwitcher key={activeWorkspace} records={visibleWork} selected={selected} workspaceName={palette.name} currentUser={currentUserLabel} accent={accent} onSelect={selectWorkRecord} onOverview={() => { setTab("Overview"); go("record"); }} />
+      <WorkRecordSwitcher key={activeWorkspace} records={visibleWork} selected={selected} workspaceName={palette.name} currentUser={currentUserLabel} accent={accent} hostedWorkspace={hostedPreview ? activeWorkspace : undefined} onSelect={selectWorkRecord} onOverview={() => { setTab("Overview"); go("record"); }} />
       <p className="d5o-nav-caption">WORK PHASES</p>
       <nav className="d5o-full-nav d5o-sidebar-phase-nav" aria-label="Work phases">
         {operatingNavigation.slice(0, 2).map((item, index) => <button key={item.screen} type="button" aria-current={screen === item.screen ? "page" : undefined} className={screen === item.screen ? "is-active" : ""} onClick={() => openWorkspacePhase(item.screen as "discover" | "define")}><span className="d5o-sidebar-phase-number">{index + 1}</span><span>{item.label}</span></button>)}
@@ -694,7 +704,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       <div className="d5o-appearance"><button onClick={() => setAppearanceOpen((open) => !open)}>Appearance {appearanceOpen ? "−" : "+"}</button>{appearanceOpen ? <div><p>Set the workspace accent and foundation colors for this review space.</p><label>Accent<input aria-label="Workspace accent color" type="color" value={accent} onChange={(event) => setAccent(event.target.value)} /></label><label>Foundation<input aria-label="Workspace foundation color" type="color" value={workspaceDark} onChange={(event) => setWorkspaceDark(event.target.value)} /></label><button className="d5o-reset" onClick={() => { setAccent(palette.color); setWorkspaceDark(palette.dark); }}>Restore {palette.short} theme</button><button className="d5o-reset" onClick={resetDemo}>Restore sample workspace</button></div> : null}</div>
       </div>
     </aside>
-      <section className="d5o-full-content"><div className="d5o-app-topbar"><div><span>WORKSPACE</span><strong>{palette.name}</strong><i style={{ background: palette.color }} /></div><div><span>ACTIVE VIEW</span><strong>{screen === "record" ? `${selected?.title ?? "Work Record"} / ${tab}` : ({ discover: "Discover", define: "Define", develop: "Develop", home: "Work hub", "my-work": "My work", portfolio: "Portfolio", decisions: "Decision queue", crew: "Crew schedule", people: "People & capacity", execution: "Execution register", handoff: "Handoff register", library: "Evidence library", insights: "Operating insight", operating: "Operating model", configuration: "Workspace configuration", start: "Start work" } as Record<Exclude<Screen, "record">, string>)[screen]}</strong></div><div className="d5o-top-actions"><AccountMenu workspace={activeWorkspace} snapshotReady={workLoaded && preferencesLoaded} onExportSnapshot={() => { void exportSnapshot(); }} /><button onClick={() => go("start")}>+ Start work</button></div></div>
+      <section className="d5o-full-content"><div className="d5o-app-topbar"><div><span>WORKSPACE</span><strong>{palette.name}</strong><i style={{ background: palette.color }} /></div><div><span>ACTIVE VIEW</span><strong>{screen === "record" ? `${selected?.title ?? "Work Record"} / ${tab}` : ({ discover: "Discover", define: "Define", develop: "Develop", home: "Work hub", "my-work": "My work", portfolio: "Portfolio", decisions: "Decision queue", crew: "Crew schedule", people: "People & capacity", execution: "Execution register", handoff: "Handoff register", library: "Evidence library", insights: "Operating insight", operating: "Operating model", configuration: "Workspace configuration", start: "Start work" } as Record<Exclude<Screen, "record">, string>)[screen]}</strong></div><div className="d5o-top-actions">{hostedPreview ? <Link href="/work">Switch workspace</Link> : null}<AccountMenu hostedPreview={hostedPreview} workspace={activeWorkspace} snapshotReady={workLoaded && preferencesLoaded} onExportSnapshot={() => { void exportSnapshot(); }} /><button onClick={() => go("start")}>+ Start work</button></div></div>
       {notice ? <div className="d5o-platform-notice" role="status">{notice}<button onClick={() => setNotice("")}>×</button></div> : null}
       <div className="d5o-surface-host">
       {screen === "discover" ? <DiscoverWorkspace workspaceKey={activeWorkspace} workspaceName={palette.name} configurationInventory={configurationInventory} work={visibleWork as WorkRecord[]} commercialProfiles={commercialProfiles} actor={currentUserLabel} canEdit={canEditWork && sharedWorkRevision !== null} focusRecordId={selected?.id} reviewFocus={discoverEntry} onPhase={openJourneyPhase} onControl={(item, control) => { setSelectedId(item.id); setTab(control); go("record"); }} onBack={() => go("home")} onSelect={setSelectedId} onOpen={(item) => openRecord(item as Work)} onDefine={(item) => openWorkspacePhase("define", item as Work)} onPricingQueued={() => { pendingReviewQueue.current = "pricing"; setNotice("Saving the pricing review before opening its role queue."); }} onProposalQueued={() => { pendingReviewQueue.current = "proposal"; setNotice("Saving the proposal review before opening its role queue."); }} onCommercialCommand={executeCommercialCommand} onUpdate={(id, transform) => { pendingDiscoverSave.current = id; updateWork(id, (current) => transform(current as WorkRecord) as Work); }} onCreate={(record) => { pendingDiscoverSave.current = record.id; setWork((current) => [record as Work, ...current]); setSelectedId(record.id); }} onNotice={setNotice} /> : null}
@@ -718,9 +728,9 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
         onNotice={setNotice}
       /> : null}
       {screen === "home" ? <OperationalHome workspaceName={palette.name} currentOwner={currentUserLabel} actions={myActions} work={visibleWork} schedule={sharedSchedule.schedule} scheduleWeek={scheduleWeek} onOpenDecision={(item) => { setSelectedId(item.id); setTab(getBlockers(item).length ? conditionTargetTab(item, getBlockers(item)) : "Readiness"); go("record"); }} onPortfolio={() => { setPortfolioFilter("all"); setPortfolioSearch(""); go("portfolio"); }} onConditions={() => { setPortfolioFilter("blocked"); setPortfolioSearch(""); go("portfolio"); }} onAssignedToYou={() => go("my-work", { myWork: "mine" })} onMyWork={() => go("my-work")} onCrewCoverage={() => go("crew", { crew: "coverage" })} onCrewAttendance={() => go("crew", { crew: "attendance" })} getBlockers={getBlockers} /> : null}
-      {screen === "my-work" ? <MyWorkBoard actions={myActions} currentOwner={currentUserLabel} initialFilter={myWorkEntry} onOpen={(item) => { const record = visibleWork.find((entry) => entry.id === item.id) ?? (item as Work & { source?: Work }).source ?? item; selectWorkRecord(record); setTab(getDecisionContext(record).target); go("record"); }} onReviewPricing={(item) => { selectWorkRecord((item as Work & { source?: Work }).source ?? item); setDiscoverEntry("pricing"); go("develop"); }} onReviewProposal={(item) => { selectWorkRecord((item as Work & { source?: Work }).source ?? item); setDiscoverEntry("proposal"); go("develop"); }} onReviewDefinition={(item, role) => { selectWorkRecord((item as Work & { source?: Work }).source ?? item); setDefineReviewEntry(role); go("define"); }} getDecisionContext={getDecisionContext} /> : null}
-      {screen === "portfolio" ? <PortfolioBoard workspaceKey={activeWorkspace} work={operationalWork} scheduleAssignments={scheduleAssignments.filter((item) => item.week === scheduleWeek).map((item) => ({ ...item, week: 0 }))} search={portfolioSearch} setSearch={setPortfolioSearch} filter={portfolioFilter} setFilter={setPortfolioFilter} onOpen={(item) => { const record = visibleWork.find((candidate) => candidate.id === item.id) ?? item as Work; selectWorkRecord(record); setTab(portfolioFilter === "blocked" ? conditionTargetTab(record) : "Overview"); go("record"); }} /> : null}
-      {screen === "decisions" ? <DecisionBoard work={visibleWork.map((item) => ({ ...item, readinessBlockers: getBlockers(item) }))} getDecisionContext={getDecisionContext} onOpen={(item) => { const record = visibleWork.find((entry) => entry.id === item.id) ?? (item as Work & { source?: Work }).source ?? item; selectWorkRecord(record); setTab(getDecisionContext(record).target); go("record"); }} /> : null}
+      {screen === "my-work" ? <MyWorkBoard hostedWorkspace={hostedPreview ? activeWorkspace : undefined} actions={myActions} currentOwner={currentUserLabel} initialFilter={myWorkEntry} onOpen={(item) => { const record = visibleWork.find((entry) => entry.id === item.id) ?? (item as Work & { source?: Work }).source ?? item; selectWorkRecord(record); setTab(getDecisionContext(record).target); go("record"); }} onReviewPricing={(item) => { selectWorkRecord((item as Work & { source?: Work }).source ?? item); setDiscoverEntry("pricing"); go("develop"); }} onReviewProposal={(item) => { selectWorkRecord((item as Work & { source?: Work }).source ?? item); setDiscoverEntry("proposal"); go("develop"); }} onReviewDefinition={(item, role) => { selectWorkRecord((item as Work & { source?: Work }).source ?? item); setDefineReviewEntry(role); go("define"); }} getDecisionContext={getDecisionContext} /> : null}
+      {screen === "portfolio" ? <PortfolioBoard hostedPreview={hostedPreview} workspaceKey={activeWorkspace} work={operationalWork} scheduleAssignments={scheduleAssignments.filter((item) => item.week === scheduleWeek).map((item) => ({ ...item, week: 0 }))} search={portfolioSearch} setSearch={setPortfolioSearch} filter={portfolioFilter} setFilter={setPortfolioFilter} onOpen={(item) => { const record = visibleWork.find((candidate) => candidate.id === item.id) ?? item as Work; selectWorkRecord(record); setTab(portfolioFilter === "blocked" ? conditionTargetTab(record) : "Overview"); go("record"); }} /> : null}
+      {screen === "decisions" ? <DecisionBoard hostedWorkspace={hostedPreview ? activeWorkspace : undefined} work={visibleWork.map((item) => ({ ...item, readinessBlockers: getBlockers(item) }))} getDecisionContext={getDecisionContext} onOpen={(item) => { const record = visibleWork.find((entry) => entry.id === item.id) ?? (item as Work & { source?: Work }).source ?? item; selectWorkRecord(record); setTab(getDecisionContext(record).target); go("record"); }} /> : null}
       {screen === "crew" ? <CrewPlanningBoard workspaceKey={activeWorkspace} work={operationalWork} profiles={schedulingProfiles} shared={sharedSchedule} entryFocus={crewEntry} focusWorkId={crewFocusWorkId} onOpen={(item) => { const record = visibleWork.find((candidate) => candidate.id === item.id); if (record) { setSelectedId(record.id); setTab("Design"); go("record"); } }} onOpenDecision={(item) => { const record = visibleWork.find((candidate) => candidate.id === item.id); if (record) { setSelectedId(record.id); setTab(getBlockers(record).length ? conditionTargetTab(record, getBlockers(record)) : "Readiness"); go("record"); } }} /> : null}
       {screen === "people" ? <PeopleCapacityBoard workspaceKey={activeWorkspace} work={operationalWork} profiles={schedulingProfiles} assignments={scheduleAssignments} weekIndex={scheduleWeek} anchorDate={sharedSchedule.schedule?.anchorDate ?? ""} availabilityBlocks={availabilityBlocks} packageDemands={sharedSchedule.schedule?.packageDemands ?? []} onAvailabilityChange={(blocks) => sharedSchedule.mutate({ action: "save-availability", availabilityBlocks: blocks }).then(() => undefined)} onSchedule={() => go("crew")} /> : null}
       {screen === "execution" ? <ExecutionControlBoard workspaceName={palette.name} workspaceKey={activeWorkspace} work={operationalWork} schedule={sharedSchedule.schedule} week={scheduleWeek} onOpen={(item) => { setSelectedId(item.id); setTab("Execution"); go("record"); }} onSchedule={() => go("crew")} /> : null}

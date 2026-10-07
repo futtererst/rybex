@@ -18,7 +18,7 @@ type Filter = "all" | "mine" | "attention" | "recent";
 const limit = 25;
 type SearchPage = { records: SwitchableRecord[]; nextCursor: string | null; total: number };
 
-export function WorkRecordSwitcher<T extends SwitchableRecord>({ records, selected, workspaceName, currentUser, accent, onSelect, onOverview }: {
+export function WorkRecordSwitcher<T extends SwitchableRecord>({ records, selected, workspaceName, currentUser, accent, onSelect, onOverview, hostedWorkspace }: {
   records: T[];
   selected?: T;
   workspaceName: string;
@@ -26,6 +26,7 @@ export function WorkRecordSwitcher<T extends SwitchableRecord>({ records, select
   accent: string;
   onSelect: (record: T) => void;
   onOverview: () => void;
+  hostedWorkspace?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -50,7 +51,8 @@ export function WorkRecordSwitcher<T extends SwitchableRecord>({ records, select
       setError("");
       try {
         const params = new URLSearchParams({ q: query, filter, owner: currentUser });
-        const response = await fetch(`/api/work/search?${params}`, { cache: "no-store", signal: controller.signal });
+        if (hostedWorkspace) params.set("workspace", hostedWorkspace);
+        const response = await fetch(`${hostedWorkspace ? "/api/d5o-hosted/prototype-search" : "/api/work/search"}?${params}`, { cache: "no-store", signal: controller.signal });
         if (!response.ok) throw new Error("Search is unavailable. Try again.");
         const result = await response.json() as SearchPage;
         if (!controller.signal.aborted) setPage(result);
@@ -59,7 +61,7 @@ export function WorkRecordSwitcher<T extends SwitchableRecord>({ records, select
       } finally { if (!controller.signal.aborted) setLoading(false); }
     }, 180);
     return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [open, query, filter, currentUser]);
+  }, [open, query, filter, currentUser, hostedWorkspace]);
 
   async function loadMore() {
     if (!page?.nextCursor || loading) return;
@@ -67,7 +69,8 @@ export function WorkRecordSwitcher<T extends SwitchableRecord>({ records, select
     setError("");
     try {
       const params = new URLSearchParams({ q: query, filter, owner: currentUser, cursor: page.nextCursor });
-      const response = await fetch(`/api/work/search?${params}`, { cache: "no-store" });
+      if (hostedWorkspace) params.set("workspace", hostedWorkspace);
+      const response = await fetch(`${hostedWorkspace ? "/api/d5o-hosted/prototype-search" : "/api/work/search"}?${params}`, { cache: "no-store" });
       if (!response.ok) throw new Error("The work list changed. Search again.");
       const next = await response.json() as SearchPage;
       setPage({ records: [...page.records, ...next.records], nextCursor: next.nextCursor, total: next.total });
@@ -95,7 +98,9 @@ export function WorkRecordSwitcher<T extends SwitchableRecord>({ records, select
     setOpeningId(record.id);
     setError("");
     try {
-      const response = await fetch(`/api/work/search?${new URLSearchParams({ record: record.id })}`, { cache: "no-store", signal: controller.signal });
+      const params = new URLSearchParams({ record: record.id });
+      if (hostedWorkspace) params.set("workspace", hostedWorkspace);
+      const response = await fetch(`${hostedWorkspace ? "/api/d5o-hosted/prototype-search" : "/api/work/search"}?${params}`, { cache: "no-store", signal: controller.signal });
       if (!response.ok) throw new Error("record_unavailable");
       const payload = await response.json() as { record?: T };
       if (!payload.record || payload.record.id !== record.id) throw new Error("record_unavailable");

@@ -155,6 +155,21 @@ export type CrewResponseMutation = { expectedRevision: number; publicationId: st
 export async function mutateSchedule(workspace: WorkspaceKey, actor: ScheduleActor, input: ScheduleMutation): Promise<SharedSchedule> {
   return locked(workspace, async () => {
     const state = await readUnlocked(workspace) ?? initial(workspace);
+    const changed = await applyScheduleMutation(state, workspace, actor, input,
+      (workId, packageId) => hasCatalogPackage(workspace, workId, packageId));
+    if (changed) await writeUnlocked(workspace, state);
+    return state;
+  });
+}
+
+export function initialHostedSchedule(workspace: WorkspaceKey): SharedSchedule {
+  return { ...initial(workspace), revision: 0 };
+}
+
+/** Shared scheduling rules; persistence and package lookup are supplied by the caller. */
+export async function applyScheduleMutation(state: SharedSchedule, workspace: WorkspaceKey,
+  actor: ScheduleActor, input: ScheduleMutation,
+  hasPackage: (workId: string, packageId: string) => Promise<boolean>): Promise<boolean> {
     if (!Number.isInteger(input.expectedRevision) || state.revision !== input.expectedRevision)
       throw new ScheduleError("stale_schedule", 409, "Another session changed the schedule. Refresh before saving.");
     if (input.action === "save-booking") {
@@ -173,7 +188,7 @@ export async function mutateSchedule(workspace: WorkspaceKey, actor: ScheduleAct
       const nextAssignments = previous ? state.assignments.map((item) => item.id === booking.id ? booking : item) : [...state.assignments, booking];
       const errors = planningErrors(workspace, nextAssignments, state.availabilityBlocks, nextDemands, new Set([booking.id]));
       if (errors.length) throw new ScheduleError("schedule_conflict", 409, `Resolve planning conflicts before saving: ${errors[0]}`);
-      if (previous && sameAssignment(booking, previous) && JSON.stringify(revisedDemand.requiredSlots) === JSON.stringify(demand.requiredSlots)) return state;
+      if (previous && sameAssignment(booking, previous) && JSON.stringify(revisedDemand.requiredSlots) === JSON.stringify(demand.requiredSlots)) return false;
       state.assignments = nextAssignments;
       state.packageDemands = nextDemands;
       state.draftRevision++;
@@ -197,10 +212,10 @@ export async function mutateSchedule(workspace: WorkspaceKey, actor: ScheduleAct
     } else if (input.action === "save-demand") {
       const demand = cleanDemand(input.demand, workspace);
       const previous = state.packageDemands.find((item) => item.packageId === demand.packageId);
-      if (!previous && !(await hasCatalogPackage(workspace, demand.workId, demand.packageId)))
+      if (!previous && !(await hasPackage(demand.workId, demand.packageId)))
         throw new ScheduleError("package_unavailable", 404, "The Work Package must exist in the shared Work Record before crew demand can be saved.");
       if (previous && previous.workId !== demand.workId) throw new ScheduleError("demand_scope_changed", 409, "A Work Package cannot be moved to another Work Record by changing crew demand.");
-      if (previous && (Object.keys(demand) as (keyof PackageCrewDemand)[]).every((key) => JSON.stringify(previous[key]) === JSON.stringify(demand[key]))) return state;
+      if (previous && (Object.keys(demand) as (keyof PackageCrewDemand)[]).every((key) => JSON.stringify(previous[key]) === JSON.stringify(demand[key]))) return false;
       state.packageDemands = [...state.packageDemands.filter((item) => item.packageId !== demand.packageId), demand];
       state.draftRevision++;
     } else if (input.action === "publish") {
@@ -212,9 +227,7 @@ export async function mutateSchedule(workspace: WorkspaceKey, actor: ScheduleAct
       if (!publishWeek(state, actor, input.week)) throw new ScheduleError("already_published", 409, "These bookings are already shared with workers.");
     } else throw new ScheduleError("invalid_action", 400, "Only an assigned worker can respond to a published booking.");
     state.revision++;
-    await writeUnlocked(workspace, state);
-    return state;
-  });
+    return true;
 }
 
 /** Only the signed-in, explicitly bound crew account can make a first-person response. */
