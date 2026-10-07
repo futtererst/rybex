@@ -180,7 +180,7 @@
 .root :global(.d5o-decisions-board > nav),
 .root :global(.d5o-execution-filters),
 .root :global(.d5o-portfolio-view),
-.root :global(.d5o-record-full > nav),
+.root :global(.d5o-record-full > nav:not(.d5o-work-phase-nav)),
 .root :global(.d5o-library-register > header > nav) {
   align-items: center;
   border-bottom: 1px solid var(--d5o-border);
@@ -193,7 +193,7 @@
 .root :global(.d5o-decisions-board > nav button),
 .root :global(.d5o-execution-filters button),
 .root :global(.d5o-portfolio-view button),
-.root :global(.d5o-record-full > nav button),
+.root :global(.d5o-record-full > nav:not(.d5o-work-phase-nav) button),
 .root :global(.d5o-library-register > header > nav button) {
   flex: 0 0 auto;
   white-space: nowrap;

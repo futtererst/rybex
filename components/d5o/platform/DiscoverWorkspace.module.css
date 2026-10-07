@@ -3,7 +3,7 @@
 .kicker { color:color-mix(in srgb,var(--d5o-accent) 63%,#273f4b); font-size:.64rem; font-weight:900; letter-spacing:.13em; margin:0 0 8px; text-transform:uppercase; }
 .headerActions { align-items:end; display:flex; flex-direction:column; gap:10px; }
 .workspaceTag { color:var(--d5o-muted); font-size:.7rem; font-weight:750; }
-.sourceAlert { background:#f5f8fa; border:1px solid var(--d5o-line); border-left:3px solid var(--d5o-accent); border-radius:var(--d5o-card-radius,8px); display:grid; gap:5px; line-height:1.45; margin:16px auto; max-width:var(--d5o-content-max,1400px); padding:12px 16px; }
+.sourceAlert { background:#f5f8fa; border:1px solid var(--d5o-line); border-left:3px solid var(--d5o-accent); border-radius:var(--d5o-card-radius,8px); box-sizing:border-box; display:grid; gap:5px; line-height:1.45; margin:16px 0; max-width:none; min-width:0; padding:12px 16px; width:100%; }
 .sourceAlert strong { color:var(--d5o-ink); font-size:.78rem; }
 .sourceAlert span { color:var(--d5o-muted); font-size:.72rem; }
 .metrics { display:grid; gap:10px; grid-template-columns:repeat(4,minmax(0,1fr)); margin:16px auto; max-width:var(--d5o-content-max,1400px); }
