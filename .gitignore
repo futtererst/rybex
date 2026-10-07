@@ -25,3 +25,5 @@ package-output/
 
 # Generated visual QA output
 visual-qa-output/**
+
+.vercel/
