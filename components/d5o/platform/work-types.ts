@@ -71,11 +71,18 @@ export type DefinitionRecord = {
   commercialTerms: string;
   risks: string;
   owner: string;
+  scopeControl?: {
+    requirements: Array<{ id: string; need: string; source: string; owner: string; state: "Open" | "Confirmed" }>;
+    interfaces: Array<{ id: string; kind: "Physical" | "Technical" | "Organizational" | "Commercial"; boundary: string; owner: string; counterparty: string; agreement: string }>;
+    assumptions: Array<{ id: string; statement: string; owner: string; source: string; state: "Open" | "Accepted" | "Resolved" }>;
+    customerAgreement?: { representative: string; agreedAt: string; basis: string };
+    rom?: { low: string; high: string; currency: string; assumptions: string };
+  };
   project?: { customerContact: string; customerContactId?: string; siteArea: string; affectedSystems: string; accessConstraints: string; requiredDate: string };
   findings?: Array<{ id: string; kind: "Survey" | "Customer input" | "Technical review" | "Document review"; status: "Provisional" | "Confirmed"; detail: string; source: string; author: string; at: string }>;
   clarifications?: Array<{ id: string; question: string; owner: string; due: string; answer: string; source: string; status: "Open" | "Answered"; openedAt: string; answeredAt?: string }>;
   developHandoff?: { revision: number; status: "submitted" | "returned" | "accepted"; receiver: string; note: string; submittedAt: string; respondedAt?: string; actor: string };
-  approvedBaselines?: Array<{ revision: number; approvedAt: string; configurationVersion: string; outcome: string; excludedScope: string; deliveryApproach: string; registers: Record<string, Array<Record<string, string>>>; project?: DefinitionRecord["project"]; findings: NonNullable<DefinitionRecord["findings"]>; clarifications: NonNullable<DefinitionRecord["clarifications"]> }>;
+  approvedBaselines?: Array<{ revision: number; approvedAt: string; configurationVersion: string; outcome: string; excludedScope: string; deliveryApproach: string; registers: Record<string, Array<Record<string, string>>>; project?: DefinitionRecord["project"]; findings: NonNullable<DefinitionRecord["findings"]>; clarifications: NonNullable<DefinitionRecord["clarifications"]>; scopeControl?: DefinitionRecord["scopeControl"] }>;
   reviews?: { commercial: "Pending" | "Approved" | "Changes requested"; delivery: "Pending" | "Approved" | "Changes requested"; revision: number };
   history: Array<{ at: string; revision: number; event: string; note: string }>;
 };
