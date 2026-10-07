@@ -22,3 +22,18 @@ for (const invalid of [
 ]) assert.equal(validLocalScheduleOrigin(invalid), false);
 
 console.log("PASS: local schedule mutations accept the browser-visible host and reject missing, mismatched, or cross-site origins");
+
+process.env.RYBEXOS_RUNTIME_MODE = "production";
+for (const valid of [
+  headers("https://d5o.example.com", "d5o.example.com"),
+  headers("https://d5o.example.com:8443", "d5o.example.com:8443")
+]) assert.equal(validLocalScheduleOrigin(valid), true);
+for (const invalid of [
+  headers("http://d5o.example.com", "d5o.example.com"),
+  headers("https://d5o.example.com", "another.example.com"),
+  headers("https://d5o.example.com", "d5o.example.com", "cross-site"),
+  headers("https://d5o.example.com", "d5o.example.com", ""),
+  headers("https://d5o.example.com", null),
+  headers(null, "d5o.example.com")
+]) assert.equal(validLocalScheduleOrigin(invalid), false);
+console.log("PASS: production mutations require a same-origin HTTPS browser request");
