@@ -16,23 +16,27 @@ function source(relative, dependencies = {}) {
   return exports;
 }
 
-const phase = source("components/d5o/platform/phase-configuration.ts");
-const published = source("components/d5o/platform/published-phase-configuration.ts", { "./phase-configuration": phase });
+const designPolicy = source("components/d5o/platform/design-policy.ts");
+const phase = source("components/d5o/platform/phase-configuration.ts", { "./design-policy": designPolicy });
+const published = source("components/d5o/platform/published-phase-configuration.ts", { "./phase-configuration": phase, "./design-policy": designPolicy });
 const authority = source("components/d5o/platform/commercial-authority.ts");
+const pricing = source("components/d5o/platform/develop-pricing.ts");
 const errors = source("lib/d5o/prototype-work/store-error.ts");
 const { applyCommercialCommand, assertSnapshotCommercialIntegrity } = source("lib/d5o/prototype-work/commercial-command.ts", {
   "@/components/d5o/platform/published-phase-configuration": published,
   "@/components/d5o/platform/commercial-authority": authority,
+  "@/components/d5o/platform/develop-pricing": pricing,
   "./store-error": errors,
 });
 
 const pinned = "00000000-0000-4000-8000-000000000001";
-const actor = { id: "synthetic-actor", name: "Synthetic reviewer", membershipId: "synthetic-membership", role: "project_manager" };
+const actor = { id: "synthetic-actor", name: "Synthetic submitter", membershipId: "synthetic-membership", role: "project_manager" };
+const reviewer = { id: "synthetic-reviewer", name: "Synthetic reviewer", membershipId: "synthetic-reviewer-membership", role: "operations_leader" };
 const inventory = { status: "ready", versions: [{ id: pinned, status: "published", config_manifest_json: { d5oPresentation: { phaseContract: { schemaVersion: 1, workTypes: structuredClone(phase.stageAlignedPhaseConfigurationCatalog.rybex) } } } }] };
 const work = {
   id: "synthetic-controlled", workspace: "rybex", type: "Technical delivery", phaseConfigurationVersionId: pinned,
   title: "Synthetic command guard", customer: "Synthetic", site: "Local", owner: "Originator", nextAction: "Prepare price", status: "moving", history: [],
-  definition: { status: "Approved", revision: 1, configurationVersion: pinned, configurationWorkTypeKey: "technical-delivery" },
+  definition: { status: "Approved", revision: 1, configurationVersion: pinned, configurationWorkTypeKey: "technical-delivery", developHandoff: { status: "accepted", revision: 1 } },
   discovery: { phase: "Estimate", pursuitControl: { revision: 1, status: "qualified" }, estimate: {
     revision: 1, labor: 75, materials: 25, subcontract: 0, travel: 0, contingency: 0, targetMargin: 25, sellPrice: 133,
     status: "Draft", assumption: "Synthetic", definitionSource: { revision: 1, configurationVersionId: pinned, workTypeKey: "technical-delivery", capturedAt: "2026-10-06T00:00:00Z" }, pricingHistory: [],
@@ -45,8 +49,9 @@ const routed = applyCommercialCommand(work, { workId: work.id, packageRevision: 
 assert.equal(routed.discovery.estimate.status, "Pricing review");
 rejects(() => applyCommercialCommand(routed, { workId: work.id, packageRevision: 2, action: "approve-pricing", note: "Accepted" }, actor, inventory), "stale_package");
 rejects(() => applyCommercialCommand(routed, { workId: work.id, packageRevision: 1, action: "approve-pricing" }, actor, inventory), "decision_note_required");
-const priced = applyCommercialCommand(routed, { workId: work.id, packageRevision: 1, action: "approve-pricing", note: "Synthetic price basis accepted" }, actor, inventory);
-assert.equal(priced.discovery.estimate.review.actorId, actor.id);
+rejects(() => applyCommercialCommand(routed, { workId: work.id, packageRevision: 1, action: "approve-pricing", note: "Own work" }, actor, inventory), "pricing_separation_required");
+const priced = applyCommercialCommand(routed, { workId: work.id, packageRevision: 1, action: "approve-pricing", note: "Synthetic price basis accepted" }, reviewer, inventory);
+assert.equal(priced.discovery.estimate.review.actorId, reviewer.id);
 assert.equal(priced.discovery.estimate.status, "Approved");
 rejects(() => assertSnapshotCommercialIntegrity([routed], [priced]), "protected_estimate_changed");
 
@@ -72,12 +77,13 @@ rejects(() => assertSnapshotCommercialIntegrity([routedOffer], [forgedApproval])
 const forgedOffer = copy(routedOffer);
 forgedOffer.discovery.proposal.package.sellPrice = 999999;
 rejects(() => assertSnapshotCommercialIntegrity([routedOffer], [forgedOffer]), "protected_offer_changed");
-const approvedOffer = applyCommercialCommand(routedOffer, { workId: work.id, packageRevision: 1, action: "approve-proposal", note: "Synthetic offer accepted" }, actor, inventory);
+rejects(() => applyCommercialCommand(routedOffer, { workId: work.id, packageRevision: 1, action: "approve-proposal", note: "Own work" }, actor, inventory), "proposal_separation_required");
+const approvedOffer = applyCommercialCommand(routedOffer, { workId: work.id, packageRevision: 1, action: "approve-proposal", note: "Synthetic offer accepted" }, reviewer, inventory);
 assert.equal(approvedOffer.discovery.proposal.status, "Approved");
-assert.equal(approvedOffer.discovery.proposal.review.actorId, actor.id);
+assert.equal(approvedOffer.discovery.proposal.review.actorId, reviewer.id);
 const staleScope = copy(routedOffer);
 staleScope.definition.revision = 2;
-rejects(() => applyCommercialCommand(staleScope, { workId: work.id, packageRevision: 1, action: "approve-proposal", note: "Accepted" }, actor, inventory), "definition_source_unavailable");
+rejects(() => applyCommercialCommand(staleScope, { workId: work.id, packageRevision: 1, action: "approve-proposal", note: "Accepted" }, actor, inventory), "define_receipt_required");
 
 rejects(() => applyCommercialCommand(routedOffer, { workId: work.id, packageRevision: 1, action: "record-customer-submission", recipient: "Synthetic customer", method: "Email", dueDate: "2026-10-22" }, actor, inventory), "offer_not_approved");
 rejects(() => applyCommercialCommand(approvedOffer, { workId: work.id, packageRevision: 1, action: "record-customer-submission", recipient: "", method: "Email", dueDate: "2026-10-22" }, actor, inventory), "invalid_customer_submission");
@@ -130,7 +136,7 @@ const prematurePackage = copy(handoff);
 prematurePackage.packages = [{ id: "wp-premature", name: "Not received", status: "planned" }];
 rejects(() => assertSnapshotCommercialIntegrity([handoff], [prematurePackage]), "design_handoff_required");
 const prematureDesignRegister = copy(handoff);
-prematureDesignRegister.phaseRegisters = { design: [{ package: "Not received" }] };
+prematureDesignRegister.phaseRegisters = { "design.verification_plan": [{ package: "Not received" }] };
 rejects(() => assertSnapshotCommercialIntegrity([handoff], [prematureDesignRegister]), "design_handoff_required");
 const forgedHandoff = copy(awardReady);
 forgedHandoff.discovery.designHandoff = copy(handoff.discovery.designHandoff);
@@ -152,4 +158,52 @@ const receivedPackage = copy(acceptedHandoff);
 receivedPackage.packages = [{ id: "wp-received", name: "Received scope", status: "planned" }];
 assertSnapshotCommercialIntegrity([acceptedHandoff], [receivedPackage]);
 
-console.log("Controlled D3 pricing, offer, customer response, Design handoff and snapshot bypass checks: PASS");
+const developPolicy = { id: "synthetic-pricing", version: 1, status: "published", workspace: "rybex", name: "Synthetic GBP", currency: "GBP", effectiveFrom: "2026-10-01", rates: [{ id: "labor", category: "labor", label: "Labor", unit: "hour", amount: "50.00", scope: { kind: "default", value: "" }, effectiveFrom: "2026-10-01", source: "Tenant catalog" }], targetMarginPercent: 25, floorMarginPercent: 15, overheadPercent: 0, contingencyPercent: 5, maxDiscountPercent: 10, method: "target-margin", solutionApproverRole: "operations_leader", pricingApproverRole: "operations_leader", proposalApproverRole: "operations_leader" };
+const policyState = { pricingPolicies: [developPolicy], activePricingPolicy: { id: developPolicy.id, version: 1 } };
+const planning = copy(work);
+planning.develop = { revision: 1, options: [{ id: "option-a", revision: 1, name: "Approved option", approach: "Qualified technical approach", requirementIds: [], unmetRequirements: "", deliveryModel: "Self-perform", materials: "Customer supplied", resourceBasis: "Qualified labor", scheduleBasis: "Site window confirmed", safetyQuality: "Site method review", risks: "Access risk", evidence: "Survey", owner: "Solutions lead", status: "Viable" }], selectedOptionId: "option-a", selectionRationale: "Fits the accepted basis", laborStrategy: "Qualified staff available", procurementStrategy: "No critical purchase", scheduleStrategy: "Site window", safetyStrategy: "Risk assessment", qualityStrategy: "Independent check", riskMitigation: "Access plan", targetDate: "2026-12-01", designOwner: "Design lead", history: [] };
+const submittedSolution = applyCommercialCommand(planning, { workId: work.id, packageRevision: 1, action: "submit-solution", dueDate: "2026-10-21" }, actor, inventory, policyState);
+assert.equal(submittedSolution.develop.review.status, "Submitted");
+rejects(() => applyCommercialCommand(submittedSolution, { workId: work.id, packageRevision: 1, action: "approve-solution", note: "Own review" }, actor, inventory, policyState), "solution_separation_required");
+const approvedSolution = applyCommercialCommand(submittedSolution, { workId: work.id, packageRevision: 1, action: "approve-solution", note: "Requirements and delivery basis verified" }, reviewer, inventory, policyState);
+assert.equal(approvedSolution.develop.review.status, "Approved");
+const forgedSolution = copy(approvedSolution);
+forgedSolution.develop.options[0].approach = "Changed after approval without revision";
+rejects(() => assertSnapshotCommercialIntegrity([approvedSolution], [forgedSolution]), "protected_solution_basis_changed");
+const pricingInput = { currency: "GBP", workType: work.type, customer: work.customer, region: work.site, pricedAt: "2026-10-07", lines: [{ id: "line-1", scopeRef: "Accepted scope", category: "labor", description: "Installation", quantity: "10", unit: "hour", rateId: "labor", source: "Tenant catalog", assumption: "Ten verified hours" }], discountPercent: 0, riskBasis: "Site access", estimateMaturity: "Budgetary", definitionRevision: 1, solutionRevision: 1 };
+rejects(() => applyCommercialCommand(approvedSolution, { workId: work.id, packageRevision: 2, action: "save-detailed-estimate", pricingInput: { ...pricingInput, lines: [{ ...pricingInput.lines[0], manualRate: 50 }] } }, actor, inventory, policyState), "invalid_estimate_input");
+const detailedDraft = applyCommercialCommand(approvedSolution, { workId: work.id, packageRevision: 2, action: "save-detailed-estimate", pricingInput }, actor, inventory, policyState);
+assert.equal(detailedDraft.discovery.estimate.detailed.input.currency, "GBP");
+assert.equal(detailedDraft.discovery.estimate.revisionHistory[0].revision, 1);
+rejects(() => assertSnapshotCommercialIntegrity([approvedSolution], [detailedDraft]), "protected_estimate_changed");
+const submittedDetailed = applyCommercialCommand(detailedDraft, { workId: work.id, packageRevision: 2, action: "submit-pricing", dueDate: "2026-10-23" }, actor, inventory, policyState);
+assert.equal(submittedDetailed.discovery.estimate.status, "Pricing review");
+const floorPolicy = { ...developPolicy, floorMarginPercent: 22 };
+const floorPolicyState = { pricingPolicies: [floorPolicy], activePricingPolicy: { id: floorPolicy.id, version: 1 } };
+const belowFloorDraft = applyCommercialCommand(approvedSolution, { workId: work.id, packageRevision: 2, action: "save-detailed-estimate", pricingInput: { ...pricingInput, discountPercent: 10 } }, actor, inventory, floorPolicyState);
+const belowFloorReview = applyCommercialCommand(belowFloorDraft, { workId: work.id, packageRevision: 2, action: "submit-pricing", dueDate: "2026-10-23" }, actor, inventory, floorPolicyState);
+rejects(() => applyCommercialCommand(belowFloorReview, { workId: work.id, packageRevision: 2, action: "approve-pricing", note: "Accept" }, reviewer, inventory, floorPolicyState), "margin_exception_required");
+rejects(() => applyCommercialCommand(belowFloorReview, { workId: work.id, packageRevision: 2, action: "approve-margin-exception", note: "Own margin" }, actor, inventory, floorPolicyState), "margin_exception_denied");
+const administrator = { id: "synthetic-administrator", name: "Synthetic administrator", membershipId: "administrator-membership", role: "admin" };
+const excepted = applyCommercialCommand(belowFloorReview, { workId: work.id, packageRevision: 2, action: "approve-margin-exception", note: "Bounded price exception for customer budget ceiling" }, administrator, inventory, floorPolicyState);
+assert.equal(excepted.discovery.estimate.review.exception.policyVersion, 1);
+const pricedException = applyCommercialCommand(excepted, { workId: work.id, packageRevision: 2, action: "approve-pricing", note: "Approved with recorded exception" }, reviewer, inventory, floorPolicyState);
+assert.equal(pricedException.discovery.estimate.status, "Approved");
+rejects(() => assertSnapshotCommercialIntegrity([belowFloorReview], [excepted]), "protected_estimate_changed");
+const detailedOffer = copy(pricedException);
+detailedOffer.discovery.proposal.status = "Draft";
+detailedOffer.discovery.proposal.package = { revision: 1, estimateRevision: 2, scope: "Accepted synthetic solution", assumptions: "Customer access", exclusions: "Unrelated work", commercialTerms: "Customer approval required", sellPrice: pricedException.discovery.estimate.sellPrice, preparedAt: "2026-10-07T00:00:00Z", definitionSource: copy(pricedException.discovery.estimate.definitionSource), pricingBasis: { policyId: floorPolicy.id, policyVersion: floorPolicy.version, solutionRevision: 1, currency: "GBP", includedCostMinor: pricedException.discovery.estimate.detailed.evaluation.includedCostMinor, priceMinor: pricedException.discovery.estimate.detailed.evaluation.proposedPriceMinor } };
+const detailedReview = applyCommercialCommand(detailedOffer, { workId: work.id, packageRevision: 1, action: "submit-proposal", dueDate: "2026-10-24" }, actor, inventory, floorPolicyState);
+const detailedApproved = applyCommercialCommand(detailedReview, { workId: work.id, packageRevision: 1, action: "approve-proposal", note: "Exact solution, price, and exception accepted" }, reviewer, inventory, floorPolicyState);
+const detailedSent = applyCommercialCommand(detailedApproved, { workId: work.id, packageRevision: 1, action: "record-customer-submission", recipient: "Synthetic customer", method: "Customer portal", dueDate: "2026-10-25" }, actor, inventory, floorPolicyState);
+const detailedAward = applyCommercialCommand(detailedSent, { workId: work.id, packageRevision: 1, action: "record-customer-response", responseStatus: "Awarded", receivedAt: "2026-10-26", note: "Customer approved exact submitted offer" }, actor, inventory, floorPolicyState);
+Object.assign(detailedAward.definition, { outcome: "Accepted outcome", acceptance: "Witness test", excludedScope: "Unrelated work", deliveryApproach: "Selected option", dependencies: "Customer access", risks: "Controlled access" });
+const detailedHandoff = applyCommercialCommand(detailedAward, { workId: work.id, packageRevision: 1, action: "submit-design-handoff", dueDate: "2026-10-28" }, actor, inventory, floorPolicyState);
+assert.equal(detailedHandoff.discovery.designHandoff.brief.develop.estimateSnapshot.evaluation.proposedPriceMinor, pricedException.discovery.estimate.detailed.evaluation.proposedPriceMinor);
+assert.equal(detailedHandoff.discovery.designHandoff.brief.develop.selectedOptionSnapshot.id, "option-a");
+assert.equal(detailedHandoff.discovery.designHandoff.brief.develop.offerSnapshot.pricingBasis.currency, "GBP");
+const staleSolution = copy(detailedDraft);
+staleSolution.develop.revision = 2;
+rejects(() => applyCommercialCommand(staleSolution, { workId: work.id, packageRevision: 2, action: "submit-pricing", dueDate: "2026-10-23" }, actor, inventory, policyState), "solution_approval_required");
+
+console.log("Controlled Develop solution, pricing, offer, customer response, Design handoff and snapshot bypass checks: PASS");

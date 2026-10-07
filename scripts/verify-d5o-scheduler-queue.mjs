@@ -44,29 +44,37 @@ try {
     assert.ok(overflow.scroll <= overflow.client + 1, "All staffing tasks remain visible without inner scrolling");
     await page.screenshot({ path: resolve(output, `${workspace}-scheduler-queue.png`), fullPage: false });
     if (workspace === "rybex") {
-      const row = queue.getByRole("article").filter({ hasText: "Service integration plan" });
       const demand = schedule.packageDemands.find((item) => item.packageId === "wp-service-rybex-3");
       assert.ok(demand, "Service package has shared explicit demand");
-      await row.getByText("2+ qualified people").waitFor();
-      await row.getByText("Controls service").waitFor();
-      await row.getByText("REQUIRED DATE & SHIFT").waitFor();
-      await row.getByText(new RegExp(demand.requiredSlots[0].shift)).waitFor();
-      await row.getByRole("button", { name: "Schedule crew" }).click();
-      const editor = page.locator("#d5o-crew-editor");
-      await editor.waitFor();
-      assert.equal(await editor.getByLabel("Work Record and package").inputValue(), "rybex-3|wp-service-rybex-3");
-      assert.equal(await editor.getByLabel("Start time").inputValue(), demand.requiredSlots[0].shift.slice(0, 5));
-      assert.equal(await editor.getByLabel("End time").inputValue(), demand.requiredSlots[0].shift.slice(-5));
-      await editor.getByLabel("Booking day").selectOption("1");
-      await editor.getByText(/Saving this assignment will also update its required date\/shift/).waitFor();
-      await page.getByRole("button", { name: "Close crew assignment" }).click();
+      const covered = demand.requiredSlots.every((slot) => new Set(schedule.assignments.filter((item) => item.workId === demand.workId && item.packageId === demand.packageId && item.date === slot.date && item.shift === slot.shift).flatMap((item) => item.people)).size >= demand.minimumPeople);
+      const row = queue.getByRole("article").filter({ hasText: "Service integration plan" });
+      if (covered) {
+        assert.equal(await row.count(), 0, "A fully staffed package no longer asks for crew in the action queue");
+        await page.locator("#d5o-week-board").getByText("Service integration plan", { exact: true }).first().waitFor();
+      } else {
+        await row.getByText("2+ qualified people").waitFor();
+        await row.getByText("Controls service").waitFor();
+        await row.getByText("REQUIRED DATE & SHIFT").waitFor();
+        await row.getByText(new RegExp(demand.requiredSlots[0].shift)).waitFor();
+        await row.getByRole("button", { name: "Schedule crew" }).click();
+        const editor = page.locator("#d5o-crew-editor");
+        await editor.waitFor();
+        assert.equal(await editor.getByLabel("Work Record and package").inputValue(), "rybex-3|wp-service-rybex-3");
+        assert.equal(await editor.getByLabel("Start time").inputValue(), demand.requiredSlots[0].shift.slice(0, 5));
+        assert.equal(await editor.getByLabel("End time").inputValue(), demand.requiredSlots[0].shift.slice(-5));
+        await editor.getByLabel("Booking day").selectOption("1");
+        await editor.getByText(/Saving this assignment will also update its required date\/shift/).waitFor();
+        await page.getByRole("button", { name: "Close crew assignment" }).click();
+      }
       const fiberCard = page.locator(".d5o-schedule-card").filter({ hasText: "Fiber trunks and termination" }).first();
       const fiberRow = fiberCard.locator("xpath=ancestor::*[contains(@class, 'd5o-week-row')]");
-      await fiberCard.dragTo(fiberRow.locator(".d5o-week-cell").nth(4));
-      const moveDialog = page.getByRole("dialog", { name: "Move Fiber installation" });
-      await moveDialog.getByText(/also updates the Work Package required date\/shift/).waitFor();
-      assert.equal(await moveDialog.getByRole("button", { name: "Acknowledge & save schedule" }).isEnabled(), true, "A qualified calendar move can be acknowledged without leaving the scheduler");
-      await moveDialog.getByRole("button", { name: "Cancel" }).click();
+      if (await fiberRow.getByRole("button", { name: /Reschedule Fiber installation/ }).isEnabled()) {
+        await fiberCard.dragTo(fiberRow.locator(".d5o-week-cell").nth(4));
+        const moveDialog = page.getByRole("dialog", { name: "Move Fiber installation" });
+        await moveDialog.getByText(/also updates the Work Package required date\/shift/).waitFor();
+        assert.equal(await moveDialog.getByRole("button", { name: "Acknowledge & save schedule" }).isEnabled(), true, "A qualified calendar move can be acknowledged without leaving the scheduler");
+        await moveDialog.getByRole("button", { name: "Cancel" }).click();
+      } else assert.equal(await fiberRow.getByRole("button", { name: /Reschedule Fiber installation/ }).isEnabled(), false, "Accepted historical packages cannot be rescheduled");
       const invalidDate = await page.evaluate(async () => {
         const before = await (await fetch("/api/work/schedule")).json();
         const schedule = before.schedule;
@@ -105,14 +113,16 @@ try {
       });
       assert.equal(invalidDemandScope.status, 400, "Work Package demand cannot cross workspace scope");
       assert.equal(invalidDemandScope.afterRevision, invalidDemandScope.beforeRevision);
-      await queue.getByRole("article").filter({ hasText: "Service integration plan" }).getByRole("button", { name: "View work" }).click();
-      await page.getByRole("heading", { name: "Crew demand by Work Package" }).waitFor();
-      const packagePlan = page.locator(".d5o-package-demand-card").filter({ hasText: "Service integration plan" });
-      assert.equal(await packagePlan.getByLabel("Required date 1").inputValue(), demand.requiredSlots[0].date);
-      assert.equal(await packagePlan.getByLabel("Required shift 1").inputValue(), demand.requiredSlots[0].shift);
-      await page.screenshot({ path: resolve(output, "rybex-package-demand.png"), fullPage: true });
-      await packagePlan.getByRole("button", { name: "Save crew requirement" }).click();
-      await page.getByRole("status").getByText(/required crew dates and shifts saved/).waitFor();
+      if (!covered) {
+        await row.getByRole("button", { name: "View work" }).click();
+        await page.getByRole("heading", { name: "Crew demand by Work Package" }).waitFor();
+        const packagePlan = page.locator(".d5o-package-demand-card").filter({ hasText: "Service integration plan" });
+        assert.equal(await packagePlan.getByLabel("Required date 1").inputValue(), demand.requiredSlots[0].date);
+        assert.equal(await packagePlan.getByLabel("Required shift 1").inputValue(), demand.requiredSlots[0].shift);
+        await page.screenshot({ path: resolve(output, "rybex-package-demand.png"), fullPage: true });
+        await packagePlan.getByRole("button", { name: "Save crew requirement" }).click();
+        await page.getByRole("status").getByText(/required crew dates and shifts saved/).waitFor();
+      }
       const afterSave = await page.evaluate(async () => (await (await fetch("/api/work/schedule")).json()).schedule);
       assert.equal(afterSave.revision, schedule.revision, "Saving identical Work Package demand is idempotent");
     } else {

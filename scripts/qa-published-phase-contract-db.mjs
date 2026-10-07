@@ -5,8 +5,12 @@ import { sql, j } from "./m1/implementation-context.mjs";
 
 const source = readFileSync("components/d5o/platform/phase-configuration.ts", "utf8");
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+const policySource = readFileSync("components/d5o/platform/design-policy.ts", "utf8");
+const policyCompiled = ts.transpileModule(policySource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+const policyExports = {};
+vm.runInNewContext(policyCompiled, { exports: policyExports });
 const exports = {};
-vm.runInNewContext(compiled, { exports });
+vm.runInNewContext(compiled, { exports, require: (key) => key === "./design-policy" ? policyExports : undefined, structuredClone });
 const contract = { schemaVersion: 1, workTypes: exports.prototypePhaseConfigurationCatalog.rybex };
 const manifest = { synthetic: true, d5oPresentation: { schemaVersion: 1, phaseLabels: { discover: "Discover", define: "Define" }, changeReason: "Synthetic phase contract verification", phaseContract: contract } };
 const result = sql(`select rybex_internal.d5o_configuration_manifest_check(${j(manifest)}); select 'valid_contract_pass';`);

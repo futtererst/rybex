@@ -1,6 +1,7 @@
 import type { ConfigurationInventory } from "@/lib/d5o/configuration/version-inventory";
 import { prototypePhaseConfigurationCatalog, stageAlignedPhaseConfigurationCatalog, resolvePrototypePhaseConfiguration, validatePhaseConfiguration, type WorkTypeConfiguration } from "./phase-configuration";
 import type { WorkRecord, WorkspaceKey } from "./work-types";
+import { validateDesignControlPolicy } from "./design-policy";
 
 export type PublishedPhaseContract = { schemaVersion: 1; workTypes: WorkTypeConfiguration[] };
 
@@ -25,6 +26,7 @@ function validateContract(value: unknown, workspace: WorkspaceKey): string[] {
     keys.add(item.workTypeKey);
     if (!Array.isArray(item.phases)) { errors.push(`${item.workTypeKey} has no phases.`); continue; }
     errors.push(...validatePhaseConfiguration(item));
+    if (item.designControls) errors.push(...validateDesignControlPolicy(item.designControls).map((message) => `${item.workTypeKey}: ${message}`));
     for (const phase of item.phases) {
       if (!Array.isArray(phase.components)) { errors.push(`${phase.key} has no components.`); continue; }
       for (const component of phase.components) {

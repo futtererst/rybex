@@ -39,6 +39,13 @@ export async function POST(request: NextRequest) {
     const input = JSON.parse(body) as ScheduleMutation;
     const context = await hostedPrototypeContext(workspace);
     if (!context.canEdit) return reply({ error: "workspace_forbidden" }, 403);
+    if (input.action === "save-demand") {
+      const workState = await context.read("work");
+      const record = (workState.state?.records as Array<Record<string, unknown>> | undefined)?.find((item) => item.id === input.demand.workId);
+      const discovery = record?.discovery as { pursuitControl?: unknown; outcome?: string; designHandoff?: { status?: string } } | undefined;
+      if (discovery?.pursuitControl && (discovery.outcome !== "Won" || discovery.designHandoff?.status !== "accepted"))
+        return reply({ error: "design_handoff_required", message: "Receive the awarded Develop handoff before setting Work Package crew demand." }, 409);
+    }
     const loaded = await context.read("schedule");
     const schedule = loaded.state
       ? { ...loaded.state, revision: loaded.revision } as ReturnType<typeof initialHostedSchedule>

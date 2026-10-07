@@ -1,4 +1,5 @@
 import type { WorkRecord, WorkspaceKey } from "./work-types";
+import { defaultDesignControlPolicy, type DesignControlPolicy } from "./design-policy";
 
 export type PhaseKey = "discover" | "define" | "develop" | "design" | "deploy" | "operate";
 export type ComponentKind = "reference" | "typed_field" | "item_register" | "requirement_set" | "decision" | "evidence_reference" | "calculated_summary";
@@ -10,7 +11,7 @@ export type PhaseDefinition = { key: PhaseKey; label: string; purpose: string; c
 export type DecisionCheck = { op: "register" | "packages" | "package_coverage" | "package_facts" | "reviewed_evidence" | "lifecycle_action"; key?: string; field?: "installed" | "tested" | "accepted"; evidenceKind?: string; message: string; surface: "Plan" | "Execution" | "Evidence" | "Handoff" };
 export type DecisionCheckResult = { check: DecisionCheck; met: boolean };
 export type DecisionGuard = { stage: string; right: string; checks: DecisionCheck[] };
-export type WorkTypeConfiguration = { schemaVersion: 1; version: string; workTypeKey: string; workTypeLabel: string; templatePack: string; phases: PhaseDefinition[]; decisionGuards?: DecisionGuard[] };
+export type WorkTypeConfiguration = { schemaVersion: 1; version: string; workTypeKey: string; workTypeLabel: string; templatePack: string; phases: PhaseDefinition[]; decisionGuards?: DecisionGuard[]; designControls?: DesignControlPolicy };
 
 type DecisionWork = Pick<WorkRecord, "phaseRegisters"> & { packages?: Array<{ id: string; installed: number; tested: number; accepted: number }>; evidence?: Array<{ kind: string; state: string }>; lifecycle?: Array<{ action: string; owner: string }> };
 export function decisionCheckPhase(check: DecisionCheck): PhaseKey | null {
@@ -130,6 +131,7 @@ export const stageAlignedPhaseConfigurationCatalog: Record<WorkspaceKey, WorkTyp
 function stageAlignedContract(source: WorkTypeConfiguration): WorkTypeConfiguration {
   const copy = structuredClone(source);
   copy.version = "prototype-v2";
+  copy.designControls = defaultDesignControlPolicy(copy.workTypeKey);
   const discover = copy.phases.find((phase) => phase.key === "discover")!;
   const define = copy.phases.find((phase) => phase.key === "define")!;
   const develop = copy.phases.find((phase) => phase.key === "develop")!;

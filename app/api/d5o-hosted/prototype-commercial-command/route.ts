@@ -9,7 +9,7 @@ import { validLocalScheduleOrigin } from "@/lib/d5o/scheduling/request-origin";
 
 export const dynamic = "force-dynamic";
 const workspaces = new Set(["rybex", "rotork"]);
-const actions = new Set(["submit-pricing", "approve-pricing", "return-pricing",
+const actions = new Set(["save-detailed-estimate", "submit-solution", "approve-solution", "return-solution", "submit-pricing", "approve-margin-exception", "approve-pricing", "return-pricing",
   "submit-proposal", "approve-proposal", "return-proposal", "record-customer-submission",
   "record-customer-response", "start-negotiated-revision", "submit-design-handoff",
   "accept-design-handoff", "return-design-handoff"]);
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   const workspace = request.nextUrl.searchParams.get("workspace") ?? "";
   if (!workspaces.has(workspace)) return reply({ error: "invalid_target" }, 400);
   const raw = await request.text();
-  if (raw.length > 4000) return reply({ error: "command_too_large" }, 413);
+  if (raw.length > 100_000) return reply({ error: "command_too_large" }, 413);
   try {
     const command = JSON.parse(raw) as CommercialCommand;
     if (!command || typeof command.workId !== "string" || !command.workId
@@ -32,7 +32,8 @@ export async function POST(request: NextRequest) {
         command.responseStatus, command.receivedAt, command.nextAction, command.followUpDue]
         .some((value) => value !== undefined && typeof value !== "string")
       || command.handoffRevision !== undefined
-        && (!Number.isInteger(command.handoffRevision) || command.handoffRevision < 1))
+        && (!Number.isInteger(command.handoffRevision) || command.handoffRevision < 1)
+      || command.action === "save-detailed-estimate" && (!command.pricingInput || typeof command.pricingInput !== "object" || Array.isArray(command.pricingInput)))
       return reply({ error: "invalid_command" }, 400);
     const context = await hostedPrototypeContext(workspace);
     if (!context.canEdit) return reply({ error: "workspace_forbidden" }, 403);
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
     const next = applyCommercialCommand(current, command,
       { id: context.actor.id, name: context.actor.name,
         membershipId: context.actor.membershipId, role: context.actor.role },
-      hostedSyntheticInventory(workspace as WorkspaceKey));
+      hostedSyntheticInventory(workspace as WorkspaceKey), state as Record<string, unknown>);
     const nextState = { ...state, revision: loaded.revision + 1,
       records: records.map((record, position) => position === index ? next : record) };
     const saved = await context.save("work", loaded.revision, nextState);

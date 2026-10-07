@@ -11,10 +11,15 @@ function load(file, imports = {}) {
   return exports;
 }
 
-const base = load("../components/d5o/platform/phase-configuration.ts");
-const contract = load("../components/d5o/platform/published-phase-configuration.ts", { "./phase-configuration": base });
+const designPolicy = load("../components/d5o/platform/design-policy.ts");
+const base = load("../components/d5o/platform/phase-configuration.ts", { "./design-policy": designPolicy });
+const contract = load("../components/d5o/platform/published-phase-configuration.ts", { "./phase-configuration": base, "./design-policy": designPolicy });
 const original = contract.defaultPhaseContract("rybex");
 assert.deepEqual(Array.from(contract.validatePublishedPhaseContract(original, "rybex")), []);
+assert.ok(original.workTypes.every((item) => item.designControls?.requiredReviews.includes("Safety")), "new contracts include Design safety control");
+const invalidDesign = structuredClone(original);
+invalidDesign.workTypes[0].designControls.requiredReviews = ["Delivery"];
+assert.ok(contract.validatePublishedPhaseContract(invalidDesign, "rybex").length, "Design cannot publish without Engineering and Safety review");
 assert.ok(contract.validatePublishedPhaseContract(original, "rotork").length, "workspace-specific Work Types cannot cross tenants");
 const rotork = contract.defaultPhaseContract("rotork");
 for (const tenant of [original, rotork]) {
@@ -89,7 +94,7 @@ assert.deepEqual(Array.from(contract.validatePublishedPhaseContract(customized, 
 assert.equal(base.evaluateRule({ definition: { registers: { scope_items: [{ deliverable: "Fiber", boundary: "Rack A", owner: "" }] } } }, scope.rules[0]), true);
 scope.rules[0].fields = ["deliverable"];
 assert.ok(contract.validatePublishedPhaseContract(customized, "rybex").length, "required field and rule list must stay aligned");
-const unsafe = structuredClone(original);
+const unsafe = { schemaVersion: 1, workTypes: structuredClone(base.prototypePhaseConfigurationCatalog.rybex) };
 unsafe.workTypes[0].phases[1].components.find((item) => item.key === "commercial_source").rules[0].value = "Draft";
 assert.ok(contract.validatePublishedPhaseContract(unsafe, "rybex").length, "protected commercial rule cannot be weakened");
 assert.equal(contract.phaseContractFromManifest(manifest(unsafe), "rybex"), null);

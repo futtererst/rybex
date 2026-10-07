@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     if (input.action === "create-package") {
       const candidate = (await loadPrototypeWork(workspace)).records.find((record) => record.id === input.workId);
       const discovery = candidate?.discovery as { pursuitControl?: unknown; outcome?: string; designHandoff?: { status?: string } } | undefined;
-      if (discovery?.pursuitControl && discovery.outcome === "Won" && discovery.designHandoff?.status !== "accepted")
+      if (discovery?.pursuitControl && (discovery.outcome !== "Won" || discovery.designHandoff?.status !== "accepted"))
         return reply({ error: "design_handoff_required", message: "The awarded work requires an accepted Design handoff before package planning." }, 409);
     }
     if (input.action === "create-record" || (input.action === "register-record" && input.record?.phaseConfigurationVersionId)) {

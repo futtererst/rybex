@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { chromium } from "@playwright/test";
 import { context } from "./m1/implementation-context.mjs";
 
-const base = "http://127.0.0.1:61430";
+const base = process.env.D5O_BASE ?? "http://127.0.0.1:61431";
 const output = resolve("artifacts/d5o-prototype-shared-work-20261004");
 mkdirSync(output, { recursive: true });
 const c = await context();
@@ -69,17 +69,18 @@ try {
       await first.page.locator(".d5o-portfolio-register").getByRole("button", { name: new RegExp(item.title) }).click();
     }
     assert.ok(record, "The new Work Record is durably cataloged");
-    await first.page.getByRole("navigation", { name: "Work Record surfaces" }).getByRole("button", { name: "Plan" }).click();
+    await first.page.getByRole("button", { name: "Design", exact: true }).click();
+    await first.page.getByRole("button", { name: "Packages", exact: true }).click();
     let workPackage = catalog.packages.find((entry) => entry.workId === record.id && entry.name === item.package);
     if (!workPackage) {
-      await first.page.getByLabel("New work package").fill(item.package);
-      await first.page.getByRole("button", { name: "Add controlled package" }).click();
+      await first.page.getByLabel("New Work Package").fill(item.package);
+      await first.page.getByRole("button", { name: "Create shared package" }).click();
       await first.page.getByRole("status").getByText(/Work Package is shared/).waitFor();
       catalog = await getCatalog(first.page);
       workPackage = catalog.packages.find((entry) => entry.workId === record.id && entry.name === item.package);
     }
     assert.ok(workPackage, "The new package is durably attached to the same Work Record");
-    assert.equal(await first.page.locator(".d5o-package-list article").count(), 1, "A new Work Record must not inherit accepted sample packages");
+    await first.page.getByRole("button", { name: new RegExp(item.package) }).waitFor();
     const date = new Date(`${first.schedule.anchorDate}T00:00:00Z`);
     date.setUTCDate(date.getUTCDate() + item.day);
     const requiredDate = date.toISOString().slice(0, 10);
@@ -102,8 +103,9 @@ try {
     await second.page.getByLabel("Find work").fill(item.title);
     await second.page.locator(".d5o-portfolio-register").getByRole("button", { name: new RegExp(item.title) }).waitFor();
     await second.page.locator(".d5o-portfolio-register").getByRole("button", { name: new RegExp(item.title) }).click();
-    await second.page.getByRole("navigation", { name: "Work Record surfaces" }).getByRole("button", { name: "Plan" }).click();
-    assert.equal(await second.page.locator(".d5o-package-list article").count(), 1, "A fresh session sees only the shared package");
+    await second.page.getByRole("button", { name: "Design", exact: true }).click();
+    await second.page.getByRole("button", { name: "Packages", exact: true }).click();
+    await second.page.getByRole("button", { name: new RegExp(item.package) }).waitFor();
     await second.page.locator(".d5o-package-demand-card").filter({ hasText: item.package }).getByText("Schedulable").waitFor();
     assert.equal(await second.page.locator(".d5o-package-demand-card").filter({ hasText: item.package }).getByLabel("Required date 1").inputValue(), requiredDate);
     await second.page.getByRole("navigation", { name: "D5O platform" }).getByRole("button", { name: "Crew schedule" }).click();

@@ -3,11 +3,13 @@ import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { WorkspaceKey } from "@/components/d5o/platform/schedule-model";
 import { assertSnapshotCommercialIntegrity } from "./commercial-command";
+import { assertSnapshotDesignIntegrity } from "./design-command";
+import type { PricingPolicyState } from "@/components/d5o/platform/develop-pricing";
 import { PrototypeWorkError } from "./store-error";
 
 export { PrototypeWorkError } from "./store-error";
 
-export type PrototypeWorkState = { schemaVersion: 1; workspace: WorkspaceKey; revision: number; records: Record<string, unknown>[] };
+export type PrototypeWorkState = { schemaVersion: 1; workspace: WorkspaceKey; revision: number; records: Record<string, unknown>[] } & PricingPolicyState;
 const root = path.join(process.cwd(), ".rybexos-local", "d5o-shared-prototype-work-v1");
 const fileFor = (workspace: WorkspaceKey) => path.join(root, `${workspace}.json`);
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -70,6 +72,7 @@ export async function savePrototypeWork(workspace: WorkspaceKey, expectedRevisio
     if (!Number.isInteger(expectedRevision) || expectedRevision !== state.revision)
       throw new PrototypeWorkError("stale_state", 409, "Another browser changed this workspace. Refresh before saving again.");
     assertSnapshotCommercialIntegrity(state.records, records);
+    assertSnapshotDesignIntegrity(state.records, records);
     state.records = records;
     state.revision++;
     await writeUnlocked(workspace, state);
@@ -77,18 +80,30 @@ export async function savePrototypeWork(workspace: WorkspaceKey, expectedRevisio
   });
 }
 
-export async function mutatePrototypeWork(workspace: WorkspaceKey, expectedRevision: number, workId: string, transform: (record: Record<string, unknown>) => Record<string, unknown>) {
+export async function mutatePrototypeWork(workspace: WorkspaceKey, expectedRevision: number, workId: string, transform: (record: Record<string, unknown>, state: PrototypeWorkState) => Record<string, unknown>) {
   return locked(workspace, async () => {
     const state = await readUnlocked(workspace) ?? initial(workspace);
     if (!Number.isInteger(expectedRevision) || expectedRevision !== state.revision)
       throw new PrototypeWorkError("stale_state", 409, "Another browser changed this workspace. Refresh before deciding.");
     const index = state.records.findIndex((record) => record.id === workId);
     if (index < 0) throw new PrototypeWorkError("work_unavailable", 404, "This Work Record is unavailable in the selected workspace.");
-    const next = transform(state.records[index]);
+    const next = transform(state.records[index], state);
     if (next.id !== workId || next.workspace !== workspace) throw new PrototypeWorkError("invalid_result", 500, "The commercial command changed Work Record identity or workspace.");
     state.records[index] = next;
     state.revision++;
     await writeUnlocked(workspace, state);
     return state;
+  });
+}
+
+export async function mutatePrototypePricing(workspace: WorkspaceKey, expectedRevision: number, transform: (state: PrototypeWorkState) => PrototypeWorkState) {
+  return locked(workspace, async () => {
+    const state = await readUnlocked(workspace) ?? initial(workspace);
+    if (!Number.isInteger(expectedRevision) || expectedRevision !== state.revision) throw new PrototypeWorkError("stale_state", 409, "Pricing configuration changed. Reload before saving.");
+    const next = transform(state);
+    if (next.workspace !== workspace || next.records !== state.records) throw new PrototypeWorkError("invalid_result", 500, "Pricing configuration cannot alter Work Records.");
+    next.revision = state.revision + 1;
+    await writeUnlocked(workspace, next);
+    return next;
   });
 }

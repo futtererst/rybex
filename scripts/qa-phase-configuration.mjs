@@ -4,9 +4,12 @@ import vm from "node:vm";
 import ts from "typescript";
 
 const source = fs.readFileSync(new URL("../components/d5o/platform/phase-configuration.ts", import.meta.url), "utf8");
+const policySource = fs.readFileSync(new URL("../components/d5o/platform/design-policy.ts", import.meta.url), "utf8");
+const policyExports = {};
+vm.runInNewContext(ts.transpileModule(policySource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { exports: policyExports });
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const exports = {};
-vm.runInNewContext(compiled, { exports });
+vm.runInNewContext(compiled, { exports, structuredClone, require: (name) => name === "./design-policy" ? policyExports : undefined });
 const { prototypePhaseConfigurations: packs, prototypeLifecycleConfigurations: lifecyclePacks, validatePhaseConfiguration: validate, evaluateRule: evaluate, resolvePrototypePhaseConfiguration: resolve } = exports;
 
 for (const key of ["rybex", "rotork"]) {

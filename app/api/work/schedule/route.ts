@@ -6,6 +6,7 @@ import type { WorkspaceKey } from "@/components/d5o/platform/schedule-model";
 import { crewPersonForUser, scheduleWorkspaceKeys } from "@/lib/d5o/scheduling/crew-identity";
 import { validLocalScheduleOrigin } from "@/lib/d5o/scheduling/request-origin";
 import { deliverPublicationChanges, deliverySummary } from "@/lib/d5o/scheduling/notification-delivery";
+import { loadPrototypeWork } from "@/lib/d5o/prototype-work/store";
 
 export const dynamic = "force-dynamic";
 const editorRoles = new Set(["admin", "operations_leader", "project_manager", "field_supervisor"]);
@@ -37,6 +38,12 @@ export async function POST(request: NextRequest) {
     if (!validLocalScheduleOrigin(request.headers))
       return reply({ error: "invalid_origin", message: "The schedule request did not come from this local workspace address. Reload the page and try again." }, 403);
     const input = await request.json() as ScheduleMutation;
+    if (input.action === "save-demand") {
+      const record = (await loadPrototypeWork(workspace)).records.find((item) => item.id === input.demand.workId);
+      const discovery = record?.discovery as { pursuitControl?: unknown; outcome?: string; designHandoff?: { status?: string } } | undefined;
+      if (discovery?.pursuitControl && (discovery.outcome !== "Won" || discovery.designHandoff?.status !== "accepted"))
+        return reply({ error: "design_handoff_required", message: "Receive the awarded Develop handoff before setting Work Package crew demand." }, 409);
+    }
     const before = await loadSchedule(workspace);
     const schedule = await mutateSchedule(workspace, { id: context.user.id, name: context.user.name, role: context.role ?? "" }, input);
     const previousIds = new Set(before.publications.map((item) => item.id));

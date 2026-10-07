@@ -12,6 +12,7 @@ type PhaseWork = {
   evidence?: Array<{ state: string }>;
   lifecycle?: Array<{ status: string }>;
   definition?: { status: string };
+  design?: { reviews: Array<{ status: string }> };
   commercial?: { confidence: string; condition: string };
   value: string;
 };
@@ -29,7 +30,7 @@ function status(work: PhaseWork, key: string, demandCount: number, assignmentCou
     case "develop.capacity": return `${demandCount} package demand${demandCount === 1 ? "" : "s"} defined`;
     case "develop.variance": return work.commercial?.confidence ?? "Commercial basis not recorded";
     case "design.work_packages": return `${packages.length} controlled package${packages.length === 1 ? "" : "s"}`;
-    case "design.design_review": return work.definition?.status ?? "Definition review not recorded";
+    case "design.design_review": return `${work.design?.reviews.filter((item) => item.status === "Approved").length ?? 0} revision-specific Design reviews approved`;
     case "deploy.schedule": return `${assignmentCount} crew booking${assignmentCount === 1 ? "" : "s"}`;
     case "deploy.execution_facts": return `${packages.filter((item) => item.installed > 0 || item.tested > 0).length} package${packages.length === 1 ? "" : "s"} with facts`;
     case "deploy.proof": return `${work.evidence?.length ?? 0} proof reference${work.evidence?.length === 1 ? "" : "s"}`;
@@ -80,7 +81,7 @@ export function WorkPhaseActions({ config, phase, work, currentTab, currentDecis
 }) {
   const phaseChecks = currentDecision?.checks.filter(({ check }) => decisionCheckPhase(check) === phase.key) ?? [];
   const openChecks = phaseChecks.filter((item) => !item.met);
-  const needsInput = (component: PhaseComponent) => ["develop.solution_options", "design.verification_plan", "operate.handoff"].includes(`${phase.key}.${component.key}`);
+  const needsInput = (component: PhaseComponent) => ["design.verification_plan", "operate.handoff"].includes(`${phase.key}.${component.key}`);
   const actionable = phase.components.filter((component) => needsInput(component) || (targets[`${phase.key}.${component.key}`] && targets[`${phase.key}.${component.key}`] !== currentTab));
   const context = phase.components.filter((component) => !actionable.includes(component));
   const renderAction = (component: PhaseComponent) => {

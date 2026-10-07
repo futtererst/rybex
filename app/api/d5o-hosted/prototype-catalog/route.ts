@@ -54,8 +54,8 @@ export async function POST(request: NextRequest) {
         ?.find((record) => record.id === input.workId);
       const discovery = candidate?.discovery as { pursuitControl?: unknown; outcome?: string;
         designHandoff?: { status?: string } } | undefined;
-      if (discovery?.pursuitControl && discovery.outcome === "Won"
-        && discovery.designHandoff?.status !== "accepted")
+      if (discovery?.pursuitControl && (discovery.outcome !== "Won"
+        || discovery.designHandoff?.status !== "accepted"))
         return reply({ error: "design_handoff_required" }, 409);
     }
     const loaded = await context.read("catalog");
