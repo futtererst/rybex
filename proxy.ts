@@ -22,7 +22,18 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (!isProductionRouteAvailable(pathname) && !isProtectedAuthDiagnostic(pathname)) {
+  // The selected hosted D5O project shares an Auth service with an older Rybex
+  // application. Hosted mode exposes only isolated D5O API routes; it must not
+  // make legacy production modules available through the same credentials.
+  const hostedD5O = process.env.D5O_HOSTED_ENABLED === "1";
+  if (hostedD5O && !pathname.startsWith("/api/d5o-hosted/")) {
+    return new NextResponse("The hosted D5O work surface is not yet available.", {
+      status: 503,
+      headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" }
+    });
+  }
+
+  if (!hostedD5O && !isProductionRouteAvailable(pathname) && !isProtectedAuthDiagnostic(pathname)) {
     return new NextResponse(
       "This RybexOS module is unavailable in production mode until it passes an approved production persistence gate.",
       {

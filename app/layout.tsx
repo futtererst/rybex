@@ -23,6 +23,13 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  if (process.env.D5O_HOSTED_ENABLED === "1") {
+    return (
+      <html lang="en"><body className="d5o-auth-body">
+        <WorkflowCompletionProvider>{children}</WorkflowCompletionProvider>
+      </body></html>
+    );
+  }
   const productionMode = isProductionRuntime();
   const [currentUser, context] = await Promise.all([getCurrentRybexUser(), getRequestContext()]);
   const workspace = context.authenticated && context.status === "authorized" ? context.workspace : undefined;

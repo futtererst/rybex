@@ -1,28 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createRybexSupabaseServerClient, getSupabaseUrl } from "@/lib/d5o/auth/supabase-server";
+import { createRybexSupabaseServerClient } from "@/lib/d5o/auth/supabase-server";
+import { hostedD5OTargetReady } from "@/lib/d5o/auth/hosted-target";
 import { validLocalScheduleOrigin } from "@/lib/d5o/scheduling/request-origin";
 
 export const dynamic = "force-dynamic";
 
-const projectRef = "fcawktdjoxvahhgvkebx";
 const keyPattern = /^[a-z][a-z0-9_-]{1,63}$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const reply = (body: unknown, status = 200) => NextResponse.json(body, {
   status, headers: { "Cache-Control": "no-store" }
 });
 
-function hostedTargetReady() {
-  if (process.env.D5O_HOSTED_ENABLED !== "1" || process.env.RYBEXOS_RUNTIME_MODE !== "production") return false;
-  try { return new URL(getSupabaseUrl()).hostname === `${projectRef}.supabase.co`; }
-  catch { return false; }
-}
-
 type RpcName = "d5o_hosted_actor_v1" | "d5o_hosted_list_work_v1" |
   "d5o_hosted_load_work_v1" | "d5o_hosted_create_work_v1";
 type RpcError = { code?: string; message: string };
 
 async function authorizedClient(workspaceKey: string) {
-  if (!hostedTargetReady()) return { error: "hosted_unavailable", status: 503 as const };
+  if (!hostedD5OTargetReady()) return { error: "hosted_unavailable", status: 503 as const };
   const client = await createRybexSupabaseServerClient();
   const { data: userData, error: userError } = await client.auth.getUser();
   if (userError || !userData.user) return { error: "unauthenticated", status: 401 as const };
