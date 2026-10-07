@@ -2,6 +2,7 @@
 \set ON_ERROR_STOP on
 \i /tmp/d5o-hosted-authority-test.sql
 \i /tmp/d5o-hosted-prototype-state.sql
+\i /tmp/d5o-hosted-prototype-nested-scope.sql
 update d5o_hosted.workspaces set status = 'active' where workspace_key = 'rybex';
 
 do $$ begin
@@ -24,7 +25,7 @@ begin
   v_first := public.d5o_hosted_prototype_save_v1('rybex','work',0,
     '{"schemaVersion":1,"workspace":"rybex","revision":1,"records":[]}'::jsonb);
   v_second := public.d5o_hosted_prototype_save_v1('rybex','work',1,
-    '{"schemaVersion":1,"workspace":"rybex","revision":2,"records":[{"id":"rybex-1"}]}'::jsonb);
+    '{"schemaVersion":1,"workspace":"rybex","revision":2,"records":[{"id":"rybex-1","workspace":"rybex"}]}'::jsonb);
   if v_first->>'revision' <> '1' or v_second->>'revision' <> '2'
     or public.d5o_hosted_prototype_read_v1('rybex','work')->'state'->'records'->0->>'id' <> 'rybex-1' then
     raise exception 'prototype_round_trip_failed';
@@ -48,6 +49,11 @@ begin
       '{"schemaVersion":1,"workspace":"rotork","records":[]}'::jsonb);
     raise exception 'payload_scope_mismatch_accepted';
   exception when invalid_parameter_value then null; end;
+  begin
+    perform public.d5o_hosted_prototype_save_v1('rybex','work',2,
+      '{"schemaVersion":1,"workspace":"rybex","records":[{"id":"rotork-1","workspace":"rotork"}]}'::jsonb);
+    raise exception 'nested_payload_scope_mismatch_accepted';
+  exception when check_violation then null; end;
 end $$;
 reset role;
 

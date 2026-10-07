@@ -22,7 +22,7 @@ const reply = (body: unknown, status = 200) => NextResponse.json(body, {
 function errorReply(error: RpcError | null) {
   if (error?.code === "42501") return reply({ error: "workspace_forbidden" }, 403);
   if (error?.code === "23505") return reply({ error: "stale_state" }, 409);
-  if (error?.code === "22023") return reply({ error: "invalid_state" }, 422);
+  if (error?.code === "22023" || error?.code === "23514") return reply({ error: "invalid_state" }, 422);
   return reply({ error: "state_unavailable" }, 503);
 }
 
