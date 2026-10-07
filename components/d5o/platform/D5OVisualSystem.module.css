@@ -44,6 +44,15 @@
   width: 100%;
 }
 
+/* Direct worksurface bands fill the shared frame instead of sizing to their contents. */
+.root :global(.d5o-page > .d5o-page-band) {
+  box-sizing: border-box;
+  margin-inline: 0;
+  max-width: none;
+  min-width: 0;
+  width: 100%;
+}
+
 /* Shared heading, eyebrow, and introductory-copy rhythm. */
 .root :global(.d5o-surface-host h1) {
   color: var(--d5o-ink);

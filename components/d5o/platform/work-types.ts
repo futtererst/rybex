@@ -10,12 +10,13 @@ export type DesignHandoff = { revision: number; status: "submitted" | "returned"
 export type DesignHandoffEvent = { revision: number; state: DesignHandoff["status"]; at: string; actorId: string; membershipId: string; note: string; brief?: DesignHandoffBrief };
 
 export type DiscoveryRecord = {
+  crm?: DiscoverCRM;
   pursuitControl?: {
     revision: number;
     status: "draft" | "submitted" | "returned" | "qualified" | "held" | "declined";
     requester: string; intendedOutcome: string; roughValue: string; currency: string; requiredDate: string; knownRisk: string;
     submission?: { revision: number; at: string; actor: string };
-    decision?: { revision: number; outcome: "qualified" | "held" | "declined" | "returned"; reason: string; at: string; actor: string };
+    decision?: { revision: number; outcome: "qualified" | "held" | "declined" | "returned"; reason: string; at: string; actor: string; assessmentRevision?: number; recommendation?: string; policyVersion?: string };
     spend?: { status: "not_requested" | "requested" | "authorized" | "returned"; cap: number; purpose: string; reason?: string; actor?: string; at?: string };
     handoff?: { status: "not_started" | "submitted" | "returned" | "accepted"; receiver: string; brief: string; reason?: string; revision: number; actor?: string; at?: string };
     history: Array<{ revision: number; action: string; actor: string; at: string; note: string }>;
@@ -32,6 +33,23 @@ export type DiscoveryRecord = {
   outcomeNote?: string;
   designHandoff?: DesignHandoff;
   designHandoffHistory?: DesignHandoffEvent[];
+};
+
+export type DiscoverContact = { id: string; name: string; organization: string; role: "Sponsor" | "Decision-maker" | "Technical reviewer" | "Procurement" | "End user" | "Champion" | "Partner"; influence: "High" | "Medium" | "Low"; relationship: "Unknown" | "Introduced" | "Engaged" | "Supportive" | "Opposed"; note: string };
+export type DiscoverActivity = { id: string; at: string; author: string; kind: "Meeting" | "Call" | "Correspondence" | "Site visit" | "Document review" | "Finding"; contacts: string[]; summary: string; resultingAction?: string; taskId?: string };
+export type DiscoverTask = { id: string; title: string; owner: string; due: string; status: "Open" | "Done"; createdAt: string; completedAt?: string };
+export type DiscoverAssessment = { revision: number; at: string; policyVersion: string; basis: string; recommendation: "Pursue" | "Pursue with conditions" | "Hold for information" | "Decline"; score: number | null; coverage: number; evidenceConfidence?: "No references" | "References recorded; verification unknown"; reasons: string[]; concerns: string[]; conditions: string[]; contributions: Array<{ label: string; score: number; weight: number }>; };
+export type DiscoverCRM = {
+  accountRef?: string; siteRef?: string; externalCrmRef?: string; customerResolved: boolean; siteResolved: boolean;
+  contacts: DiscoverContact[]; activities: DiscoverActivity[]; tasks: DiscoverTask[];
+  buyingProcess: string; funding: "Unknown" | "Unconfirmed" | "Confirmed"; competition: string; access: string;
+  desiredOutcome?: string; businessImpact?: string; urgency?: "Unknown" | "Low" | "Normal" | "High" | "Critical"; preliminaryScope?: string; geography?: string; customerRelationship?: string;
+  commercialStatus?: "Unknown" | "Early interest" | "Budgeting" | "Procurement" | "Offer requested" | "Offer submitted" | "Negotiating" | "Awarded" | "Lost";
+  strategicFit: number | null; needCredibility: number | null; commercialAttractiveness: number | null; deliveryFeasibility: number | null; risk: number | null;
+  disqualifier: "None" | "Legal restriction" | "Unsafe delivery" | "Outside service scope";
+  forecast: { value: number | null; currency: string; basis: string; probability: number | null; awardDate: string; category: "Unspecified" | "Pipeline" | "Best case" | "Commit" | "Excluded"; rationale: string; reviewedAt?: string };
+  assessmentHistory: DiscoverAssessment[];
+  forecastSnapshots?: Array<{ at: string; period: string; currency: string; workRevision: number; value: number | null; probability: number | null; weighted: number | null; category?: string; awardDate?: string; workId?: string }>;
 };
 
 export type DefinitionRecord = {
@@ -53,6 +71,11 @@ export type DefinitionRecord = {
   commercialTerms: string;
   risks: string;
   owner: string;
+  project?: { customerContact: string; customerContactId?: string; siteArea: string; affectedSystems: string; accessConstraints: string; requiredDate: string };
+  findings?: Array<{ id: string; kind: "Survey" | "Customer input" | "Technical review" | "Document review"; status: "Provisional" | "Confirmed"; detail: string; source: string; author: string; at: string }>;
+  clarifications?: Array<{ id: string; question: string; owner: string; due: string; answer: string; source: string; status: "Open" | "Answered"; openedAt: string; answeredAt?: string }>;
+  developHandoff?: { revision: number; status: "submitted" | "returned" | "accepted"; receiver: string; note: string; submittedAt: string; respondedAt?: string; actor: string };
+  approvedBaselines?: Array<{ revision: number; approvedAt: string; configurationVersion: string; outcome: string; excludedScope: string; deliveryApproach: string; registers: Record<string, Array<Record<string, string>>>; project?: DefinitionRecord["project"]; findings: NonNullable<DefinitionRecord["findings"]>; clarifications: NonNullable<DefinitionRecord["clarifications"]> }>;
   reviews?: { commercial: "Pending" | "Approved" | "Changes requested"; delivery: "Pending" | "Approved" | "Changes requested"; revision: number };
   history: Array<{ at: string; revision: number; event: string; note: string }>;
 };

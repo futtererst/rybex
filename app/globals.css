@@ -8792,6 +8792,8 @@ section:target {
 .d5o-early-phase .d5o-early-phase-rail{grid-area:rail;min-width:0;order:0;position:sticky;top:20px}
 .d5o-early-phase .d5o-early-phase-metrics{margin:20px 0 14px;max-width:none;order:3;width:100%}
 .d5o-early-phase .d5o-early-phase-support{margin:0;max-width:none;order:4;width:100%}
+.d5o-early-phase.d5o-define-phase .d5o-early-phase-layout{grid-template-areas:"rail" "primary";grid-template-columns:minmax(0,1fr);margin-top:20px}
+.d5o-define-phase .d5o-early-phase-rail{position:static}
 .d5o-discover-phase .d5o-early-phase-queue-row{display:grid;gap:8px;grid-template-columns:1fr;padding:14px;text-align:left}
 .d5o-discover-phase .d5o-early-phase-queue-row>div{min-width:0}
 .d5o-discover-phase .d5o-early-phase-queue-row>b{justify-self:start}
@@ -8803,3 +8805,15 @@ section:target {
 .d5o-discover-phase .d5o-early-phase-rail section[aria-label="Filter pursuits"]>label{min-width:0;width:100%}
 @media(max-width:1000px){.d5o-early-phase .d5o-early-phase-layout{grid-template-columns:minmax(0,1fr) 270px}}
 @media(max-width:760px){.d5o-early-phase .d5o-early-phase-layout{grid-template-areas:"primary" "rail";grid-template-columns:minmax(0,1fr)}.d5o-early-phase .d5o-early-phase-rail{position:static}}
+
+/* Record-wide views belong to the Work Record header, separate from phase navigation. */
+.d5o-phase-header-actions{align-items:flex-start;display:flex;flex:none;gap:9px}
+.d5o-record-menu{position:relative;z-index:20}
+.d5o-record-menu summary{background:#fff;border:1px solid var(--d5o-border);border-radius:6px;color:var(--d5o-ink);cursor:pointer;font-size:.75rem;font-weight:800;list-style:none;padding:11px 13px;white-space:nowrap}
+.d5o-record-menu summary::-webkit-details-marker{display:none}
+.d5o-record-menu summary::after{content:" ▾";color:#637b87}
+.d5o-record-menu nav{background:#fff;border:1px solid var(--d5o-border);border-radius:7px;box-shadow:0 12px 30px #102b3b24;display:grid;min-width:205px;padding:5px;position:absolute;right:0;top:calc(100% + 5px)}
+.d5o-record-menu nav button{background:transparent;border:0;border-radius:4px;color:var(--d5o-ink);cursor:pointer;font:inherit;font-size:.76rem;padding:9px 11px;text-align:left}
+.d5o-record-menu nav button:hover,.d5o-record-menu nav button.is-active{background:#edf3f5}
+.d5o-record-menu summary:focus-visible,.d5o-record-menu nav button:focus-visible{outline:3px solid var(--d5o-accent);outline-offset:2px}
+@media(max-width:760px){.d5o-phase-header-actions{flex-wrap:wrap}}

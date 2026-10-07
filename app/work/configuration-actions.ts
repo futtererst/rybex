@@ -5,6 +5,7 @@ import { getRequestContext } from "@/lib/d5o/auth/request-context";
 import { createRybexSupabaseServerClient } from "@/lib/d5o/auth/supabase-server";
 import { assertProofEnvironment } from "@/lib/d5o/work-record/server";
 import { validatePublishedPhaseContract, type PublishedPhaseContract } from "@/components/d5o/platform/published-phase-configuration";
+import { validateDiscoverPolicy, type DiscoverPolicy } from "@/components/d5o/platform/discover-decision";
 import type { WorkspaceKey } from "@/components/d5o/platform/work-types";
 import { loadConfigurationInventory } from "@/lib/d5o/configuration/server";
 
@@ -46,11 +47,13 @@ export async function createConfigurationDraft(workspaceId: string, activeVersio
   } catch (error) { return { ok: false, error: errorMessage(error) }; }
 }
 
-export async function saveConfigurationDraft(workspaceId: string, draftVersionId: string, labels: Record<string, string>, reason: string, phaseContract: PublishedPhaseContract, workspace: WorkspaceKey): Promise<ActionResult> {
+export async function saveConfigurationDraft(workspaceId: string, draftVersionId: string, labels: Record<string, string>, reason: string, phaseContract: PublishedPhaseContract, workspace: WorkspaceKey, discoverPolicy: Omit<DiscoverPolicy, "version">): Promise<ActionResult> {
   try {
     const client = await adminClient(workspaceId);
     const errors = validatePublishedPhaseContract(phaseContract, workspace);
     if (errors.length) throw new Error(`Invalid phase contract: ${errors[0]}`);
+    const policyErrors = validateDiscoverPolicy(discoverPolicy);
+    if (policyErrors.length) throw new Error(`Invalid Discover decision policy: ${policyErrors[0]}`);
     const current = await client.from("config_configuration_versions").select("config_manifest_json")
       .eq("id", draftVersionId).eq("status", "draft").single() as unknown as { data: { config_manifest_json: Record<string, unknown> } | null; error: Error | null };
     if (current.error || !current.data) throw new Error("draft_unavailable");
@@ -59,7 +62,7 @@ export async function saveConfigurationDraft(workspaceId: string, draftVersionId
     if (Object.keys(labels).some((key) => !allowed.includes(key))) throw new Error("invalid_phase_label");
     const phaseLabels = Object.fromEntries(allowed.map((key) => [key, String(labels[key] ?? "").trim()]));
     if (Object.values(phaseLabels).some((value) => value.length < 2 || value.length > 80)) throw new Error("invalid_phase_label");
-    const manifest = { ...source, d5oPresentation: { schemaVersion: 1, phaseLabels, changeReason: reason.trim(), phaseContract } };
+    const manifest = { ...source, d5oPresentation: { schemaVersion: 1, phaseLabels, changeReason: reason.trim(), phaseContract, discoverDecisionPolicy: { ...discoverPolicy, source: "published" } } };
     const result = await (client.rpc as unknown as ConfigurationRpc)("d5o_configuration_save_draft_v1", { p_workspace: workspaceId, p_draft: draftVersionId, p_manifest: manifest });
     if (result.error) throw result.error;
     revalidatePath("/work");

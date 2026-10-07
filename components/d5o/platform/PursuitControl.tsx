@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import type { WorkRecord } from "./work-types";
 import { applyPursuitCommand, blankPursuit, type PursuitCommand } from "./pursuit-control";
+import { assessmentBasis } from "./discover-decision";
 import styles from "./DiscoverWorkspace.module.css";
 
 const value = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
@@ -18,6 +19,7 @@ export function PursuitControl({ work, actor, canEdit, onUpdate, onNotice, onDef
   const [handoffReason, setHandoffReason] = useState("");
   const [dirty, setDirty] = useState(false);
   const editable = ["draft", "returned", "held"].includes(control.status);
+  const assessment = work.discovery?.crm?.assessmentHistory.at(-1);
   function commit(command: PursuitCommand) {
     if (!canEdit) { onNotice("This identity cannot edit the local prototype Work Record."); return; }
     const result = applyPursuitCommand(work, command);
@@ -64,7 +66,7 @@ export function PursuitControl({ work, actor, canEdit, onUpdate, onNotice, onDef
       <button className="d5o-outline" type="submit" disabled={!canEdit || !dirty}>Save intake revision</button>
     </form> : <div className={styles.pursuitSummary}><strong>{control.intendedOutcome || "Outcome not recorded"}</strong><span>Requested by {control.requester || "unknown"} · {control.roughValue || "value unknown"} {control.currency} · needed {control.requiredDate || "date unknown"}</span><span>Risk: {control.knownRisk || "not recorded"}</span></div>}
     {control.status === "draft" ? <div className={styles.pursuitActions}><button className="d5o-primary" disabled={!canEdit || dirty} onClick={() => commit({ ...base, kind: "submit" })}>Submit intake for pursuit decision</button><small>Save changed fields before submitting. Qualification authority reviews the submitted revision.</small></div> : null}
-    {control.status === "submitted" ? <section className={styles.pursuitActions}><strong>Qualification role queue · submitted revision {control.submission?.revision}</strong><label className={styles.field}>Decision basis<textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Why is this pursuit qualified, held, declined or returned?" /></label><div className={styles.buttonRow}>{(["returned", "held", "declined", "qualified"] as const).map((outcome) => <button key={outcome} type="button" className={outcome === "qualified" ? "d5o-primary" : "d5o-outline"} disabled={!canEdit || reason.trim().length < 10} onClick={() => commit({ ...base, kind: "decide", outcome, reason })}>{outcome === "returned" ? "Return for correction" : outcome === "qualified" ? "Qualify pursuit" : outcome === "held" ? "Hold pursuit" : "Decline pursuit"}</button>)}</div></section> : null}
+    {control.status === "submitted" ? <section className={styles.pursuitActions}><strong>Qualification role queue · submitted revision {control.submission?.revision}</strong><label className={styles.field}>Decision basis<textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Why is this pursuit qualified, held, declined or returned?" /></label><div className={styles.buttonRow}>{(["returned", "held", "declined", "qualified"] as const).map((outcome) => <button key={outcome} type="button" className={outcome === "qualified" ? "d5o-primary" : "d5o-outline"} disabled={!canEdit || reason.trim().length < 10 || (outcome === "qualified" && Boolean(work.discovery?.crm) && (assessment?.basis !== assessmentBasis(work) || !["Pursue", "Pursue with conditions"].includes(assessment?.recommendation ?? "")))} onClick={() => commit({ ...base, kind: "decide", outcome, reason })}>{outcome === "returned" ? "Return for correction" : outcome === "qualified" ? "Qualify pursuit" : outcome === "held" ? "Hold pursuit" : "Decline pursuit"}</button>)}</div></section> : null}
     {control.decision ? <p className={styles.pursuitDecision}>Decision: {control.decision.outcome} on intake revision {control.decision.revision} by {control.decision.actor}. {control.decision.reason}</p> : null}
     {control.status === "qualified" ? <div className={styles.pursuitColumns}>
       <section><strong>Separate pursuit investment</strong><p>Only a bounded, approved cap permits controlled pursuit effort. No request means no spending authority.</p>

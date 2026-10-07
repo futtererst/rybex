@@ -1,4 +1,5 @@
 import type { DiscoveryRecord, WorkRecord } from "./work-types";
+import { assessmentBasis } from "./discover-decision";
 
 export type Pursuit = NonNullable<DiscoveryRecord["pursuitControl"]>;
 export type PursuitCommand =
@@ -49,7 +50,9 @@ export function applyPursuitCommand(work: WorkRecord, command: PursuitCommand): 
   } else if (command.kind === "decide") {
     if (prior.status !== "submitted" || !prior.submission) return { error: "Submit an intake revision before recording a pursuit decision." };
     if (command.reason.trim().length < 10) return { error: "Give a decision reason of at least 10 characters." };
-    next = { ...next, status: command.outcome, decision: { revision: prior.submission.revision, outcome: command.outcome, reason: command.reason.trim(), at, actor: command.actor } };
+    const assessment = discovery.crm?.assessmentHistory.at(-1);
+    if (command.outcome === "qualified" && discovery.crm && (discovery.crm.disqualifier !== "None" || !assessment || assessment.basis !== assessmentBasis(work) || !["Pursue", "Pursue with conditions"].includes(assessment.recommendation))) return { error: "A current positive assessment without a restriction is required before qualification." };
+    next = { ...next, status: command.outcome, decision: { revision: prior.submission.revision, outcome: command.outcome, reason: command.reason.trim(), at, actor: command.actor, assessmentRevision: assessment?.revision, recommendation: assessment?.recommendation, policyVersion: assessment?.policyVersion } };
     fit = command.outcome === "qualified" ? "Qualified" : command.outcome === "declined" ? "Disqualified" : "Unassessed";
     action = `Pursuit ${command.outcome}`; note = command.reason.trim();
     nextAction = command.outcome === "qualified" ? "Request bounded pursuit spend or send Define handoff" : command.outcome === "declined" ? "Retain decline reason and close pursuit" : "Correct intake and resubmit";

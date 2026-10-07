@@ -10,6 +10,7 @@ import { activePhaseConfigurationVersion, phaseContractFromManifest, resolvePubl
 import { verifyActiveConfigurationPin } from "@/app/work/configuration-actions";
 import { WorkPhaseJourney, type WorkPhase, type WorkControl } from "./WorkPhaseJourney";
 import { PursuitControl } from "./PursuitControl";
+import { DiscoverCRMWorkspace } from "./DiscoverCRMWorkspace";
 import { blankPursuit } from "./pursuit-control";
 import type { CommercialCommand } from "@/lib/d5o/prototype-work/commercial-command";
 
@@ -81,7 +82,7 @@ export function DiscoverWorkspace({ mode = "discover", workspaceKey, workspaceNa
   const pricingCard = useRef<HTMLElement>(null);
   const proposalCard = useRef<HTMLElement>(null);
   const pursuits = useMemo(() => work.filter((item) => item.discovery && (!isDevelop || !item.discovery.pursuitControl || item.definition?.status === "Approved")), [work, isDevelop]);
-  const active = pursuits.filter((item) => item.discovery?.phase !== "Outcome");
+  const active = pursuits.filter((item) => item.discovery?.phase !== "Outcome" && !["held", "declined"].includes(item.discovery?.pursuitControl?.status ?? ""));
   const filtered = useMemo(() => pursuits.filter((item) => (filter === "All active" ? item.discovery?.phase !== "Outcome" : item.discovery?.phase === filter) && `${item.title} ${item.customer} ${item.site}`.toLowerCase().includes(search.toLowerCase())), [pursuits, filter, search]);
   const pendingDefine = isDevelop && work.some((item) => item.id === focusRecordId && item.discovery?.pursuitControl && item.definition?.status !== "Approved");
   const awaitingIntake = !isDevelop ? work.find((item) => item.id === focusRecordId && !item.discovery) : undefined;
@@ -113,6 +114,8 @@ export function DiscoverWorkspace({ mode = "discover", workspaceKey, workspaceNa
   const proposal = discovery?.proposal;
   const controlledCommercial = Boolean(discovery?.pursuitControl);
   const definitionSource = controlledCommercial && selected?.definition?.status === "Approved"
+    && selected.definition.developHandoff?.status === "accepted"
+    && selected.definition.developHandoff.revision === selected.definition.revision
     && selected.phaseConfigurationVersionId && selected.definition.configurationWorkTypeKey
     && selected.definition.configurationVersion === phaseConfig?.version
     ? { revision: selected.definition.revision, configurationVersionId: selected.phaseConfigurationVersionId,
@@ -132,7 +135,6 @@ export function DiscoverWorkspace({ mode = "discover", workspaceKey, workspaceNa
   const submissionHistory = proposal?.submissionHistory ?? (proposal?.submission ? [proposal.submission] : []);
   const totalCost = estimate ? estimate.labor + estimate.materials + estimate.subcontract + estimate.travel + estimate.contingency : 0;
   const commercialAuthority = assessCommercialAuthority(commercialProfiles, proposal?.package, lastSubmittedPackage, totalCost);
-  const weightedValue = active.reduce((sum, item) => sum + (item.discovery?.estimate.sellPrice ?? 0) * (item.discovery?.fit === "Qualified" ? .65 : item.discovery?.fit === "Conditional" ? .35 : .15), 0);
   const pricingCount = active.filter((item) => item.discovery?.estimate.status === "Pricing review").length;
   const bidPursuits = pursuits.filter((item) => item.discovery?.proposal.status === "Submitted");
   const awaitingCustomerCount = bidPursuits.filter((item) => item.discovery?.phase !== "Outcome" && item.discovery?.proposal.submission && !(item.discovery?.proposal.responseEvents?.length)).length;
@@ -203,7 +205,7 @@ export function DiscoverWorkspace({ mode = "discover", workspaceKey, workspaceNa
   function saveEstimate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selected || !discovery || !estimate) return;
-    if (controlledCommercial && !definitionSource) { onNotice("The approved Define revision or its pinned configuration is unavailable. Restore that basis before saving an estimate."); return; }
+    if (controlledCommercial && !definitionSource) { onNotice("Develop requires an approved Define revision and an accepted receipt for that exact revision and configuration before saving an estimate."); return; }
     const form = new FormData(event.currentTarget);
     const labor = Number(form.get("labor") || 0), materials = Number(form.get("materials") || 0), subcontract = Number(form.get("subcontract") || 0), travel = Number(form.get("travel") || 0), contingency = Number(form.get("contingency") || 0), margin = Number(form.get("margin") || 0);
     const cost = labor + materials + subcontract + travel + contingency;
@@ -402,11 +404,12 @@ export function DiscoverWorkspace({ mode = "discover", workspaceKey, workspaceNa
     {discovery?.designHandoffHistory?.length ? <details><summary>Handoff history · {discovery.designHandoffHistory.length} events</summary><ol>{discovery.designHandoffHistory.map((event, index) => <li key={`${event.revision}-${index}`}>Revision {event.revision} · {event.state} · {event.note} · {event.at}</li>)}</ol></details> : null}
   </div>;
 
+  if (!isDevelop) return <DiscoverCRMWorkspace workspaceKey={workspaceKey} workspaceName={workspaceName} configurationInventory={configurationInventory} work={work} actor={actor} canEdit={canEdit} focusRecordId={focusRecordId} onOpen={onOpen} onDefine={onDefine} onPhase={onPhase} onControl={onControl} onBack={onBack} onSelect={onSelect} onUpdate={onUpdate} onCreate={onCreate} onNotice={onNotice} />;
   return <main className="d5o-page d5o-record-full d5o-early-phase d5o-discover-phase">
     <WorkPhaseJourney active={isDevelop ? "Develop" : "Discover"} record={selected} backLabel={isDevelop ? "Define" : "Work hub"} onBack={onBack} onChoose={(phase) => { if (selected) onPhase(selected, phase); }} onControl={(control) => { if (selected) onControl(selected, control); }} />
     {isDevelop ? <div className={styles.sourceAlert}><strong>Develop · commercial work</strong><span>Controlled pursuits enter here after their Define baseline is approved. Build the estimate, route pricing and the offer, then record customer response and award on the same Work Record. Legacy records retain their earlier commercial history.</span></div> : null}
     <div className={`${styles.metrics} d5o-early-phase-metrics`}>
-      {isDevelop ? <><Metric label="ESTIMATES IN REVIEW" value={String(pricingCount)} note="Exact revisions awaiting a decision" /><Metric label="AWAITING CUSTOMER" value={String(awaitingCustomerCount)} note="Submitted offers without a response" /><Metric label="SUBMITTED VALUE" value={money(submittedValue)} note="Recorded customer offers" /></> : <><Metric label="ACTIVE PURSUITS" value={String(active.length)} note="Work Records in qualification" /><Metric label="DEFINE HANDOFFS" value={String(pursuits.filter((item) => item.discovery?.pursuitControl?.handoff?.status === "accepted").length)} note="Accepted by a named receiver" /><Metric label="WEIGHTED VALUE" value={money(weightedValue)} note="Indicative pipeline value" /></>}
+      <><Metric label="ESTIMATES IN REVIEW" value={String(pricingCount)} note="Exact revisions awaiting a decision" /><Metric label="AWAITING CUSTOMER" value={String(awaitingCustomerCount)} note="Submitted offers without a response" /><Metric label="SUBMITTED VALUE" value={money(submittedValue)} note="Recorded customer offers" /></>
     </div>
     {isDevelop ? <section className={`${styles.pipeline} d5o-early-phase-support`} aria-label="Bid response and follow-up">
       <header className={styles.pipelineHeader}><div><p className={styles.kicker}>COMMERCIAL CONTROL</p><h2>Bid response and follow-up</h2><span>See what is waiting, aging, or already decided across submitted offers.</span></div><div className={styles.pipelineRollup}><strong>{overdueResponseCount + overdueFollowUpCount}</strong><span>response / follow-up items overdue</span></div></header>
@@ -445,11 +448,13 @@ export function DiscoverWorkspace({ mode = "discover", workspaceKey, workspaceNa
         <div className={styles.identity}><Identity label="OWNER / NEXT ACTION" value={selected.owner} detail={selected.nextAction} /><Identity label="LIFECYCLE POSITION" value={selected.stage} detail={`Qualification: ${discovery.fit}`} /><Identity label="NEXT DATE" value={isDevelop ? discovery.closeDate || "Not set" : discovery.pursuitControl?.requiredDate || discovery.closeDate || "Not set"} detail={`Source: ${discovery.source}`} /><Identity label={isDevelop ? "VALUE AT STAKE" : "ROUGH VALUE"} value={isDevelop ? estimate.sellPrice ? money(estimate.sellPrice) : selected.value : discovery.pursuitControl?.roughValue ? `${discovery.pursuitControl.currency} ${Number(discovery.pursuitControl.roughValue).toLocaleString()}` : "Not recorded"} detail={isDevelop ? `Estimate revision ${estimate.revision} · ${estimate.status}` : `Intake revision ${discovery.pursuitControl?.revision ?? 0}`} /></div>
         {isDevelop ? <div className={styles.workflow}>{phases.slice(1).map((phase, index) => <span key={phase} className={phase === discovery.phase ? styles.currentStep : phases.indexOf(discovery.phase) > index + 1 ? styles.pastStep : ""}>{index + 1}<b>{phase}</b></span>)}</div> : null}
         {!isDevelop ? <><details className="d5o-phase-disclosure"><summary>Configured Discover requirements and source</summary>{phaseConfig?.phases.find((phase) => phase.key === "discover") ? <ConfiguredPhasePanel config={phaseConfig} phase={phaseConfig.phases.find((phase) => phase.key === "discover")!} work={selected} compact /> : <p>No pinned configuration matches this Work Type in the selected workspace. Requirements cannot be inferred from another Work Type.</p>}</details><PursuitControl key={selected.id} work={selected} actor={actor} canEdit={canEdit} onUpdate={onUpdate} onNotice={onNotice} onDefine={onDefine} /></> : null}
-        {isDevelop && controlledCommercial ? <div className={styles.sourceAlert} role={estimate.revision > 0 && !estimateSourceCurrent ? "alert" : undefined}>
-          <strong>{estimate.revision > 0 && !estimateSourceCurrent ? "Estimate basis needs reconciliation" : "Approved Define basis"}</strong>
-          <span>{estimate.revision > 0 && !estimateSourceCurrent
+        {isDevelop && controlledCommercial ? <div className={styles.sourceAlert} role={!definitionSource || estimate.revision > 0 && !estimateSourceCurrent ? "alert" : undefined}>
+          <strong>{!definitionSource ? "Define receipt required" : estimate.revision > 0 && !estimateSourceCurrent ? "Estimate basis needs reconciliation" : "Approved Define basis"}</strong>
+          <span>{!definitionSource ? "Develop can inspect this Work Record, but a new estimate needs an approved Define baseline accepted for this exact revision and pinned configuration. Open Define to complete the receipt."
+            : estimate.revision > 0 && !estimateSourceCurrent
             ? estimate.status === "Pricing review" ? "Return this submitted review for correction, then save a new estimate revision against the approved scope before pricing or offer decisions." : "Save a new estimate revision against the current approved scope before pricing or offer decisions."
             : `Define revision ${definitionSource?.revision ?? "unavailable"} · configuration ${definitionSource?.configurationVersionId ?? "unavailable"}${estimate.definitionSource ? ` · captured ${estimate.definitionSource.capturedAt}` : " · will be bound when the estimate is saved"}`}</span>
+          {!definitionSource ? <button type="button" className="d5o-outline" onClick={() => onDefine(selected)}>Open Define receipt →</button> : null}
         </div> : null}
         <div className={styles.detailGrid}>
           {!isDevelop ? <article className={styles.card}><p className={styles.kicker}>CUSTOMER NEED &amp; FIT</p><h3>Why this work matters</h3><p className={styles.need}>{discovery.need || "Capture the customer outcome and the reason this work should proceed."}</p><div className={styles.facts}><Fact label="Procurement" value={discovery.procurement} /><Fact label="Source" value={discovery.source} /><Fact label="Qualification" value={discovery.fit} /></div>
