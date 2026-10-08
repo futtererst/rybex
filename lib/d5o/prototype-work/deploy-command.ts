@@ -5,10 +5,10 @@ import { legacyDeployControlPolicy, type DeployControlPolicy } from "@/component
 import { PrototypeWorkError } from "./store-error";
 
 export type DeployCommand = {
-  action: "authorize-start" | "hold" | "resume" | "save-report" | "submit-report" | "review-report" | "review-completion" | "record-inspection" | "review-inspection" | "raise-issue" | "resolve-issue" | "attach-evidence" | "review-evidence" | "capture-customer-signoff" | "assemble-turnover" | "accept-client" | "accept-work" | "respond-operate" | "respond-operate-work";
+  action: "authorize-start" | "hold" | "resume" | "save-report" | "submit-report" | "review-report" | "review-completion" | "record-inspection" | "review-inspection" | "raise-prestart-concern" | "raise-issue" | "resolve-issue" | "attach-evidence" | "review-evidence" | "capture-customer-signoff" | "assemble-turnover" | "accept-client" | "accept-work" | "respond-operate" | "respond-operate-work";
   workId: string; packageId?: string; expectedRevision: number; commandId: string; note?: string;
   permitId?: string; reportId?: string; inspectionId?: string; issueId?: string; turnoverId?: string;
-  bookingId?: string; date?: string; quantity?: number; unit?: string; laborHours?: number; material?: string; summary?: string; evidenceIds?: string[]; capturedAt?: string;
+  bookingId?: string; publicationId?: string; date?: string; quantity?: number; unit?: string; laborHours?: number; material?: string; summary?: string; evidenceIds?: string[]; capturedAt?: string;
   decision?: "Reviewed" | "Returned" | "Verified" | "Accepted" | "Declined";
   requirementId?: string; requirement?: string; method?: string; result?: "Pass" | "Fail"; supersedesId?: string;
   title?: string; impact?: string; owner?: string; resolution?: string;
@@ -39,7 +39,7 @@ export function applyDeployCommand(work: WorkRecord, command: DeployCommand, act
   const event = (action: string) => state.events.unshift({ id: crypto.randomUUID(), commandId: command.commandId, fingerprint: deployCommandFingerprint(command), at: now, actorId: actor.id, membershipId: actor.membershipId, action, packageId: pkg || undefined, note });
   const requireManager = () => { if (!manager.has(actor.role)) fail("deploy_role_denied", "This membership cannot authorize or review field work.", 403); };
   const booking = () => {
-    const publication = schedule?.publications.find((item) => item.assignments.some((assignment) => assignment.id === command.bookingId && assignment.workId === work.id && assignment.packageId === pkg));
+    const publication = schedule?.publications.findLast((item) => (!command.publicationId || item.id === command.publicationId) && item.assignments.some((assignment) => assignment.id === command.bookingId && assignment.workId === work.id && assignment.packageId === pkg));
     const assignment = publication?.assignments.find((item) => item.id === command.bookingId);
     if (!publication || !assignment) fail("booking_required", "Select a published booking for this exact Work Record and package.");
     if (actor.person && !assignment.people.includes(actor.person)) fail("assignment_required", "This worker is not assigned to the selected booking.", 403);
@@ -128,11 +128,22 @@ export function applyDeployCommand(work: WorkRecord, command: DeployCommand, act
     if (!inspection || inspection.actorId === actor.id || !["Verified", "Returned"].includes(command.decision ?? "") || note.length < 10) fail("inspection_review_denied", "A separate quality reviewer must decide the exact test result with a reason.", 403);
     if (command.decision === "Verified" && inspection.result === "Pass" && policy.requireReviewedEvidence && (!inspection.evidenceIds.length || inspection.evidenceIds.some((id) => !state.evidence.some((item) => item.id === id && item.packageId === pkg && item.state === "Reviewed")))) fail("inspection_evidence_required", "A passing inspection requires independently reviewed evidence linked to this exact package.");
     inspection.status = command.decision as "Verified" | "Returned"; inspection.reviewerId = actor.id; inspection.reviewNote = note; event(`Inspection ${inspection.status.toLowerCase()}`);
+  } else if (command.action === "raise-prestart-concern") {
+    const { publication, assignment } = booking();
+    if (!actor.person || !command.publicationId || schedule?.publications.filter((item) => item.week === publication.week).at(-1)?.id !== publication.id)
+      fail("current_assignment_required", "Only a worker on the current published booking may report a pre-start concern.", 403);
+    if (release || work.design?.releases?.some((item) => item.packageId === pkg && ["Held", "Hold pending acknowledgment", "Withdrawn"].includes(item.status)))
+      fail("prestart_concern_unavailable", "Use the released package issue workflow for this assignment.");
+    const title = clean(command.title, 200), impact = clean(command.impact, 1000);
+    if (title.length < 8 || impact.length < 10) fail("concern_incomplete", "Describe the concern and its impact before sending it to the Delivery Lead.", 400);
+    state.issues.push({ id: crypto.randomUUID(), kind: "Pre-start concern", packageId: pkg, releaseId: null, bookingId: assignment.id, title, impact,
+      owner: "Delivery Lead", status: "Open", evidenceIds: [], raisedAt: now, raisedBy: actor.id });
+    event("Pre-start concern reported");
   } else if (command.action === "raise-issue") {
     requireAssignedPackage();
     const factualRelease = release ?? work.design?.releases.filter((item) => item.packageId === pkg && ["Held", "Hold pending acknowledgment", "Withdrawn"].includes(item.status)).at(-1);
     if (!factualRelease || !clean(command.title) || !clean(command.owner)) fail("issue_incomplete", "A historical released basis, issue and owner are required.", 400);
-    state.issues.push({ id: crypto.randomUUID(), packageId: pkg, releaseId: factualRelease.id, title: clean(command.title, 200), impact: clean(command.impact), owner: clean(command.owner, 100), status: "Open", evidenceIds: evidenceIds(), raisedAt: now, raisedBy: actor.id });
+    state.issues.push({ id: crypto.randomUUID(), kind: "Field issue", packageId: pkg, releaseId: factualRelease.id, title: clean(command.title, 200), impact: clean(command.impact), owner: clean(command.owner, 100), status: "Open", evidenceIds: evidenceIds(), raisedAt: now, raisedBy: actor.id });
     const permit = currentPermit(); if (permit?.status === "Authorized") permit.status = "Held";
     event("Field issue raised and active work held");
   } else if (command.action === "resolve-issue") {

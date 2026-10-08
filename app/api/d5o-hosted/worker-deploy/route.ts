@@ -19,7 +19,7 @@ const reply = (body: unknown, status = 200) => NextResponse.json(body, { status,
 const objectPath = (workId: string, id: string) => `${workspace}/${createHash("sha256").update(workId).digest("hex")}/${id}`;
 
 function assigned(schedule: SharedSchedule, person: string, workId: string, packageId: string, bookingId: string, publicationId?: string) {
-  const publication = schedule.publications.find((item) => item.id === publicationId || (!publicationId && item.assignments.some((assignment) => assignment.id === bookingId)));
+  const publication = schedule.publications.findLast((item) => item.id === publicationId || (!publicationId && item.assignments.some((assignment) => assignment.id === bookingId)));
   const booking = publication?.assignments.find((item) => item.id === bookingId && item.workId === workId && item.packageId === packageId && item.people.includes(person));
   const latest = publication && schedule.publications.filter((item) => item.week === publication.week).at(-1);
   return booking && latest?.id === publication?.id ? booking : null;
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     const records = loaded.state?.records as WorkRecord[] | undefined;
     const schedule = scheduleResult.state ? { ...scheduleResult.state, revision: scheduleResult.revision } as SharedSchedule : null;
     const index = records?.findIndex((item) => item.id === command.workId && item.workspace === workspace) ?? -1;
-    if (index < 0 || !records || !schedule || !assigned(schedule, context.person, command.workId, command.packageId, command.bookingId)) return reply({ error: "assignment_required" }, 403);
+    if (index < 0 || !records || !schedule || !assigned(schedule, context.person, command.workId, command.packageId, command.bookingId, command.publicationId)) return reply({ error: "assignment_required" }, 403);
     const work = records[index], replay = work.deploy?.events.find((event) => event.commandId === command.commandId);
     if (replay) {
       if (replay.actorId !== context.actor.id || replay.membershipId !== context.actor.membershipId || replay.fingerprint !== deployCommandFingerprint(command)) return reply({ error: "command_reuse_conflict" }, 409);
