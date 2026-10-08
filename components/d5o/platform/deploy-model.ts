@@ -19,7 +19,7 @@ export const emptyDeploy = (): DeployState => ({ permits: [], reports: [], inspe
 export const deployState = (work: WorkRecord): DeployState => work.deploy ?? emptyDeploy();
 
 export function currentAcceptedRelease(work: WorkRecord, packageId: string): DesignRelease | null {
-  const releases = work.design?.releases.filter((item) => item.packageId === packageId) ?? [];
+  const releases = work.design?.releases?.filter((item) => item.packageId === packageId) ?? [];
   const latest = releases.at(-1);
   return latest?.status === "Accepted" ? latest : null;
 }
@@ -28,20 +28,20 @@ export function currentAcceptedRelease(work: WorkRecord, packageId: string): Des
 export function assessPackageCompletion(work: WorkRecord, packageId: string) {
   const release = currentAcceptedRelease(work, packageId);
   const state = deployState(work);
-  const basis = release?.snapshot.completionBasis;
-  const reports = state.reports.filter((item) => item.packageId === packageId && item.releaseId === release?.id && item.status === "Reviewed");
-  const inspections = state.inspections.filter((item) => item.packageId === packageId && item.releaseId === release?.id && item.status === "Verified" && item.result === "Pass");
+  const basis = release?.snapshot?.completionBasis;
+  const reports = (state.reports ?? []).filter((item) => item.packageId === packageId && item.releaseId === release?.id && item.status === "Reviewed");
+  const inspections = (state.inspections ?? []).filter((item) => item.packageId === packageId && item.releaseId === release?.id && item.status === "Verified" && item.result === "Pass");
   const blockers: string[] = [];
   if (!release) blockers.push("A current accepted Design release is required.");
-  if (release && work.design?.packages.find((item) => item.packageId === packageId)?.revision !== release.packageRevision)
+  if (release && work.design?.packages?.find((item) => item.packageId === packageId)?.revision !== release.packageRevision)
     blockers.push("Design detail changed after the accepted release; resolve the field basis before completion.");
   if (!basis) blockers.push("The released package has no planned quantity or explicit qualitative completion criterion.");
   if (!reports.length) blockers.push("No independently reviewed field report records the performed work.");
   if (!inspections.length) blockers.push("No independently verified passing inspection supports completion.");
-  if (state.issues.some((item) => item.packageId === packageId && item.status === "Open")) blockers.push("An open issue remains on this package.");
-  for (const id of release?.snapshot.requirementIds ?? [])
+  if ((state.issues ?? []).some((item) => item.packageId === packageId && item.status === "Open")) blockers.push("An open issue remains on this package.");
+  for (const id of release?.snapshot?.requirementIds ?? [])
     if (!inspections.some((item) => item.requirementId === id)) blockers.push(`Requirement ${id} has no verified passing inspection.`);
-  const unresolvedFailure = state.inspections.some((item) => item.packageId === packageId && item.releaseId === release?.id && item.status === "Verified" && item.result === "Fail"
+  const unresolvedFailure = (state.inspections ?? []).some((item) => item.packageId === packageId && item.releaseId === release?.id && item.status === "Verified" && item.result === "Fail"
     && !inspections.some((pass) => pass.supersedesId === item.id && pass.requirementId === item.requirementId));
   if (unresolvedFailure) blockers.push("A failed inspection has no verified passing retest.");
   let reviewedQuantity: number | null = null;

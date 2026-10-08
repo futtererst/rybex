@@ -103,4 +103,6 @@ assert.equal(workerView.discovery, undefined);
 assert.equal(workerView.design.releases[0].sourceSnapshot, null);
 assert(workerView.deploy.reports.every((item) => item.authorId === actor.worker.id && item.bookingId === "booking-1"));
 assert.equal(workerView.deploy.turnovers.length, 0);
+const incompleteLegacyRelease = { ...work, design: { ...work.design, releases: [{ id: "legacy-release", packageId: "p1", packageRevision: 2, status: "Accepted" }] }, deploy: { reports: [], inspections: [], issues: [] } };
+assert(model.assessPackageCompletion(incompleteLegacyRelease, "p1").blockers.some((item) => item.includes("no planned quantity")), "legacy release without a scope snapshot must be held, not crash");
 console.log("Deploy command and readiness controls passed.");

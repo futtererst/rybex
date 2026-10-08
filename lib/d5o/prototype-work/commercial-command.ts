@@ -218,8 +218,27 @@ export function assertSnapshotCommercialIntegrity(before: Record<string, unknown
   const nextById = new Map(after.map((record) => [record.id, record as WorkRecord]));
   for (const raw of before) {
     const prior = raw as WorkRecord;
-    if (!prior.discovery?.pursuitControl) continue;
     const next = nextById.get(prior.id);
+    if (!prior.discovery?.pursuitControl) {
+      const oldDiscovery = prior.discovery, newDiscovery = next?.discovery;
+      const oldEstimate = oldDiscovery?.estimate, newEstimate = newDiscovery?.estimate;
+      const oldOffer = oldDiscovery?.proposal, newOffer = newDiscovery?.proposal;
+      const hasDecision = Boolean(oldDiscovery?.outcome || oldDiscovery?.designHandoff ||
+        oldEstimate?.review || oldEstimate && !["Not started", "Draft"].includes(oldEstimate.status) ||
+        oldOffer?.review || oldOffer && !["Not started", "Draft"].includes(oldOffer.status) || prior.develop?.review);
+      if (!next && hasDecision) invalid("protected_work_removed", "A Work Record with a commercial decision cannot be removed through a snapshot.");
+      if (!next) continue;
+      if (!same(oldEstimate?.status, newEstimate?.status) || !same(oldEstimate?.review, newEstimate?.review) ||
+        !same(oldEstimate?.pricingHistory, newEstimate?.pricingHistory) ||
+        !same(oldOffer?.status, newOffer?.status) || !same(oldOffer?.review, newOffer?.review) ||
+        !same(oldOffer?.submission, newOffer?.submission) || !same(oldOffer?.submissionHistory, newOffer?.submissionHistory) ||
+        !same(oldOffer?.responseEvents, newOffer?.responseEvents) || !same(oldDiscovery?.outcome, newDiscovery?.outcome) ||
+        !same(oldDiscovery?.designHandoff, newDiscovery?.designHandoff) || !same(prior.develop?.review, next.develop?.review) ||
+        oldEstimate && !["Not started", "Draft"].includes(oldEstimate.status) && !same(oldEstimate, newEstimate) ||
+        oldOffer && !["Not started", "Draft"].includes(oldOffer.status) && !same(oldOffer, newOffer))
+        invalid("protected_decision_changed", "Legacy commercial decisions require an authenticated command, even without pursuit-control history.");
+      continue;
+    }
     if (!next) throw new PrototypeWorkError("protected_work_removed", 409, "A controlled Work Record cannot be removed through the prototype snapshot.");
     if (next.workspace !== prior.workspace) invalid("protected_work_removed", "A controlled Work Record cannot change workspace through the prototype snapshot.");
     if (!next.discovery?.pursuitControl) invalid("protected_control_removed", "Controlled pursuit history cannot be removed through the prototype snapshot.");
@@ -259,8 +278,17 @@ export function assertSnapshotCommercialIntegrity(before: Record<string, unknown
   }
   for (const raw of after) {
     const next = raw as WorkRecord;
-    if (!next.discovery?.pursuitControl || before.some((record) => record.id === next.id)) continue;
-    if (!["Not started", "Draft"].includes(next.discovery.estimate.status) || !["Not started", "Draft"].includes(next.discovery.proposal.status) || next.discovery.estimate.detailed || next.develop?.review
-        || next.discovery.estimate.review || next.discovery.proposal.review || next.discovery.estimate.pricingHistory?.length || next.discovery.proposal.submission || next.discovery.proposal.submissionHistory?.length || next.discovery.proposal.responseEvents?.length || next.discovery.outcome || next.discovery.designHandoff || next.discovery.designHandoffHistory?.length || next.discovery.proposal.history?.some((entry) => ["Approved", "Internal review", "Submitted to customer"].includes(entry.state))) invalid("protected_decision_changed", "A new controlled Work Record cannot enter a reviewed state through a snapshot.");
+    if (before.some((record) => record.id === next.id)) continue;
+    const discovery = next.discovery;
+    if (!discovery) continue;
+    if (discovery.estimate && !["Not started", "Draft"].includes(discovery.estimate.status) ||
+        discovery.proposal && !["Not started", "Draft"].includes(discovery.proposal.status) ||
+        discovery.estimate?.detailed || next.develop?.review || discovery.estimate?.review ||
+        discovery.proposal?.review || discovery.estimate?.pricingHistory?.length ||
+        discovery.proposal?.submission || discovery.proposal?.submissionHistory?.length ||
+        discovery.proposal?.responseEvents?.length || discovery.outcome || discovery.designHandoff ||
+        discovery.designHandoffHistory?.length || discovery.proposal?.history?.some((entry) =>
+          ["Approved", "Internal review", "Submitted to customer"].includes(entry.state)))
+      invalid("protected_decision_changed", "A new Work Record cannot import commercial decisions through a snapshot.");
   }
 }
