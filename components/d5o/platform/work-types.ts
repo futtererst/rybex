@@ -87,7 +87,8 @@ export type DefinitionRecord = {
   project?: { customerContact: string; customerContactId?: string; siteArea: string; affectedSystems: string; accessConstraints: string; requiredDate: string };
   findings?: Array<{ id: string; kind: "Survey" | "Customer input" | "Technical review" | "Document review"; status: "Provisional" | "Confirmed"; detail: string; source: string; author: string; at: string }>;
   clarifications?: Array<{ id: string; question: string; owner: string; due: string; answer: string; source: string; status: "Open" | "Answered"; openedAt: string; answeredAt?: string }>;
-  developHandoff?: { revision: number; status: "submitted" | "returned" | "accepted"; receiver: string; note: string; submittedAt: string; respondedAt?: string; actor: string };
+  developHandoff?: { revision: number; status: "submitted" | "returned" | "accepted"; receiver: string; note: string; submittedAt: string; respondedAt?: string; actor: string; submittedByActorId?: string; submittedByMembershipId?: string; receivedByActorId?: string; receivedByMembershipId?: string };
+  decisions?: Array<{ commandId: string; fingerprint: string; action: string; definitionRevision: number; reviewRole?: "commercial" | "delivery"; actorId: string; membershipId: string; policyVersion: string; at: string; reason: string }>;
   approvedBaselines?: Array<{ revision: number; approvedAt: string; configurationVersion: string; outcome: string; excludedScope: string; deliveryApproach: string; registers: Record<string, Array<Record<string, string>>>; project?: DefinitionRecord["project"]; findings: NonNullable<DefinitionRecord["findings"]>; clarifications: NonNullable<DefinitionRecord["clarifications"]>; scopeControl?: DefinitionRecord["scopeControl"] }>;
   reviews?: { commercial: "Pending" | "Approved" | "Changes requested"; delivery: "Pending" | "Approved" | "Changes requested"; revision: number };
   history: Array<{ at: string; revision: number; event: string; note: string }>;

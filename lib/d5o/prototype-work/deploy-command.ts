@@ -1,11 +1,11 @@
 import type { WorkRecord } from "@/components/d5o/platform/work-types";
 import type { SharedSchedule } from "@/components/d5o/platform/schedule-model";
-import { assessDeployReadiness, currentAcceptedRelease, deployState, type DeployActor, type FieldReport } from "@/components/d5o/platform/deploy-model";
+import { assessDeployReadiness, assessPackageCompletion, currentAcceptedRelease, currentReviewedCompletion, deployState, type DeployActor, type FieldReport } from "@/components/d5o/platform/deploy-model";
 import { legacyDeployControlPolicy, type DeployControlPolicy } from "@/components/d5o/platform/deploy-policy";
 import { PrototypeWorkError } from "./store-error";
 
 export type DeployCommand = {
-  action: "authorize-start" | "hold" | "resume" | "save-report" | "submit-report" | "review-report" | "record-inspection" | "review-inspection" | "raise-issue" | "resolve-issue" | "attach-evidence" | "review-evidence" | "capture-customer-signoff" | "assemble-turnover" | "accept-client" | "accept-work" | "respond-operate" | "respond-operate-work";
+  action: "authorize-start" | "hold" | "resume" | "save-report" | "submit-report" | "review-report" | "review-completion" | "record-inspection" | "review-inspection" | "raise-issue" | "resolve-issue" | "attach-evidence" | "review-evidence" | "capture-customer-signoff" | "assemble-turnover" | "accept-client" | "accept-work" | "respond-operate" | "respond-operate-work";
   workId: string; packageId?: string; expectedRevision: number; commandId: string; note?: string;
   permitId?: string; reportId?: string; inspectionId?: string; issueId?: string; turnoverId?: string;
   bookingId?: string; date?: string; quantity?: number; unit?: string; laborHours?: number; material?: string; summary?: string; evidenceIds?: string[]; capturedAt?: string;
@@ -95,6 +95,21 @@ export function applyDeployCommand(work: WorkRecord, command: DeployCommand, act
     requireManager(); const report = state.reports.find((item) => item.id === command.reportId && item.packageId === pkg);
     if (!report || report.status !== "Submitted" || report.authorId === actor.id || !["Reviewed", "Returned"].includes(command.decision ?? "") || note.length < 10) fail("report_review_denied", "An independent supervisor must review the submitted report with a reason.", 403);
     report.status = command.decision as "Reviewed" | "Returned"; report.reviewerId = actor.id; report.reviewNote = note; event(`Field report ${report.status.toLowerCase()}`);
+  } else if (command.action === "review-completion") {
+    if (!quality.has(actor.role)) fail("completion_role_denied", "An independent quality reviewer is required.", 403);
+    const assessed = assessPackageCompletion(work, pkg);
+    if (!assessed.ready || !assessed.release || !assessed.basis) fail("completion_blocked", assessed.blockers[0] ?? "Completion is not supported by current facts.");
+    if (note.length < 10) fail("reason_required", "Explain the completion review against planned scope and verification.", 400);
+    const reports = state.reports.filter((item) => assessed.reportIds.includes(item.id));
+    if (reports.some((item) => item.authorId === actor.id)) fail("completion_separation_required", "The field author cannot approve completion.", 403);
+    state.completions ??= [];
+    if (currentReviewedCompletion(work, pkg)) fail("completion_already_reviewed", "This exact scope and evidence already have a current completion review.");
+    state.completions.push({ id: crypto.randomUUID(), packageId: pkg, releaseId: assessed.release.id,
+      packageRevision: assessed.release.packageRevision, basis: structuredClone(assessed.basis),
+      reviewedQuantity: assessed.reviewedQuantity, unit: assessed.basis.kind === "Measured" ? assessed.basis.unit : null,
+      reportIds: assessed.reportIds, inspectionIds: assessed.inspectionIds, reviewedAt: now,
+      reviewerId: actor.id, membershipId: actor.membershipId, reason: note });
+    event("Package completion reviewed against released scope");
   } else if (command.action === "record-inspection") {
     requireAssignedPackage();
     if (!release) fail("release_unavailable", "An accepted release is required.");
@@ -144,6 +159,7 @@ export function applyDeployCommand(work: WorkRecord, command: DeployCommand, act
     state.signoffs.push({ id: crypto.randomUUID(), kind: "Customer report acknowledgment", recordId: report.id, recordRevision: report.revision, releaseIds: [report.releaseId], scope: `${work.title} / ${pkg}`, statement: `Customer acknowledges field report ${report.id} revision ${report.revision}; this does not accept the entire Work Record.`, signerName: clean(command.signerName), signerOrganization: clean(command.signerOrganization), signerRole: clean(command.signerRole), method: captured ? "Captured on device" : "External source recorded", authorityBasis: clean(command.authorityBasis), source: captured ? `evidence:${signature!.id}` : clean(command.source), capturedByActorId: actor.id, at: now, outcome: "Acknowledged", conditions: clean(command.conditions), snapshot: structuredClone({ report, signature: signature ?? null }) }); event("Exact report customer acknowledgment recorded");
   } else if (command.action === "assemble-turnover") {
     requireManager(); if (!release) fail("release_unavailable", "The accepted release is unavailable.");
+    if (!currentReviewedCompletion(work, pkg)) fail("completion_required", "Review complete planned scope and verification before assembling turnover.");
     const reports = state.reports.filter((item) => item.packageId === pkg && item.releaseId === release.id && item.status === "Reviewed");
     if (!reports.length || !clean(command.operateOwner)) fail("turnover_incomplete", "Review field reports and assign an Operate receiving owner.", 400);
     state.turnovers.push({ id: crypto.randomUUID(), revision: state.turnovers.filter((item) => item.releaseIds.includes(release.id)).length + 1, releaseIds: [release.id], reportIds: reports.map((item) => item.id), inspectionIds: state.inspections.filter((item) => item.packageId === pkg && item.releaseId === release.id && item.status === "Verified" && item.result === "Pass").map((item) => item.id), issueIds: state.issues.filter((item) => item.packageId === pkg).map((item) => item.id), signoffIds: state.signoffs.filter((item) => reports.some((report) => report.id === item.recordId)).map((item) => item.id), assembledAt: now, assembledByActorId: actor.id, status: "Draft", operateOwner: clean(command.operateOwner), obligations: clean(command.obligations), receipt: "Awaiting" }); event("Turnover draft assembled");
@@ -151,6 +167,7 @@ export function applyDeployCommand(work: WorkRecord, command: DeployCommand, act
     if (!["admin", "operations_leader", "project_manager"].includes(actor.role)) fail("acceptance_role_denied", "Client acceptance requires a project authority.", 403);
     const turnover = state.turnovers.find((item) => item.id === command.turnoverId && item.status === "Draft" && item.releaseIds.includes(release?.id ?? ""));
     if (!turnover || turnover.assembledByActorId === actor.id || !release || !clean(command.signerName) || !clean(command.signerOrganization) || !clean(command.authorityBasis) || !clean(command.source)) fail("acceptance_incomplete", "An independent authority must record the exact turnover, customer identity and external acceptance source.", 403);
+    if (!currentReviewedCompletion(work, pkg)) fail("completion_required", "Current reviewed completion is required before scoped customer acceptance.");
     if (state.issues.some((item) => item.packageId === pkg && item.status === "Open") || unresolvedFailures(pkg, release.id).length || !turnover.inspectionIds.length || !turnover.reportIds.length) fail("acceptance_blocked", "Resolve open issues and failed tests, then verify passing inspections and completion reports before acceptance.");
     if ((release.snapshot.requirementIds ?? []).some((id) => !turnover.inspectionIds.some((inspectionId) => state.inspections.some((item) => item.id === inspectionId && item.requirementId === id)))) fail("acceptance_coverage_missing", "Every released requirement needs a verified passing inspection in this turnover.");
     if (turnover.reportIds.some((id) => !state.reports.some((item) => item.id === id && item.status === "Reviewed" && item.releaseId === release.id)) || turnover.inspectionIds.some((id) => !state.inspections.some((item) => item.id === id && item.status === "Verified" && item.result === "Pass" && item.releaseId === release.id))) fail("turnover_stale", "The turnover references changed or unreviewed source records.");
@@ -162,7 +179,7 @@ export function applyDeployCommand(work: WorkRecord, command: DeployCommand, act
     const packageIds = [...new Set([...(work.packages ?? []).map((item) => item.id), ...(work.design?.packages ?? []).map((item) => item.packageId)])];
     if (!packageIds.length) fail("work_acceptance_incomplete", "No Work Packages are available for whole-work acceptance.");
     const accepted = packageIds.map((id) => { const current = currentAcceptedRelease(work, id); return current && state.turnovers.find((item) => item.status === "Client accepted" && item.releaseIds.includes(current.id)); });
-    if (accepted.some((item) => !item) || state.issues.some((item) => item.status === "Open")) fail("work_acceptance_blocked", "Every package needs a current accepted release and scoped customer acceptance, with no open issues.");
+    if (accepted.some((item) => !item) || packageIds.some((id) => !currentReviewedCompletion(work, id)) || state.issues.some((item) => item.status === "Open")) fail("work_acceptance_blocked", "Every package needs current reviewed completion, scoped customer acceptance, and no open issues.");
     const turnovers = accepted.filter((item): item is NonNullable<typeof item> => !!item);
     if (turnovers.some((item) => item.assembledByActorId === actor.id)) fail("acceptance_independence", "The whole-work acceptance recorder must be independent of package turnover assembly.", 403);
     const releaseIds = turnovers.flatMap((item) => item.releaseIds);

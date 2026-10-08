@@ -3,6 +3,7 @@ import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { WorkspaceKey } from "@/components/d5o/platform/schedule-model";
 import { assertSnapshotCommercialIntegrity } from "./commercial-command";
+import { assertSnapshotDefineIntegrity } from "./define-command";
 import { assertSnapshotDesignIntegrity } from "./design-command";
 import { assertSnapshotDeployIntegrity } from "./deploy-command";
 import { assertSnapshotOperateIntegrity } from "./operate-command";
@@ -74,6 +75,7 @@ export async function savePrototypeWork(workspace: WorkspaceKey, expectedRevisio
     if (!Number.isInteger(expectedRevision) || expectedRevision !== state.revision)
       throw new PrototypeWorkError("stale_state", 409, "Another browser changed this workspace. Refresh before saving again.");
     assertSnapshotCommercialIntegrity(state.records, records);
+    assertSnapshotDefineIntegrity(state.records, records);
     assertSnapshotDesignIntegrity(state.records, records);
     assertSnapshotDeployIntegrity(state.records, records);
     assertSnapshotOperateIntegrity(state.records, records);

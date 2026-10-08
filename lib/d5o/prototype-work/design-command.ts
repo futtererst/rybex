@@ -97,6 +97,16 @@ export function applyDesignCommand(work: WorkRecord, command: DesignCommand, act
     if (disposition && !["None", "Assessment required", "Routed to Develop"].includes(disposition)) fail("invalid_commercial_disposition", "Design cannot mark a commercial change resolved. Record the revised approval in Develop and receive a new source handoff.", 400);
     if (input.crewDemandRequired === false && (!["admin", "operations_leader"].includes(actor.role) || clean(input.crewExemptionReason).length < 20)) fail("crew_exception_denied", "An authorized leader must explain why this package needs no crew demand.", 403);
     const next: DesignPackage = { packageId: id, revision: (prior?.revision ?? 0) + 1, scope: clean(input.scope), location: clean(input.location), systems: clean(input.systems), requirementIds: requirements, predecessorIds: predecessors, documentRefs: refs, materials: clean(input.materials), materialLines, materialStatus: status ?? "Unknown", materialRequiredDate: date(input.materialRequiredDate), materialForecastDate: date(input.materialForecastDate), materialSource: clean(input.materialSource), access: clean(input.access), permit: clean(input.permit), safetyControls: clean(input.safetyControls), equipment: clean(input.equipment), method: clean(input.method), rollback: clean(input.rollback), verification: clean(input.verification), proof: clean(input.proof), acceptingAuthority: clean(input.acceptingAuthority), windowStart: date(input.windowStart), windowEnd: date(input.windowEnd), targetReleaseDate: date(input.targetReleaseDate), crewDemandRequired: input.crewDemandRequired !== false, crewExemptionReason: input.crewDemandRequired === false ? clean(input.crewExemptionReason) : "", commercialImpact: clean(input.commercialImpact), commercialDisposition: disposition ?? "None", status: "Draft" };
+    if (input.completionBasis?.kind === "Measured") {
+      const plannedQuantity = Number(input.completionBasis.plannedQuantity);
+      const unit = clean(input.completionBasis.unit, 40);
+      if (!Number.isFinite(plannedQuantity) || plannedQuantity <= 0 || !unit) fail("invalid_completion_basis", "Enter a positive planned quantity and unit.", 400);
+      next.completionBasis = { kind: "Measured", plannedQuantity, unit };
+    } else if (input.completionBasis?.kind === "Qualitative") {
+      const criterion = clean(input.completionBasis.criterion);
+      if (criterion.length < 10) fail("invalid_completion_basis", "Describe the qualitative completion criterion.", 400);
+      next.completionBasis = { kind: "Qualitative", criterion };
+    } else if (input.completionBasis) fail("invalid_completion_basis", "Choose a supported completion basis.", 400);
     state.packages = [...state.packages.filter((item) => item.packageId !== id), next];
     record("Package design revision saved", id, next.revision);
   } else if (command.action === "request-review") {

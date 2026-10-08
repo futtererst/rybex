@@ -18,7 +18,8 @@ export async function POST(request: NextRequest) {
     const command = JSON.parse(raw) as OperateCommand;
     if (!command?.workId || !command.action || !command.commandId || !Number.isInteger(command.expectedRevision)) return reply({ error: "invalid_command" }, 400);
     const context = await hostedPrototypeContext(workspace);
-    if (!context.canEdit) return reply({ error: "workspace_forbidden" }, 403);
+    if (!context.canEdit && !(command.action === "update-finance" && context.actor.role === "billing_commercial_lead"))
+      return reply({ error: "workspace_forbidden" }, 403);
     const loaded = await context.read("work"), records = loaded.state?.records as WorkRecord[] | undefined;
     const index = records?.findIndex((item) => item.id === command.workId && item.workspace === workspace) ?? -1;
     if (!records || index < 0) return reply({ error: "work_unavailable" }, 404);

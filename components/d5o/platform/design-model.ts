@@ -14,6 +14,7 @@ export type DesignDocument = {
 export type DesignMaterial = { id: string; item: string; quantity: number; unit: string; source: string; status: "Unknown" | "Planned" | "Ordered" | "Supplier confirmed" | "Received" | "Available"; requiredDate: string; forecastDate: string; alternative: string; quoteDate?: string; quoteExpiry?: string; receivedQuantity?: number; availableQuantity?: number; confidence?: "Unknown" | "Planning assumption" | "Supplier confirmed" | "Physically counted" };
 export type DesignPackage = {
   packageId: string; revision: number; scope: string; location: string; systems: string;
+  completionBasis?: { kind: "Measured"; plannedQuantity: number; unit: string } | { kind: "Qualitative"; criterion: string };
   requirementIds: string[]; predecessorIds: string[]; documentRefs: string[];
   materials: string; materialStatus: "Unknown" | "Planned" | "Ordered" | "Supplier confirmed" | "Received" | "Available";
   materialLines?: DesignMaterial[];
@@ -103,6 +104,9 @@ export function assessDesignPackage(work: WorkRecord, packageId: string, at = ne
   const requirements = new Set(designRequirementRefs(work).map((item) => item.id));
   if (detail.requirementIds.some((id) => !requirements.has(id))) add("requirement_reference", "Traceability", "blocker", "A linked requirement is not in the received Define baseline.", "Correct the requirement reference or route a scope change.");
   if (!detail.verification || !detail.proof || !detail.acceptingAuthority) add("verification", "Quality", "unknown", "Measurable verification, required proof, or accepting authority is missing.", "Complete the package verification plan.");
+  if (!detail.completionBasis || (detail.completionBasis.kind === "Measured" && (!(detail.completionBasis.plannedQuantity > 0) || !detail.completionBasis.unit.trim())) ||
+    (detail.completionBasis.kind === "Qualitative" && !detail.completionBasis.criterion.trim()))
+    add("completion_basis", "Quality", "unknown", "The package has no explicit planned quantity or qualitative completion criterion.", "Record how complete scope will be established before release.");
   if (!detail.safetyControls) add("safety", "Safety", "blocker", "Mandatory safety controls are missing.", "Record and review the applicable safety controls.");
   if (policy.requirePermit && !detail.permit) add("permit", "Safety", "blocker", "Required permit disposition is missing.", "Record the applicable permit or an authorized no-permit basis.");
   if (policy.requireAccess && !detail.access || policy.requireMop && !detail.method || policy.requireRollback && !detail.rollback) add("method", "Deployment", "unknown", "Configured access, method of procedure, or rollback basis is incomplete.", "Record the required field method and recovery approach.");

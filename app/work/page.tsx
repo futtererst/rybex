@@ -19,6 +19,7 @@ export const dynamic = "force-dynamic";
 export default async function WorkHomePage({ searchParams }: {
   searchParams?: Promise<{ workspace?: string }>;
 }) {
+  const sourceVersion = process.env.D5O_SOURCE_SHA ?? process.env.VERCEL_GIT_COMMIT_SHA ?? "source-unidentified";
   if (process.env.D5O_HOSTED_ENABLED === "1") {
     if (!hostedD5OTargetReady()) throw new Error("hosted_target_unavailable");
     const client = await createRybexSupabaseServerClient();
@@ -45,7 +46,7 @@ export default async function WorkHomePage({ searchParams }: {
         <strong>Open workspace →</strong>
       </Link>)}</div>
       {!entries.length ? <p role="status">No D5O workspace membership is assigned to this account.</p> : null}
-      <p className={styles.notice}>Synthetic review data only. Actions in this prototype do not grant real business authority or deploy to production.</p>
+      <p className={styles.notice}>Synthetic review data only. Actions in this prototype do not grant real business authority or deploy to production. Build {sourceVersion.slice(0, 12)}.</p>
       <Link className={styles.signout} href="/auth/sign-out">Switch account</Link>
     </main>;
     const permitted = entries.find((entry) => entry.workspaceKey === selected);
@@ -56,7 +57,7 @@ export default async function WorkHomePage({ searchParams }: {
     return <D5OPlatform initialWorkspace={workspace} actorId={userData.user.id} actorRole={permitted.role}
       configurationInventory={hostedSyntheticInventory(workspace)}
       actorLabel={`${userData.user.email ?? "Workspace member"} · ${permitted.role.replaceAll("_", " ")} · synthetic preview`}
-      hostedPreview />;
+      hostedPreview sourceVersion={sourceVersion} />;
   }
   assertProofEnvironment();
   const context = await getRequestContext();
@@ -67,5 +68,5 @@ export default async function WorkHomePage({ searchParams }: {
   if (context.user?.id && await crewPersonForUser(initialWorkspace, context.user.id)) redirect("/work/my-schedule");
   const configurationInventory = await loadConfigurationInventory(context.workspace.id);
   const actorLabel = `${context.profile?.displayName ?? context.user?.name ?? "Workspace member"} · ${context.role?.replaceAll("_", " ") ?? "member"}`;
-  return <D5OPlatform initialWorkspace={initialWorkspace} configurationInventory={configurationInventory} actorLabel={actorLabel} actorRole={context.role} actorId={context.user?.id} />;
+  return <D5OPlatform initialWorkspace={initialWorkspace} configurationInventory={configurationInventory} actorLabel={actorLabel} actorRole={context.role} actorId={context.user?.id} sourceVersion={sourceVersion} />;
 }

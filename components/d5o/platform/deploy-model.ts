@@ -7,13 +7,14 @@ export type DeployActor = { id: string; name: string; membershipId: string; role
 export type DeployEvent = { id: string; commandId: string; fingerprint?: string; at: string; actorId: string; membershipId: string; action: string; packageId?: string; note: string };
 export type StartPermit = { id: string; packageId: string; releaseId: string; packageRevision: number; publicationId: string; scheduleRevision: number; policyVersionId: string; status: "Authorized" | "Held"; at: string; actorId: string; reason: string };
 export type FieldReport = { id: string; revision: number; packageId: string; releaseId: string; bookingId: string; date: string; quantity: number; unit: string; laborHours: number; material: string; summary: string; evidenceIds: string[]; capturedAt: string; receivedAt: string; authorId: string; status: "Draft" | "Submitted" | "Returned" | "Reviewed"; reviewerId?: string; reviewNote?: string; history: Array<{ revision: number; at: string; reason: string }> };
+export type PackageCompletion = { id: string; packageId: string; releaseId: string; packageRevision: number; basis: NonNullable<DesignRelease["snapshot"]["completionBasis"]>; reviewedQuantity: number | null; unit: string | null; reportIds: string[]; inspectionIds: string[]; reviewedAt: string; reviewerId: string; membershipId: string; reason: string };
 export type FieldInspection = { id: string; packageId: string; releaseId: string; reportId: string; requirementId?: string; requirement: string; method: string; result: "Pass" | "Fail"; note: string; evidenceIds: string[]; at: string; actorId: string; status: "Submitted" | "Returned" | "Verified"; reviewerId?: string; reviewNote?: string; supersedesId?: string };
 export type FieldIssue = { id: string; packageId: string; releaseId: string; title: string; impact: string; owner: string; status: "Open" | "Resolved"; evidenceIds: string[]; raisedAt: string; raisedBy: string; resolution?: string; resolvedAt?: string; resolvedBy?: string };
 export type DeployEvidence = { id: string; packageId: string; releaseId: string; purpose: string; caption: string; filename: string; mimeType: string; sizeBytes: number; checksumSha256: string; uploadedAt: string; uploaderId: string; state: "Uploaded" | "Reviewed" | "Rejected"; reviewerId?: string; reviewNote?: string; reviewedAt?: string };
 export type FieldSignoff = { id: string; kind: "Customer report acknowledgment" | "Customer scope acceptance" | "Final client acceptance"; recordId: string; recordRevision: number; releaseIds: string[]; scope: string; statement: string; signerName: string; signerOrganization: string; signerRole: string; method: "Captured on device" | "External source recorded"; authorityBasis: string; source: string; capturedByActorId: string; at: string; outcome: "Acknowledged" | "Accepted" | "Conditional" | "Declined"; conditions: string; snapshot: unknown };
 export type DeployTurnover = { id: string; revision: number; releaseIds: string[]; reportIds: string[]; inspectionIds: string[]; issueIds: string[]; signoffIds: string[]; assembledAt: string; assembledByActorId: string; status: "Draft" | "Conditionally accepted" | "Client accepted"; operateOwner: string; obligations: string; receipt: "Awaiting" | "Accepted" | "Returned" };
 export type WorkAcceptance = { id: string; revision: number; turnoverIds: string[]; releaseIds: string[]; acceptedAt: string; recordedByActorId: string; signerName: string; signerOrganization: string; signerRole: string; authorityBasis: string; source: string; conditions: string; receipt: "Awaiting" | "Accepted" | "Returned"; operateOwner: string; receiptNote?: string; receivedByActorId?: string; receivedAt?: string };
-export type DeployState = { permits: StartPermit[]; reports: FieldReport[]; inspections: FieldInspection[]; issues: FieldIssue[]; evidence: DeployEvidence[]; signoffs: FieldSignoff[]; turnovers: DeployTurnover[]; workAcceptance?: WorkAcceptance; events: DeployEvent[] };
+export type DeployState = { permits: StartPermit[]; reports: FieldReport[]; inspections: FieldInspection[]; issues: FieldIssue[]; evidence: DeployEvidence[]; signoffs: FieldSignoff[]; turnovers: DeployTurnover[]; completions?: PackageCompletion[]; workAcceptance?: WorkAcceptance; events: DeployEvent[] };
 export const emptyDeploy = (): DeployState => ({ permits: [], reports: [], inspections: [], issues: [], evidence: [], signoffs: [], turnovers: [], events: [] });
 export const deployState = (work: WorkRecord): DeployState => work.deploy ?? emptyDeploy();
 
@@ -21,6 +22,47 @@ export function currentAcceptedRelease(work: WorkRecord, packageId: string): Des
   const releases = work.design?.releases.filter((item) => item.packageId === packageId) ?? [];
   const latest = releases.at(-1);
   return latest?.status === "Accepted" ? latest : null;
+}
+
+/** Completion is a reviewed scope fact, separate from a reviewed activity report. */
+export function assessPackageCompletion(work: WorkRecord, packageId: string) {
+  const release = currentAcceptedRelease(work, packageId);
+  const state = deployState(work);
+  const basis = release?.snapshot.completionBasis;
+  const reports = state.reports.filter((item) => item.packageId === packageId && item.releaseId === release?.id && item.status === "Reviewed");
+  const inspections = state.inspections.filter((item) => item.packageId === packageId && item.releaseId === release?.id && item.status === "Verified" && item.result === "Pass");
+  const blockers: string[] = [];
+  if (!release) blockers.push("A current accepted Design release is required.");
+  if (release && work.design?.packages.find((item) => item.packageId === packageId)?.revision !== release.packageRevision)
+    blockers.push("Design detail changed after the accepted release; resolve the field basis before completion.");
+  if (!basis) blockers.push("The released package has no planned quantity or explicit qualitative completion criterion.");
+  if (!reports.length) blockers.push("No independently reviewed field report records the performed work.");
+  if (!inspections.length) blockers.push("No independently verified passing inspection supports completion.");
+  if (state.issues.some((item) => item.packageId === packageId && item.status === "Open")) blockers.push("An open issue remains on this package.");
+  for (const id of release?.snapshot.requirementIds ?? [])
+    if (!inspections.some((item) => item.requirementId === id)) blockers.push(`Requirement ${id} has no verified passing inspection.`);
+  const unresolvedFailure = state.inspections.some((item) => item.packageId === packageId && item.releaseId === release?.id && item.status === "Verified" && item.result === "Fail"
+    && !inspections.some((pass) => pass.supersedesId === item.id && pass.requirementId === item.requirementId));
+  if (unresolvedFailure) blockers.push("A failed inspection has no verified passing retest.");
+  let reviewedQuantity: number | null = null;
+  if (basis?.kind === "Measured") {
+    const mismatched = reports.filter((item) => item.unit.trim().toLowerCase() !== basis.unit.trim().toLowerCase());
+    if (mismatched.length) blockers.push("Reviewed quantities use a unit different from the released plan.");
+    reviewedQuantity = reports.filter((item) => !mismatched.includes(item)).reduce((sum, item) => sum + item.quantity, 0);
+    if (reviewedQuantity < basis.plannedQuantity) blockers.push(`${basis.plannedQuantity - reviewedQuantity} ${basis.unit} of planned scope remains unreported or unreviewed.`);
+  }
+  return { release, basis, reportIds: reports.map((item) => item.id).sort(), inspectionIds: inspections.map((item) => item.id).sort(),
+    reviewedQuantity, remainingQuantity: basis?.kind === "Measured" && reviewedQuantity !== null ? Math.max(0, basis.plannedQuantity - reviewedQuantity) : null,
+    blockers, ready: blockers.length === 0 };
+}
+
+export function currentReviewedCompletion(work: WorkRecord, packageId: string) {
+  const assessed = assessPackageCompletion(work, packageId);
+  const completion = (deployState(work).completions ?? []).filter((item) => item.packageId === packageId).at(-1);
+  if (!completion || !assessed.ready || completion.releaseId !== assessed.release?.id || completion.packageRevision !== assessed.release.packageRevision ||
+    JSON.stringify(completion.basis) !== JSON.stringify(assessed.basis) || completion.reviewedQuantity !== assessed.reviewedQuantity ||
+    JSON.stringify(completion.reportIds) !== JSON.stringify(assessed.reportIds) || JSON.stringify(completion.inspectionIds) !== JSON.stringify(assessed.inspectionIds)) return null;
+  return completion;
 }
 
 export type DeployFinding = { key: string; severity: "blocker" | "unknown" | "warning"; fact: string; source: string; nextAction: string };
@@ -39,8 +81,7 @@ export function assessDeployReadiness(work: WorkRecord, packageId: string, sched
   if (release && work.phaseConfigurationVersionId && release.configurationVersionId !== work.phaseConfigurationVersionId)
     add("policy", "blocker", "Release configuration differs from the Work Record pin.", `Release ${release.id}`, "Reconcile the pinned policy before start.");
   for (const predecessor of detail?.predecessorIds ?? []) {
-    const reviewed = deployState(work).reports.some((report) => report.packageId === predecessor && report.status === "Reviewed");
-    if (!reviewed) add(`predecessor:${predecessor}`, "blocker", `Predecessor ${predecessor} has no reviewed completion report.`, "Deploy reports", "Complete and review predecessor work.");
+    if (!currentReviewedCompletion(work, predecessor)) add(`predecessor:${predecessor}`, "blocker", `Predecessor ${predecessor} has no current reviewed completion and verification against its released scope.`, "Deploy completion", "Review the predecessor's planned scope, actuals and verification.");
   }
   const publication = schedule?.publications.filter((item) => item.assignments.some((assignment) => assignment.workId === work.id && assignment.packageId === packageId)).at(-1);
   const booking = publication?.assignments.find((item) => item.workId === work.id && item.packageId === packageId);
