@@ -4,6 +4,8 @@ import path from "node:path";
 import type { WorkspaceKey } from "@/components/d5o/platform/schedule-model";
 import { assertSnapshotCommercialIntegrity } from "./commercial-command";
 import { assertSnapshotDesignIntegrity } from "./design-command";
+import { assertSnapshotDeployIntegrity } from "./deploy-command";
+import { assertSnapshotOperateIntegrity } from "./operate-command";
 import type { PricingPolicyState } from "@/components/d5o/platform/develop-pricing";
 import { PrototypeWorkError } from "./store-error";
 
@@ -73,6 +75,8 @@ export async function savePrototypeWork(workspace: WorkspaceKey, expectedRevisio
       throw new PrototypeWorkError("stale_state", 409, "Another browser changed this workspace. Refresh before saving again.");
     assertSnapshotCommercialIntegrity(state.records, records);
     assertSnapshotDesignIntegrity(state.records, records);
+    assertSnapshotDeployIntegrity(state.records, records);
+    assertSnapshotOperateIntegrity(state.records, records);
     state.records = records;
     state.revision++;
     await writeUnlocked(workspace, state);
@@ -90,6 +94,26 @@ export async function mutatePrototypeWork(workspace: WorkspaceKey, expectedRevis
     const next = transform(state.records[index], state);
     if (next.id !== workId || next.workspace !== workspace) throw new PrototypeWorkError("invalid_result", 500, "The commercial command changed Work Record identity or workspace.");
     state.records[index] = next;
+    state.revision++;
+    await writeUnlocked(workspace, state);
+    return state;
+  });
+}
+
+export async function mutatePrototypeWorkWithRelated(workspace: WorkspaceKey, expectedRevision: number, workId: string, transform: (record: Record<string, unknown>, records: Record<string, unknown>[]) => { work: Record<string, unknown>; related?: Record<string, unknown>; updatedRelated?: Record<string, unknown> }) {
+  return locked(workspace, async () => {
+    const state = await readUnlocked(workspace) ?? initial(workspace);
+    if (!Number.isInteger(expectedRevision) || expectedRevision !== state.revision) throw new PrototypeWorkError("stale_state", 409, "Another browser changed this workspace. Refresh before deciding.");
+    const index = state.records.findIndex((record) => record.id === workId);
+    if (index < 0) throw new PrototypeWorkError("work_unavailable", 404, "This Work Record is unavailable in the selected workspace.");
+    const changed = transform(state.records[index], state.records);
+    if (changed.work.id !== workId || changed.work.workspace !== workspace) throw new PrototypeWorkError("invalid_result", 500, "Operate changed Work Record identity or workspace.");
+    if (changed.related && (typeof changed.related.id !== "string" || changed.related.workspace !== workspace || state.records.some((item) => item.id === changed.related?.id) || state.records.length >= 100)) throw new PrototypeWorkError("related_work_conflict", 409, "The related Work Record cannot be created in this workspace.");
+    const relatedIndex = changed.updatedRelated ? state.records.findIndex((item) => item.id === changed.updatedRelated?.id) : -1;
+    if (changed.updatedRelated && (relatedIndex < 0 || relatedIndex === index || changed.updatedRelated.workspace !== workspace || (changed.updatedRelated.serviceSource as { parentWorkId?: string } | undefined)?.parentWorkId !== workId || (state.records[relatedIndex].serviceSource as { parentWorkId?: string } | undefined)?.parentWorkId !== workId)) throw new PrototypeWorkError("related_work_conflict", 409, "The linked service Work Record is unavailable or belongs to another source.");
+    state.records[index] = changed.work;
+    if (changed.updatedRelated) state.records[relatedIndex] = changed.updatedRelated;
+    if (changed.related) state.records.push(changed.related);
     state.revision++;
     await writeUnlocked(workspace, state);
     return state;

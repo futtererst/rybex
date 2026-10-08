@@ -235,6 +235,14 @@ export async function respondToPublishedBooking(workspace: WorkspaceKey, actor: 
   return locked(workspace, async () => {
     const state = await readUnlocked(workspace);
     if (!state) throw new ScheduleError("schedule_unavailable", 404, "No shared schedule exists for this workspace.");
+    applyCrewResponse(state, actor, person, input);
+    await writeUnlocked(workspace, state);
+    return state;
+  });
+}
+
+/** Shared validation for file-backed and hosted worker responses. */
+export function applyCrewResponse(state: SharedSchedule, actor: ScheduleActor, person: string, input: CrewResponseMutation): SharedSchedule {
     if (!Number.isInteger(input.expectedRevision) || input.expectedRevision !== state.revision)
       throw new ScheduleError("stale_schedule", 409, "The schedule changed. Refresh before responding.");
     if (input.response !== "acknowledged" && input.response !== "cannot-attend")
@@ -253,7 +261,5 @@ export async function respondToPublishedBooking(workspace: WorkspaceKey, actor: 
       statement: input.response === "acknowledged" ? "Assigned crew member acknowledged this published booking while signed in."
         : "Assigned crew member reported they cannot attend this published booking while signed in; scheduler action required." });
     state.revision++;
-    await writeUnlocked(workspace, state);
     return state;
-  });
 }

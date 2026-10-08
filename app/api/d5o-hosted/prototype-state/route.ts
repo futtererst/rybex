@@ -6,6 +6,8 @@ import { hostedPrototypeContext } from "@/lib/d5o/hosted/prototype-context";
 import { applyPricingPolicyCommand, type PricingPolicyCommand } from "@/lib/d5o/prototype-work/pricing-policy-command";
 import { assertSnapshotCommercialIntegrity } from "@/lib/d5o/prototype-work/commercial-command";
 import { assertSnapshotDesignIntegrity } from "@/lib/d5o/prototype-work/design-command";
+import { assertSnapshotDeployIntegrity } from "@/lib/d5o/prototype-work/deploy-command";
+import { assertSnapshotOperateIntegrity } from "@/lib/d5o/prototype-work/operate-command";
 
 export const dynamic = "force-dynamic";
 
@@ -112,7 +114,7 @@ export async function POST(request: NextRequest) {
   if (prior?.error) return errorReply(prior.error);
   const preserved = (prior?.data as PrototypeResult | null)?.state;
   if (key === "work" && Array.isArray(preserved?.records)) {
-    try { assertSnapshotCommercialIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); assertSnapshotDesignIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); }
+    try { assertSnapshotCommercialIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); assertSnapshotDesignIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); assertSnapshotDeployIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); assertSnapshotOperateIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); }
     catch (error) { return reply({ error: error instanceof Error && "code" in error ? error.code : "protected_state_changed", message: error instanceof Error ? error.message : undefined }, error instanceof Error && "status" in error ? Number(error.status) : 409); }
   }
   const state = key === "work" ? { ...(input.state as Record<string, unknown>), pricingPolicies: preserved?.pricingPolicies ?? [], activePricingPolicy: preserved?.activePricingPolicy ?? null, pricingPolicyHistory: preserved?.pricingPolicyHistory ?? [] } : input.state;

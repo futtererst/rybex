@@ -1,0 +1,73 @@
+import type { WorkRecord } from "./work-types";
+import type { DesignRelease } from "./design-model";
+import type { SharedSchedule } from "./schedule-model";
+import { legacyDeployControlPolicy, type DeployControlPolicy } from "./deploy-policy";
+
+export type DeployActor = { id: string; name: string; membershipId: string; role: string; person?: string | null };
+export type DeployEvent = { id: string; commandId: string; fingerprint?: string; at: string; actorId: string; membershipId: string; action: string; packageId?: string; note: string };
+export type StartPermit = { id: string; packageId: string; releaseId: string; packageRevision: number; publicationId: string; scheduleRevision: number; policyVersionId: string; status: "Authorized" | "Held"; at: string; actorId: string; reason: string };
+export type FieldReport = { id: string; revision: number; packageId: string; releaseId: string; bookingId: string; date: string; quantity: number; unit: string; laborHours: number; material: string; summary: string; evidenceIds: string[]; capturedAt: string; receivedAt: string; authorId: string; status: "Draft" | "Submitted" | "Returned" | "Reviewed"; reviewerId?: string; reviewNote?: string; history: Array<{ revision: number; at: string; reason: string }> };
+export type FieldInspection = { id: string; packageId: string; releaseId: string; reportId: string; requirementId?: string; requirement: string; method: string; result: "Pass" | "Fail"; note: string; evidenceIds: string[]; at: string; actorId: string; status: "Submitted" | "Returned" | "Verified"; reviewerId?: string; reviewNote?: string; supersedesId?: string };
+export type FieldIssue = { id: string; packageId: string; releaseId: string; title: string; impact: string; owner: string; status: "Open" | "Resolved"; evidenceIds: string[]; raisedAt: string; raisedBy: string; resolution?: string; resolvedAt?: string; resolvedBy?: string };
+export type DeployEvidence = { id: string; packageId: string; releaseId: string; purpose: string; caption: string; filename: string; mimeType: string; sizeBytes: number; checksumSha256: string; uploadedAt: string; uploaderId: string; state: "Uploaded" | "Reviewed" | "Rejected"; reviewerId?: string; reviewNote?: string; reviewedAt?: string };
+export type FieldSignoff = { id: string; kind: "Customer report acknowledgment" | "Customer scope acceptance" | "Final client acceptance"; recordId: string; recordRevision: number; releaseIds: string[]; scope: string; statement: string; signerName: string; signerOrganization: string; signerRole: string; method: "Captured on device" | "External source recorded"; authorityBasis: string; source: string; capturedByActorId: string; at: string; outcome: "Acknowledged" | "Accepted" | "Conditional" | "Declined"; conditions: string; snapshot: unknown };
+export type DeployTurnover = { id: string; revision: number; releaseIds: string[]; reportIds: string[]; inspectionIds: string[]; issueIds: string[]; signoffIds: string[]; assembledAt: string; assembledByActorId: string; status: "Draft" | "Conditionally accepted" | "Client accepted"; operateOwner: string; obligations: string; receipt: "Awaiting" | "Accepted" | "Returned" };
+export type WorkAcceptance = { id: string; revision: number; turnoverIds: string[]; releaseIds: string[]; acceptedAt: string; recordedByActorId: string; signerName: string; signerOrganization: string; signerRole: string; authorityBasis: string; source: string; conditions: string; receipt: "Awaiting" | "Accepted" | "Returned"; operateOwner: string; receiptNote?: string; receivedByActorId?: string; receivedAt?: string };
+export type DeployState = { permits: StartPermit[]; reports: FieldReport[]; inspections: FieldInspection[]; issues: FieldIssue[]; evidence: DeployEvidence[]; signoffs: FieldSignoff[]; turnovers: DeployTurnover[]; workAcceptance?: WorkAcceptance; events: DeployEvent[] };
+export const emptyDeploy = (): DeployState => ({ permits: [], reports: [], inspections: [], issues: [], evidence: [], signoffs: [], turnovers: [], events: [] });
+export const deployState = (work: WorkRecord): DeployState => work.deploy ?? emptyDeploy();
+
+export function currentAcceptedRelease(work: WorkRecord, packageId: string): DesignRelease | null {
+  const releases = work.design?.releases.filter((item) => item.packageId === packageId) ?? [];
+  const latest = releases.at(-1);
+  return latest?.status === "Accepted" ? latest : null;
+}
+
+export type DeployFinding = { key: string; severity: "blocker" | "unknown" | "warning"; fact: string; source: string; nextAction: string };
+export type DeployReadiness = { recommendation: "Ready for authorized start" | "Hold for information" | "Hold for resolution" | "Return for Design review"; releaseId: string | null; publicationId: string | null; findings: DeployFinding[] };
+
+/** A deterministic, conservative assessment. Planning and receipt never authorize field work. */
+export function assessDeployReadiness(work: WorkRecord, packageId: string, schedule: SharedSchedule | null, policy: DeployControlPolicy = legacyDeployControlPolicy): DeployReadiness {
+  const findings: DeployFinding[] = [];
+  const add = (key: string, severity: DeployFinding["severity"], fact: string, source: string, nextAction: string) => findings.push({ key, severity, fact, source, nextAction });
+  const release = currentAcceptedRelease(work, packageId);
+  const latestRelease = work.design?.releases.filter((item) => item.packageId === packageId).at(-1);
+  if (!release) add("release", "blocker", latestRelease ? `Latest release is ${latestRelease.status}.` : "No Design release is recorded.", "Design release register", "Receive a current, unheld Design release.");
+  const detail = release?.snapshot;
+  if (release && work.design?.packages.find((item) => item.packageId === packageId)?.revision !== release.packageRevision)
+    add("revision", "blocker", "Design detail has changed since this release.", `Release ${release.id}`, "Resolve the Design change and receive a new release.");
+  if (release && work.phaseConfigurationVersionId && release.configurationVersionId !== work.phaseConfigurationVersionId)
+    add("policy", "blocker", "Release configuration differs from the Work Record pin.", `Release ${release.id}`, "Reconcile the pinned policy before start.");
+  for (const predecessor of detail?.predecessorIds ?? []) {
+    const reviewed = deployState(work).reports.some((report) => report.packageId === predecessor && report.status === "Reviewed");
+    if (!reviewed) add(`predecessor:${predecessor}`, "blocker", `Predecessor ${predecessor} has no reviewed completion report.`, "Deploy reports", "Complete and review predecessor work.");
+  }
+  const publication = schedule?.publications.filter((item) => item.assignments.some((assignment) => assignment.workId === work.id && assignment.packageId === packageId)).at(-1);
+  const booking = publication?.assignments.find((item) => item.workId === work.id && item.packageId === packageId);
+  if (detail?.crewDemandRequired !== false && !booking) add("crew", "blocker", "No published named booking covers this package.", "Shared crew schedule", "Schedule and publish a qualified crew.");
+  if (booking && publication) {
+    const current = schedule?.assignments.find((item) => item.id === booking.id);
+    if (JSON.stringify(current) !== JSON.stringify(booking)) add("booking-changed", "blocker", "The published booking differs from the current plan.", `Publication ${publication.id}`, "Review and republish the change.");
+    const declined = booking.people.filter((person) => schedule?.receipts.some((receipt) => receipt.publicationId === publication.id && receipt.assignmentId === booking.id && receipt.recipient === person && receipt.response === "cannot-attend"));
+    if (declined.length) add("attendance", "blocker", `${declined.join(", ")} cannot attend.`, `Publication ${publication.id}`, "Replace crew members and republish.");
+    if (policy.requireWorkerAcknowledgment) {
+      const awaiting = booking.people.filter((person) => !schedule?.receipts.some((receipt) => receipt.publicationId === publication.id && receipt.assignmentId === booking.id && receipt.recipient === person && receipt.response === "acknowledged"));
+      if (awaiting.length) add("acknowledgment", "blocker", `${awaiting.join(", ")} have not acknowledged this publication.`, `Publication ${publication.id}`, "Ask the workers to respond or replan coverage.");
+    }
+    const minimum = release?.crewDemandSnapshot?.minimumPeople ?? 1;
+    if (booking.people.length < minimum) add("staffing", "blocker", `${booking.people.length} booked; ${minimum} required.`, "Released crew demand", "Cover the remaining positions.");
+  }
+  for (const material of policy.requirePhysicalMaterials ? detail?.materialLines ?? [] : [])
+    if (material.status !== "Available" || (material.availableQuantity ?? 0) < material.quantity)
+      add(`material:${material.id}`, "blocker", `${material.item}: ${material.availableQuantity ?? 0}/${material.quantity} ${material.unit} physically available.`, material.source || "Released material line", "Confirm physical availability or return the package for a controlled change.");
+  if (policy.requirePhysicalMaterials && detail && !detail.materialLines?.length && detail.materialStatus !== "Available")
+    add("materials", "unknown", `Material availability is ${detail.materialStatus.toLowerCase()}.`, "Released package", "Confirm physically available materials.");
+  if (policy.requireAccess && detail && !detail.access?.trim()) add("access", "unknown", "Access authorization is not recorded.", "Released package", "Confirm site access.");
+  if (policy.requirePermit && detail && !detail.permit?.trim()) add("permit", "unknown", "Required permit disposition is not recorded.", "Released package", "Confirm permit approval or return for a controlled exception.");
+  if (detail && !detail.safetyControls?.trim()) add("safety", "blocker", "Mandatory safety controls are missing.", "Released package", "Return to Design/Safety for controls.");
+  if (detail && !detail.method?.trim()) add("method", "blocker", "Issued work method is missing.", "Released package", "Return to Design for an issued method.");
+  for (const issue of deployState(work).issues.filter((item) => item.packageId === packageId && item.status === "Open"))
+    add(`issue:${issue.id}`, "blocker", issue.title, `Deploy issue ${issue.id}`, "Resolve the issue or record an authorized exception.");
+  if (work.blockers.length) add("work-hold", "blocker", work.blockers.join(" · "), "Work Record", "Resolve the controlled Work Record condition.");
+  return { recommendation: findings.some((item) => item.key === "release" || item.key === "revision" || item.key === "safety" || item.key === "method") ? "Return for Design review" : findings.some((item) => item.severity === "blocker") ? "Hold for resolution" : findings.length ? "Hold for information" : "Ready for authorized start", releaseId: release?.id ?? null, publicationId: publication?.id ?? null, findings };
+}

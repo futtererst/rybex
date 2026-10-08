@@ -12,11 +12,17 @@ function load(file, imports = {}) {
 }
 
 const designPolicy = load("../components/d5o/platform/design-policy.ts");
-const base = load("../components/d5o/platform/phase-configuration.ts", { "./design-policy": designPolicy });
-const contract = load("../components/d5o/platform/published-phase-configuration.ts", { "./phase-configuration": base, "./design-policy": designPolicy });
+const deployPolicy = load("../components/d5o/platform/deploy-policy.ts");
+const operatePolicy = load("../components/d5o/platform/operate-policy.ts");
+const base = load("../components/d5o/platform/phase-configuration.ts", { "./design-policy": designPolicy, "./deploy-policy": deployPolicy, "./operate-policy": operatePolicy });
+const contract = load("../components/d5o/platform/published-phase-configuration.ts", { "./phase-configuration": base, "./design-policy": designPolicy, "./deploy-policy": deployPolicy, "./operate-policy": operatePolicy });
 const original = contract.defaultPhaseContract("rybex");
 assert.deepEqual(Array.from(contract.validatePublishedPhaseContract(original, "rybex")), []);
 assert.ok(original.workTypes.every((item) => item.designControls?.requiredReviews.includes("Safety")), "new contracts include Design safety control");
+assert.ok(original.workTypes.every((item) => item.operateControls?.requireExplicitCoverageDisposition), "new contracts include explicit Operate coverage disposition");
+const invalidOperate = structuredClone(original);
+invalidOperate.workTypes[0].operateControls.maxMaintenanceFrequencyDays = 0;
+assert.ok(contract.validatePublishedPhaseContract(invalidOperate, "rybex").length, "invalid maintenance policy cannot publish");
 const invalidDesign = structuredClone(original);
 invalidDesign.workTypes[0].designControls.requiredReviews = ["Delivery"];
 assert.ok(contract.validatePublishedPhaseContract(invalidDesign, "rybex").length, "Design cannot publish without Engineering and Safety review");

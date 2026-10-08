@@ -8,20 +8,21 @@ import type { CrewReceipt, WorkspaceKey } from "@/components/d5o/platform/schedu
 type Booking = { publicationId: string; publishedAt: string; assignmentId: string; crew: string; date?: string; shift: string; workTitle: string; site: string; packageName: string; workId: string; packageId: string; response: CrewReceipt | null };
 type CrewView = { workspace: WorkspaceKey; person: string; revision: number; bookings: Booking[] };
 
-export function CrewScheduleView({ workspace, person }: { workspace: WorkspaceKey; person: string }) {
+export function CrewScheduleView({ workspace, person, hosted = false }: { workspace: WorkspaceKey; person: string; hosted?: boolean }) {
+  const api = hosted ? "/api/d5o-hosted/worker-schedule" : "/api/work/my-schedule";
   const [view, setView] = useState<CrewView | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<{ booking: Booking; response: "acknowledged" | "cannot-attend" } | null>(null);
   const [message, setMessage] = useState("");
   const refresh = useCallback(async () => {
-    const response = await fetch("/api/work/my-schedule", { cache: "no-store" });
+    const response = await fetch(api, { cache: "no-store" });
     if (!response.ok) throw new Error("Your shared bookings could not be loaded. Sign in again or contact the scheduler.");
     const data = await response.json() as CrewView;
     if (data.workspace !== workspace || data.person !== person) throw new Error("Your crew identity changed. Sign in again.");
     setView(data); setError("");
     return data;
-  }, [workspace, person]);
+  }, [workspace, person, api]);
   useEffect(() => { const frame = requestAnimationFrame(() => { void refresh().catch((failure) => setError(failure instanceof Error ? failure.message : "Schedule unavailable.")); }); return () => cancelAnimationFrame(frame); }, [refresh]);
   useEffect(() => {
     const update = () => { if (document.visibilityState === "visible" && !pending && !busy) void refresh().catch((failure) => setError(failure instanceof Error ? failure.message : "Schedule unavailable.")); };
@@ -35,7 +36,7 @@ export function CrewScheduleView({ workspace, person }: { workspace: WorkspaceKe
     setBusy(true); setMessage("");
     try {
       const submit = async (expectedRevision: number) => {
-        const response = await fetch("/api/work/my-schedule", { method: "POST", headers: { "Content-Type": "application/json" },
+        const response = await fetch(api, { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ expectedRevision, publicationId: pending.booking.publicationId,
             assignmentId: pending.booking.assignmentId, response: pending.response }) });
         return { response, data: await response.json() as CrewView & { error?: string; message?: string } };
@@ -65,7 +66,7 @@ export function CrewScheduleView({ workspace, person }: { workspace: WorkspaceKe
       {awaiting > 0 ? <section className="d5o-crew-self-notice" role="status"><strong>{awaiting} shared booking{awaiting === 1 ? "" : "s"} need your response</strong><span>Review the date, shift, site and package below, then accept or decline each booking. Your scheduler will see your response.</span></section> : null}
       {error ? <p className="d5o-crew-self-alert" role="alert">{error}</p> : null}
       {message ? <p className="d5o-crew-self-success" role="status">{message}</p> : null}
-      {!view ? <section className="d5o-crew-self-empty">Loading your schedule…</section> : !bookings.length ? <section className="d5o-crew-self-empty"><h2>No crew bookings yet</h2><p>A booking appears here as soon as your scheduler saves it. A booking does not itself authorize work release.</p></section> : <section className="d5o-crew-self-list" aria-label="Shared crew bookings">{bookings.map((booking) => <article key={`${booking.publicationId}:${booking.assignmentId}`} className={booking.response?.response === "cannot-attend" ? "has-issue" : ""}><div className="d5o-crew-self-date"><strong>{booking.date ? new Date(`${booking.date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" }) : "Day"}</strong><span>{booking.date ?? "Date unavailable"}</span></div><div className="d5o-crew-self-booking"><span className="d5o-crew-self-label">SHARED BOOKING</span><h2>{booking.workTitle}</h2><p>{booking.packageName} · {booking.crew}</p><p>{booking.site} · {booking.shift}</p><small>Shared {new Date(booking.publishedAt).toLocaleString()}</small></div><div className="d5o-crew-self-response">{booking.response ? <><strong>{booking.response.response === "cannot-attend" ? "Declined — scheduler review" : booking.response.source === "carried" ? "Your earlier acceptance still applies" : booking.response.source === "self" ? "Accepted by you" : "Historical coordinator receipt"}</strong><small>{new Date(booking.response.recordedAt).toLocaleString()} · {booking.response.recordedBy.name}</small></> : <><strong>Response needed</strong><button className="is-primary" onClick={() => setPending({ booking, response: "acknowledged" })}>Accept booking</button><button onClick={() => setPending({ booking, response: "cannot-attend" })}>Decline booking</button></>}</div></article>)}</section>}
+      {!view ? <section className="d5o-crew-self-empty">Loading your schedule…</section> : !bookings.length ? <section className="d5o-crew-self-empty"><h2>No crew bookings yet</h2><p>A booking appears here as soon as your scheduler saves it. A booking does not itself authorize work release.</p></section> : <section className="d5o-crew-self-list" aria-label="Shared crew bookings">{bookings.map((booking) => <article key={`${booking.publicationId}:${booking.assignmentId}`} className={booking.response?.response === "cannot-attend" ? "has-issue" : ""}><div className="d5o-crew-self-date"><strong>{booking.date ? new Date(`${booking.date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" }) : "Day"}</strong><span>{booking.date ?? "Date unavailable"}</span></div><div className="d5o-crew-self-booking"><span className="d5o-crew-self-label">SHARED BOOKING</span><h2>{booking.workTitle}</h2><p>{booking.packageName} · {booking.crew}</p><p>{booking.site} · {booking.shift}</p><small>Shared {new Date(booking.publishedAt).toLocaleString()}</small><Link href={`/work/my-schedule/field?booking=${encodeURIComponent(booking.assignmentId)}&publication=${encodeURIComponent(booking.publicationId)}`}>Open assigned work →</Link></div><div className="d5o-crew-self-response">{booking.response ? <><strong>{booking.response.response === "cannot-attend" ? "Declined — scheduler review" : booking.response.source === "carried" ? "Your earlier acceptance still applies" : booking.response.source === "self" ? "Accepted by you" : "Historical coordinator receipt"}</strong><small>{new Date(booking.response.recordedAt).toLocaleString()} · {booking.response.recordedBy.name}</small></> : <><strong>Response needed</strong><button className="is-primary" onClick={() => setPending({ booking, response: "acknowledged" })}>Accept booking</button><button onClick={() => setPending({ booking, response: "cannot-attend" })}>Decline booking</button></>}</div></article>)}</section>}
       <p className="d5o-crew-self-boundary">A schedule booking or acknowledgement does not authorize work release. Check the work package, site access, safety and readiness conditions before execution.</p>
     </div>
     {pending ? <div className="d5o-crew-self-overlay" role="presentation"><section role="dialog" aria-modal="true" aria-label="Confirm schedule response"><span className="d5o-crew-self-label">CONFIRM YOUR RESPONSE</span><h2>{pending.response === "acknowledged" ? "Accept this booking?" : "Decline this booking?"}</h2><p>{pending.booking.crew} · {pending.booking.date} · {pending.booking.shift}</p><p>Your signed-in identity and the exact published revision will be recorded. Your scheduler will see this response. It does not release the work package.</p><div><button onClick={() => setPending(null)} disabled={busy}>Cancel</button><button className="is-primary" disabled={busy} onClick={() => void respond()}>{busy ? "Recording…" : "Confirm response"}</button></div></section></div> : null}

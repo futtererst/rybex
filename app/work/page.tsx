@@ -53,7 +53,7 @@ export default async function WorkHomePage({ searchParams }: {
       return <main className={styles.entry}><h1>Workspace unavailable</h1>
         <p>This account cannot open the requested D5O workspace.</p><Link href="/work">Choose a workspace</Link></main>;
     const workspace = selected as WorkspaceKey;
-    return <D5OPlatform initialWorkspace={workspace}
+    return <D5OPlatform initialWorkspace={workspace} actorId={userData.user.id} actorRole={permitted.role}
       configurationInventory={hostedSyntheticInventory(workspace)}
       actorLabel={`${userData.user.email ?? "Workspace member"} · ${permitted.role.replaceAll("_", " ")} · synthetic preview`}
       hostedPreview />;
@@ -66,6 +66,6 @@ export default async function WorkHomePage({ searchParams }: {
   if (!initialWorkspace) redirect("/auth/sign-in?next=%2Fwork");
   if (context.user?.id && await crewPersonForUser(initialWorkspace, context.user.id)) redirect("/work/my-schedule");
   const configurationInventory = await loadConfigurationInventory(context.workspace.id);
-  const actorLabel = context.role === "admin" ? `${context.profile?.displayName ?? "System Administrator"} · System Administrator` : undefined;
-  return <D5OPlatform initialWorkspace={initialWorkspace} configurationInventory={configurationInventory} actorLabel={actorLabel} />;
+  const actorLabel = `${context.profile?.displayName ?? context.user?.name ?? "Workspace member"} · ${context.role?.replaceAll("_", " ") ?? "member"}`;
+  return <D5OPlatform initialWorkspace={initialWorkspace} configurationInventory={configurationInventory} actorLabel={actorLabel} actorRole={context.role} actorId={context.user?.id} />;
 }

@@ -2,6 +2,8 @@ export type WorkspaceKey = "rybex" | "rotork";
 export type DefinitionSource = { revision: number; configurationVersionId: string; workTypeKey: string; capturedAt: string };
 import type { PricingEvaluation, PricingInput, PricingPolicy } from "./develop-pricing";
 import type { DesignState } from "./design-model";
+import type { DeployState } from "./deploy-model";
+import type { OperateState } from "./operate-model";
 export type DevelopOption = { id: string; revision: number; name: string; approach: string; requirementIds: string[]; unmetRequirements: string; deliveryModel: "Self-perform" | "Subcontract" | "Partner" | "Mixed"; materials: string; resourceBasis: string; scheduleBasis: string; safetyQuality: string; risks: string; evidence: string; owner: string; status: "Draft" | "Viable" | "Rejected"; rejectionReason?: string };
 export type DevelopPlan = { revision: number; options: DevelopOption[]; selectedOptionId?: string; selectionRationale?: string; laborStrategy: string; procurementStrategy: string; scheduleStrategy: string; safetyStrategy: string; qualityStrategy: string; riskMitigation: string; targetDate: string; designOwner: string; review?: { revision: number; status: "Submitted" | "Approved" | "Returned"; dueDate: string; submittedAt: string; submittedByActorId: string; submittedByMembershipId: string; approverRole: "admin" | "operations_leader"; policyId: string; policyVersion: number; decidedAt?: string; decidedByActorId?: string; decidedByMembershipId?: string; note?: string }; history: Array<{ at: string; event: string; note: string }>; revisionHistory?: Array<{ revision: number; at: string; event: string; snapshot: Record<string, unknown> }> };
 export type ProposalStatus = "Not started" | "Draft" | "Internal review" | "Changes requested" | "Approved" | "Submitted";
@@ -101,5 +103,9 @@ export type WorkRecord = {
   definition?: DefinitionRecord;
   develop?: DevelopPlan;
   design?: DesignState;
+  deploy?: DeployState;
+  operate?: OperateState;
+  serviceSource?: { parentWorkId: string; assetIds: string[]; requestId?: string; maintenancePlanId?: string; pricing?: { estimateRevision: number; policyId: string; policyVersion: number; currency: string; amountMinor: number; customerAuthorizationSource: string } };
+  packages?: Array<{ id: string; name: string; owner: string; installed: number; tested: number; accepted: number; status: "planned" | "in progress" | "ready" | "accepted"; acceptanceBasis?: string }>;
   phaseRegisters?: Record<string, Array<Record<string, string>>>;
 };
