@@ -12,7 +12,8 @@ function load(file, dependencies = {}) {
 const deployPolicy = load("components/d5o/platform/deploy-policy.ts");
 const model = load("components/d5o/platform/deploy-model.ts", { "./deploy-policy": deployPolicy });
 const errors = load("lib/d5o/prototype-work/store-error.ts");
-const { applyDeployCommand, assertSnapshotDeployIntegrity } = load("lib/d5o/prototype-work/deploy-command.ts", { "@/components/d5o/platform/deploy-model": model, "@/components/d5o/platform/deploy-policy": deployPolicy, "./store-error": errors });
+const serviceBasis = load("lib/d5o/prototype-work/service-execution-basis.ts");
+const { applyDeployCommand, assertSnapshotDeployIntegrity } = load("lib/d5o/prototype-work/deploy-command.ts", { "@/components/d5o/platform/deploy-model": model, "@/components/d5o/platform/deploy-policy": deployPolicy, "./store-error": errors, "./service-execution-basis": serviceBasis });
 const actor = {
   worker: { id: "worker", name: "Worker", membershipId: "m-worker", role: "field_technician", person: "Alex" },
   otherWorker: { id: "other-worker", name: "Other Worker", membershipId: "m-other-worker", role: "field_technician", person: "Casey" },
@@ -20,6 +21,7 @@ const actor = {
   reviewer: { id: "reviewer", name: "Reviewer", membershipId: "m-reviewer", role: "project_manager" },
   leader: { id: "leader", name: "Leader", membershipId: "m-leader", role: "operations_leader" }
 };
+assert.throws(() => applyDeployCommand({ id: "rybex-service", workspace: "rybex", title: "Service", type: "Lifecycle service", history: [], serviceSource: { parentWorkId: "rybex-parent", requestId: "request-1" } }, { action: "authorize-start", workId: "rybex-service", packageId: "p1", expectedRevision: 1, commandId: "missing-source", note: "Start after authorization" }, actor.supervisor, null), (error) => error.code === "service_basis_blocked");
 const detail = { packageId: "p1", revision: 2, scope: "Certify data hall fiber", location: "Hall A", requirementIds: ["fiber-cert"], predecessorIds: [], completionBasis: { kind: "Measured", plannedQuantity: 12, unit: "m" }, materialLines: [{ id: "m1", item: "Fiber", quantity: 2, availableQuantity: 2, unit: "reel", status: "Available", source: "Count" }], materialStatus: "Available", access: "Authorized", permit: "Approved permit", safetyControls: "Isolation", method: "MOP-1", verification: "Certify every strand", crewDemandRequired: true };
 const release = { id: "release-1", packageId: "p1", packageRevision: 2, configurationVersionId: "pin-1", status: "Accepted", snapshot: detail, crewDemandSnapshot: { minimumPeople: 1 }, documentRefs: ["doc@1"], sourceSnapshot: null };
 let work = { id: "w1", workspace: "rybex", title: "Fiber", type: "Technical delivery", customer: "Customer", site: "Hall A", owner: "PM", stage: "Deploy", nextAction: "Execute", progress: 0, value: "", status: "moving", proof: [], blockers: [], history: [], packages: [{ id: "p1", name: "Fiber" }], phaseConfigurationVersionId: "pin-1", design: { releases: [release], packages: [detail], documents: [], reviews: [], history: [] } };

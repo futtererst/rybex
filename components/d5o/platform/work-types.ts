@@ -106,7 +106,7 @@ export type WorkRecord = {
   design?: DesignState;
   deploy?: DeployState;
   operate?: OperateState;
-  serviceSource?: { parentWorkId: string; assetIds: string[]; requestId?: string; maintenancePlanId?: string; pricing?: { estimateRevision: number; policyId: string; policyVersion: number; currency: string; amountMinor: number; customerAuthorizationSource: string } };
+  serviceSource?: { parentWorkId: string; assetIds: string[]; requestId?: string; requestCycleAt?: string; coverage?: "Covered" | "Partially covered" | "Chargeable"; maintenancePlanId?: string; pricing?: { estimateRevision: number; policyId: string; policyVersion: number; currency: string; amountMinor: number; customerAuthorizationSource: string } };
   packages?: Array<{ id: string; name: string; owner: string; installed: number; tested: number; accepted: number; status: "planned" | "in progress" | "ready" | "accepted"; acceptanceBasis?: string }>;
   phaseRegisters?: Record<string, Array<Record<string, string>>>;
 };

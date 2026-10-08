@@ -3,6 +3,7 @@ import type { PackageCrewDemand } from "@/components/d5o/platform/schedule-model
 import { assessDesignPackage, designRequirementRefs, designState, documentRef, forecastDesignPackage, type DesignDocument, type DesignMaterial, type DesignPackage, type DesignReview, type DesignRelease } from "@/components/d5o/platform/design-model";
 import { PrototypeWorkError } from "./store-error";
 import { legacyDesignControlPolicy, type DesignControlPolicy } from "@/components/d5o/platform/design-policy";
+import { serviceExecutionBasisIssue } from "./service-execution-basis";
 
 export type DesignCommand = {
   action: "save-document" | "submit-document" | "approve-document" | "issue-document" | "save-package" | "request-review" | "decide-review" | "record-customer-approval" | "record-change" | "resolve-change" | "acknowledge-hold" | "release-package" | "release-set" | "respond-receipt" | "withdraw-release";
@@ -45,7 +46,7 @@ function validatePredecessors(state: ReturnType<typeof designState>, id: string,
   if (predecessors.some((item) => visit(item, new Set([item])))) fail("cyclic_dependency", "Package dependencies cannot form a cycle.", 400);
 }
 
-export function applyDesignCommand(work: WorkRecord, command: DesignCommand, actor: DesignActor, crewDemand: PackageCrewDemand | null = null, policy: DesignControlPolicy = legacyDesignControlPolicy, allDemands: PackageCrewDemand[] = []): WorkRecord {
+export function applyDesignCommand(work: WorkRecord, command: DesignCommand, actor: DesignActor, crewDemand: PackageCrewDemand | null = null, policy: DesignControlPolicy = legacyDesignControlPolicy, allDemands: PackageCrewDemand[] = [], relatedWork: WorkRecord[] = []): WorkRecord {
   if (!editable.has(actor.role) || !actor.id || !actor.membershipId) fail("design_role_denied", "This membership cannot edit Design.", 403);
   if (!(["record-change", "acknowledge-hold"] as string[]).includes(command.action)) requireReceived(work);
   if (!command.commandId || command.commandId.length > 100) fail("invalid_command", "A command identity is required.", 400);
@@ -158,6 +159,8 @@ export function applyDesignCommand(work: WorkRecord, command: DesignCommand, act
     change.status = "Resolved"; change.resolvedAt = now; change.resolvedByActorId = actor.id; change.resolution = note;
     record("Design change resolved against revised package", change.packageId, target.revision);
   } else if (command.action === "release-package" || command.action === "release-set") {
+    const serviceIssue = serviceExecutionBasisIssue(work, relatedWork);
+    if (serviceIssue) fail("service_basis_blocked", serviceIssue);
     if (!delivery.has(actor.role)) fail("release_role_denied", "Delivery release requires an authorized workspace membership.", 403);
     if (!date(command.dueDate) || !clean(command.receivingOwner)) fail("receiver_required", "Set the receiving owner and receipt deadline.", 400);
     const sharedIds = packageIds(work);

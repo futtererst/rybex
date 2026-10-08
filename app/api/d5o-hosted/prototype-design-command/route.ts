@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     const work = records[index] as WorkRecord;
     const config = resolvePublishedPhaseConfiguration(hostedSyntheticInventory(workspace as WorkRecord["workspace"]), work.workspace, work.type, work);
     if (work.discovery?.pursuitControl && !config) return reply({ error: "design_policy_unavailable" }, 409);
-    const next = applyDesignCommand(work, command, context.actor, crewDemand, config?.designControls, schedule?.packageDemands ?? []);
+    const next = applyDesignCommand(work, command, context.actor, crewDemand, config?.designControls, schedule?.packageDemands ?? [], records as WorkRecord[]);
     const saved = await context.save("work", loaded.revision, { ...loaded.state, revision: loaded.revision + 1, records: records.map((item, i) => i === index ? next : item) });
     return reply({ state: { ...saved.state, revision: saved.revision }, synthetic: true });
   } catch (error) {

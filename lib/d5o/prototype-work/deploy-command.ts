@@ -3,6 +3,7 @@ import type { SharedSchedule } from "@/components/d5o/platform/schedule-model";
 import { assessDeployReadiness, assessPackageCompletion, currentAcceptedRelease, currentReviewedCompletion, deployState, type DeployActor, type FieldReport } from "@/components/d5o/platform/deploy-model";
 import { legacyDeployControlPolicy, type DeployControlPolicy } from "@/components/d5o/platform/deploy-policy";
 import { PrototypeWorkError } from "./store-error";
+import { serviceExecutionBasisIssue } from "./service-execution-basis";
 
 export type DeployCommand = {
   action: "authorize-start" | "hold" | "resume" | "save-report" | "submit-report" | "review-report" | "review-completion" | "record-inspection" | "review-inspection" | "raise-prestart-concern" | "raise-issue" | "resolve-issue" | "attach-evidence" | "review-evidence" | "capture-customer-signoff" | "assemble-turnover" | "accept-client" | "accept-work" | "respond-operate" | "respond-operate-work";
@@ -26,7 +27,7 @@ const list = (value: unknown) => Array.isArray(value) ? [...new Set(value.filter
 export const deployCommandFingerprint = (command: DeployCommand) => JSON.stringify(Object.entries(command).sort(([left], [right]) => left.localeCompare(right)));
 export type DeployUpload = { id: string; filename: string; mimeType: string; sizeBytes: number; checksumSha256: string };
 
-export function applyDeployCommand(work: WorkRecord, command: DeployCommand, actor: DeployActor, schedule: SharedSchedule | null, upload?: DeployUpload, policy: DeployControlPolicy = legacyDeployControlPolicy): WorkRecord {
+export function applyDeployCommand(work: WorkRecord, command: DeployCommand, actor: DeployActor, schedule: SharedSchedule | null, upload?: DeployUpload, policy: DeployControlPolicy = legacyDeployControlPolicy, relatedWork: WorkRecord[] = []): WorkRecord {
   if (!actor.id || !actor.membershipId || !command.commandId || command.commandId.length > 100) fail("invalid_command", "An authenticated actor and command identity are required.", 400);
   const state = structuredClone(deployState(work)), now = new Date().toISOString(), note = clean(command.note);
   state.evidence ??= [];
@@ -62,6 +63,8 @@ export function applyDeployCommand(work: WorkRecord, command: DeployCommand, act
     return permit;
   };
   if (["authorize-start", "resume"].includes(command.action)) {
+    const serviceIssue = serviceExecutionBasisIssue(work, relatedWork);
+    if (serviceIssue) fail("service_basis_blocked", serviceIssue);
     requireManager();
     const readiness = assessDeployReadiness(work, pkg, schedule, policy);
     if (readiness.recommendation !== "Ready for authorized start" || !readiness.releaseId || (release?.snapshot.crewDemandRequired !== false && !readiness.publicationId)) fail("start_blocked", readiness.findings[0]?.fact ?? "Field readiness is incomplete.");
@@ -74,7 +77,7 @@ export function applyDeployCommand(work: WorkRecord, command: DeployCommand, act
     if (!actor.person && !manager.has(actor.role)) fail("hold_role_denied", "An assigned worker or field leader must report a stop.", 403);
     if (actor.person && !schedule?.publications.some((publication) => publication.assignments.some((assignment) => assignment.workId === work.id && assignment.packageId === pkg && assignment.people.includes(actor.person!)))) fail("assignment_required", "This worker is not assigned to the package.", 403);
     const permit = currentPermit(); if (!permit || permit.status !== "Authorized" || note.length < 10) fail("hold_incomplete", "An active start and a reason are required to hold work.", 400);
-    permit.status = "Held"; event("Field work held");
+    permit.status = "Held"; permit.heldAt = now; event("Field work held");
   } else if (command.action === "save-report") {
     const { assignment } = booking();
     const factualRelease = release ?? work.design?.releases.filter((item) => item.packageId === pkg && ["Held", "Hold pending acknowledgment", "Withdrawn"].includes(item.status)).at(-1);
@@ -88,6 +91,8 @@ export function applyDeployCommand(work: WorkRecord, command: DeployCommand, act
     if (prior) state.reports = state.reports.map((item) => item.id === prior.id ? data : item); else state.reports.push(data);
     event("Field report draft saved");
   } else if (command.action === "submit-report") {
+    const serviceIssue = serviceExecutionBasisIssue(work, relatedWork);
+    if (serviceIssue) fail("service_basis_blocked", serviceIssue);
     const report = state.reports.find((item) => item.id === command.reportId && item.packageId === pkg);
     if (!report || report.status !== "Draft" || report.authorId !== actor.id) fail("report_submit_denied", "Only the report author can submit their draft.", 403);
     requireStart(); report.status = "Submitted"; event("Field report submitted");
@@ -144,7 +149,7 @@ export function applyDeployCommand(work: WorkRecord, command: DeployCommand, act
     const factualRelease = release ?? work.design?.releases.filter((item) => item.packageId === pkg && ["Held", "Hold pending acknowledgment", "Withdrawn"].includes(item.status)).at(-1);
     if (!factualRelease || !clean(command.title) || !clean(command.owner)) fail("issue_incomplete", "A historical released basis, issue and owner are required.", 400);
     state.issues.push({ id: crypto.randomUUID(), kind: "Field issue", packageId: pkg, releaseId: factualRelease.id, title: clean(command.title, 200), impact: clean(command.impact), owner: clean(command.owner, 100), status: "Open", evidenceIds: evidenceIds(), raisedAt: now, raisedBy: actor.id });
-    const permit = currentPermit(); if (permit?.status === "Authorized") permit.status = "Held";
+    const permit = currentPermit(); if (permit?.status === "Authorized") { permit.status = "Held"; permit.heldAt = now; }
     event("Field issue raised and active work held");
   } else if (command.action === "resolve-issue") {
     requireManager(); const issue = state.issues.find((item) => item.id === command.issueId && item.packageId === pkg && item.status === "Open");

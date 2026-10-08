@@ -83,6 +83,10 @@ serviceWork.deploy.permits.push({ packageId: "pkg-1", releaseId: "release-1", at
 serviceWork.deploy.reports[0].capturedAt = "2026-10-08T08:30:00Z";
 rejects({ action: "link-execution", id: work.operate.jobs[0].id }, "execution_unreviewed");
 serviceWork.deploy.reports[0].capturedAt = "2026-10-08T09:30:00Z";
+serviceWork.deploy.permits[0].status = "Held";
+serviceWork.deploy.permits[0].heldAt = "2026-10-08T09:15:00Z";
+rejects({ action: "link-execution", id: work.operate.jobs[0].id }, "execution_unreviewed");
+serviceWork.deploy.permits[0].heldAt = "2026-10-08T09:45:00Z";
 send({ action: "link-execution", id: work.operate.jobs[0].id });
 assert.equal(work.operate.requests[0].status, "In progress", "linking a report does not resolve the request");
 assert.equal(work.operate.assets[0].history.at(-1).source, `${serviceWork.id}:report:report-1:r1`, "asset history retains exact reviewed report revision");

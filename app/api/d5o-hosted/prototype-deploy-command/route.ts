@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     const work = records[index] as WorkRecord;
     const config = resolvePublishedPhaseConfiguration(hostedSyntheticInventory(workspace as WorkRecord["workspace"]), work.workspace, work.type, work);
     if (work.phaseConfigurationVersionId && !config) return reply({ error: "deploy_policy_unavailable" }, 409);
-    const next = applyDeployCommand(work, command, actor, schedule, undefined, config?.deployControls);
+    const next = applyDeployCommand(work, command, actor, schedule, undefined, config?.deployControls, records as WorkRecord[]);
     const saved = await context.save("work", loaded.revision, { ...loaded.state, revision: loaded.revision + 1, records: records.map((item, i) => i === index ? next : item) });
     return reply({ state: { ...saved.state, revision: saved.revision }, synthetic: true });
   } catch (error) {
@@ -77,7 +77,7 @@ export async function PUT(request: NextRequest) {
     const uploaded = await admin.storage.from(bucket).upload(uploadedPath, bytes, { contentType: file.type, upsert: false });
     if (uploaded.error) throw new HostedStateError("evidence_storage_unavailable", 503);
     const command: DeployCommand = { action: "attach-evidence", workId, packageId, bookingId, expectedRevision, commandId: randomUUID(), purpose, caption };
-    const next = applyDeployCommand(work, command, { ...context.actor, person: null }, scheduleResult.state as SharedSchedule | null, { id, filename: file.name.slice(0, 200), mimeType: file.type, sizeBytes: bytes.length, checksumSha256: createHash("sha256").update(bytes).digest("hex") }, config?.deployControls);
+    const next = applyDeployCommand(work, command, { ...context.actor, person: null }, scheduleResult.state as SharedSchedule | null, { id, filename: file.name.slice(0, 200), mimeType: file.type, sizeBytes: bytes.length, checksumSha256: createHash("sha256").update(bytes).digest("hex") }, config?.deployControls, records);
     const saved = await context.save("work", loaded.revision, { ...loaded.state, revision: loaded.revision + 1, records: records.map((item, i) => i === index ? next : item) });
     return reply({ evidenceId: id, state: { ...saved.state, revision: saved.revision }, synthetic: true });
   } catch (error) {

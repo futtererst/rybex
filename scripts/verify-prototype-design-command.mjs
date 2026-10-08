@@ -18,12 +18,14 @@ function source(relative, dependencies = {}) {
 const policy = source("components/d5o/platform/design-policy.ts");
 const model = source("components/d5o/platform/design-model.ts", { "./design-policy": policy });
 const errors = source("lib/d5o/prototype-work/store-error.ts");
-const { applyDesignCommand, assertSnapshotDesignIntegrity } = source("lib/d5o/prototype-work/design-command.ts", { "@/components/d5o/platform/design-model": model, "@/components/d5o/platform/design-policy": policy, "./store-error": errors });
+const serviceBasis = source("lib/d5o/prototype-work/service-execution-basis.ts");
+const { applyDesignCommand, assertSnapshotDesignIntegrity } = source("lib/d5o/prototype-work/design-command.ts", { "@/components/d5o/platform/design-model": model, "@/components/d5o/platform/design-policy": policy, "./store-error": errors, "./service-execution-basis": serviceBasis });
 const actors = {
   engineer: { id: "engineer", name: "Engineer", membershipId: "m-engineer", role: "project_manager" },
   reviewer: { id: "reviewer", name: "Reviewer", membershipId: "m-reviewer", role: "operations_leader" },
   receiver: { id: "receiver", name: "Receiver", membershipId: "m-receiver", role: "field_supervisor" }
 };
+assert.throws(() => applyDesignCommand({ id: "rybex-service", workspace: "rybex", title: "Service", type: "Lifecycle service", history: [], serviceSource: { parentWorkId: "rybex-parent", requestId: "request-1" } }, { action: "release-package", workId: "rybex-service", expectedRevision: 1, commandId: "missing-source", packageId: "p1", receivingOwner: "Receiver", dueDate: "2026-10-31" }, actors.engineer), (error) => error.code === "service_basis_blocked");
 const pin = "configuration-v1";
 let work = {
   id: "work-1", workspace: "rybex", type: "Technical delivery", title: "Synthetic data hall", customer: "Customer", site: "Site", owner: "Engineer", status: "moving", history: [],
