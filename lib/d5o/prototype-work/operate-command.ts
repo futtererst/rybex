@@ -204,6 +204,12 @@ export function applyOperateCommand(work: WorkRecord, all: WorkRecord[], command
     requireManager(); const job = state.jobs.find((item) => item.id === command.id);
     const execution = all.find((item) => item.id === job?.workId && item.workspace === work.workspace && item.serviceSource?.parentWorkId === work.id && item.serviceSource.requestId === job?.requestId && item.serviceSource.maintenancePlanId === job?.planId && job.assetIds.every((id) => item.serviceSource?.assetIds.includes(id)));
     if (!job || !execution || !execution.deploy) fail("execution_missing", "The linked service Work Record has no Deploy execution history.");
+    if (job.requestId) {
+      const sourceRequest = state.requests.find((item) => item.id === job.requestId);
+      if (!sourceRequest || !(sourceRequest.currentCycleJobIds ?? sourceRequest.jobIds).includes(job.id)
+        || execution.serviceSource?.requestCycleAt !== (sourceRequest.reopenedAt ?? sourceRequest.reportedAt))
+        fail("service_cycle_stale", "This visit belongs to an earlier request cycle. Preserve its history and generate current-cycle work.");
+    }
     if (job.status === "Completed") fail("execution_already_linked", "This completed visit already has a retained execution basis.");
     const reviewed = execution.deploy.reports.filter((report) => {
       if (report.status !== "Reviewed") return false;
@@ -223,6 +229,12 @@ export function applyOperateCommand(work: WorkRecord, all: WorkRecord[], command
     if (!job || job.status !== "Execution linked" || !job.evidence.length || job.linkedByActorId === actor.id || reason.length < 10) fail("job_completion_invalid", "A different operations authority must review linked execution and record completion basis.");
     const execution = all.find((item) => item.id === job.workId && item.workspace === work.workspace && item.serviceSource?.parentWorkId === work.id);
     if (!execution) fail("execution_missing", "The service Work Record is unavailable for completion review.");
+    if (job.requestId) {
+      const sourceRequest = state.requests.find((item) => item.id === job.requestId);
+      if (!sourceRequest || !(sourceRequest.currentCycleJobIds ?? sourceRequest.jobIds).includes(job.id)
+        || execution.serviceSource?.requestCycleAt !== (sourceRequest.reopenedAt ?? sourceRequest.reportedAt))
+        fail("service_cycle_stale", "An earlier service visit cannot complete the reopened request's current cycle.");
+    }
     const packageIds = [...new Set(execution.design?.releases.map((item) => item.packageId) ?? [])];
     if (!packageIds.length) fail("job_scope_incomplete", "The service job has no released package scope to complete.");
     const completions = packageIds.map((packageId) => {
