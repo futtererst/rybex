@@ -1,0 +1,13 @@
+.panel { width: 100%; box-sizing: border-box; margin-top: 20px; padding: 22px; background: #fff; border: 1px solid #d3dfe7; border-radius: 8px; color: #0d344c; }
+.heading p { margin: 0 0 6px; color: #946900; font-size: 11px; font-weight: 800; letter-spacing: .1em; }
+.heading h2 { margin: 0 0 5px; font-size: 24px; font-family: Georgia, serif; }
+.heading span, .panel small { color: #476479; font-size: 13px; }
+.form { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin: 18px 0 12px; }
+.form label { display: grid; gap: 5px; min-width: 220px; flex: 1; font-size: 12px; font-weight: 700; }
+.form input, .form select { min-height: 40px; padding: 8px 10px; border: 1px solid #bed0dc; border-radius: 5px; color: #0d344c; background: #fff; font: inherit; }
+.form button { min-height: 40px; padding: 8px 16px; border: 0; border-radius: 5px; background: #d9ad2e; color: #092d43; font-weight: 800; cursor: pointer; }
+.form button:disabled { opacity: .6; cursor: wait; }
+.members { display: grid; gap: 6px; margin: 10px 0 14px; }
+.members > div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid #e4ebef; font-size: 13px; }
+.members span { color: #476479; text-align: right; }
+@media (max-width: 700px) { .panel { padding: 16px; } .members > div { flex-direction: column; gap: 3px; } .members span { text-align: left; } }

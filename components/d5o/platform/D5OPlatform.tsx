@@ -10,6 +10,7 @@ import { WorkspaceStudio } from "./WorkspaceStudio";
 import { DecisionBoard } from "./DecisionBoard";
 import type { DecisionQueueContext } from "./decision-queue-context";
 import { PeopleCapacityBoard } from "./PeopleCapacityBoard";
+import { MemberAccessPanel } from "./MemberAccessPanel";
 import { EvidenceLibrary } from "./EvidenceLibrary";
 import { PlatformIcon, type PlatformIconName } from "./PlatformIcon";
 import { PlatformWordmark } from "./PlatformWordmark";
@@ -877,6 +878,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       {screen === "decisions" ? <DecisionBoard hostedWorkspace={hostedPreview ? activeWorkspace : undefined} work={visibleWork.map((item) => ({ ...item, readinessBlockers: getBlockers(item) }))} getDecisionContext={getDecisionContext} onOpen={(item) => { const record = visibleWork.find((entry) => entry.id === item.id) ?? (item as Work & { source?: Work }).source ?? item; selectWorkRecord(record); setTab(getDecisionContext(record).target); go("record"); }} /> : null}
       {screen === "crew" ? <CrewPlanningBoard workspaceKey={activeWorkspace} work={operationalWork} profiles={schedulingProfiles} shared={sharedSchedule} entryFocus={crewEntry} focusWorkId={crewFocusWorkId} onOpen={(item) => { const record = visibleWork.find((candidate) => candidate.id === item.id); if (record) { setSelectedId(record.id); setTab("Design"); go("record"); } }} onOpenDecision={(item) => { const record = visibleWork.find((candidate) => candidate.id === item.id); if (record) { setSelectedId(record.id); setTab(getBlockers(record).length ? conditionTargetTab(record, getBlockers(record)) : "Readiness"); go("record"); } }} /> : null}
       {screen === "people" ? <PeopleCapacityBoard workspaceKey={activeWorkspace} work={operationalWork} profiles={schedulingProfiles} assignments={scheduleAssignments} weekIndex={scheduleWeek} anchorDate={sharedSchedule.schedule?.anchorDate ?? ""} availabilityBlocks={availabilityBlocks} packageDemands={sharedSchedule.schedule?.packageDemands ?? []} onAvailabilityChange={(blocks) => sharedSchedule.mutate({ action: "save-availability", availabilityBlocks: blocks }).then(() => undefined)} onSchedule={() => go("crew")} /> : null}
+      {screen === "people" && hostedPreview && actorRole === "admin" ? <MemberAccessPanel workspace={activeWorkspace} /> : null}
       {screen === "execution" ? <ExecutionFactsBoard workspaceName={palette.name} work={operationalWork as WorkRecord[]} schedule={sharedSchedule.schedule} onOpen={(item) => { setSelectedId(item.id); setTab("Deploy"); go("record"); }} onSchedule={() => go("crew")} /> : null}
       {screen === "handoff" ? <HandoffControlBoard workspaceName={palette.name} work={operationalWork} onOpen={(item) => { setSelectedId(item.id); setTab("Handoff"); go("record"); }} /> : null}
       {screen === "library" ? <EvidenceLibrary work={visibleWork} onOpen={(item) => { setSelectedId(item.id); setTab("Evidence"); go("record"); }} /> : null}
