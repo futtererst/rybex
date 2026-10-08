@@ -113,11 +113,16 @@ export async function POST(request: NextRequest) {
   const scope = await scoped(workspace);
   if (!scope.call) return reply({ error: scope.error }, scope.status);
   if (!scope.canEdit) return reply({ error: "workspace_forbidden" }, 403);
-  const prior = key === "work" ? await scope.call("d5o_hosted_prototype_read_v1", { p_workspace_key: workspace, p_state_key: "work" }) : null;
+  const [prior, catalog] = await Promise.all([
+    scope.call("d5o_hosted_prototype_read_v1", { p_workspace_key: workspace, p_state_key: "work" }),
+    scope.call("d5o_hosted_prototype_read_v1", { p_workspace_key: workspace, p_state_key: "catalog" })
+  ]);
   if (prior?.error) return errorReply(prior.error);
+  if (catalog.error) return errorReply(catalog.error);
   const preserved = (prior?.data as PrototypeResult | null)?.state;
+  const catalogRecords = ((catalog.data as PrototypeResult | null)?.state?.records ?? []) as Record<string, unknown>[];
   if (key === "work" && Array.isArray(preserved?.records)) {
-    try { assertSnapshotCommercialIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); assertSnapshotDefineIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); assertSnapshotDesignIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); assertSnapshotDeployIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); assertSnapshotOperateIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); assertSnapshotPositionIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); }
+    try { assertSnapshotCommercialIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); assertSnapshotDefineIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); assertSnapshotDesignIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); assertSnapshotDeployIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); assertSnapshotOperateIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); assertSnapshotPositionIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records, catalogRecords); }
     catch (error) { return reply({ error: error instanceof Error && "code" in error ? error.code : "protected_state_changed", message: error instanceof Error ? error.message : undefined }, error instanceof Error && "status" in error ? Number(error.status) : 409); }
   }
   const state = key === "work" ? { ...(input.state as Record<string, unknown>), pricingPolicies: preserved?.pricingPolicies ?? [], activePricingPolicy: preserved?.activePricingPolicy ?? null, pricingPolicyHistory: preserved?.pricingPolicyHistory ?? [] } : input.state;

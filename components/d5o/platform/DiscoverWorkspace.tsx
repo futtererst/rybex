@@ -67,7 +67,7 @@ export function DiscoverWorkspace({ mode = "discover", workspaceKey, workspaceNa
   onProposalQueued: () => void;
   onCommercialCommand: (command: Omit<CommercialCommand, "expectedRevision">) => Promise<boolean>;
   onUpdate: (id: string, transform: (current: WorkRecord) => WorkRecord) => void;
-  onCreate: (record: WorkRecord) => void;
+  onCreate: (record: WorkRecord) => Promise<string>;
   onNotice: (message: string) => void;
   onPolicyUpdated?: () => Promise<void>;
   onPeople?: () => void;
@@ -194,8 +194,8 @@ export function DiscoverWorkspace({ mode = "discover", workspaceKey, workspaceNa
     if (awaitingIntake) {
       onUpdate(awaitingIntake.id, (current) => {
         if (current.discovery || current.phaseConfigurationVersionId !== phaseConfigurationVersionId) return current;
-        return { ...current, stage: "Intake & Shape", nextAction: "Qualify customer need", nextActionDue: discovery.closeDate || null,
-          nextActionImpact: "High", progress: Math.max(current.progress, 5), discovery,
+        return { ...current, nextAction: "Qualify customer need", nextActionDue: discovery.closeDate || null,
+          nextActionImpact: "High", discovery,
           history: [`${new Date().toLocaleString()} · Discover intake started on existing Work Record from ${discovery.source}`, ...current.history] };
       });
       setFilter("All active"); setSearch(""); setDrawer(null);
@@ -209,7 +209,11 @@ export function DiscoverWorkspace({ mode = "discover", workspaceKey, workspaceNa
       nextAction: "Qualify customer need", nextActionDue: discovery.closeDate || null, nextActionImpact: "High", progress: 5,
       value: "Unpriced", status: "moving", proof: [], blockers: [], history: [`${new Date().toLocaleString()} · Pursuit captured from ${discovery.source}`], discovery,
     };
-    onCreate(record); onSelect(id); setFilter("All active"); setSearch(""); setDrawer(null); onNotice("Pursuit prepared as a new Work Record; awaiting shared local save before qualification.");
+    try {
+      const createdId = await onCreate(record);
+      onSelect(createdId); setFilter("All active"); setSearch(""); setDrawer(null);
+      onNotice("Opportunity captured on one shared Work Record. Complete qualification before requesting a pursuit decision.");
+    } catch (error) { onNotice(error instanceof Error ? error.message : "The opportunity could not be captured."); }
   }
   function saveEstimate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
