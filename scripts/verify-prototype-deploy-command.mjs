@@ -103,6 +103,14 @@ send({ action: "accept-client", packageId: "p1", turnoverId: turnover.id, signer
 assert.equal(turnover.status, "Draft");
 assert.equal(work.deploy.turnovers.at(-1).status, "Client accepted");
 assert.equal(work.deploy.signoffs.at(-1).kind, "Customer scope acceptance");
+const partialDelivery = structuredClone(work);
+const secondDetail = { ...detail, packageId: "p2", revision: 1, scope: "Certify second fiber route", location: "Hall B", predecessorIds: ["p1"], completionBasis: { kind: "Measured", plannedQuantity: 8, unit: "m" } };
+partialDelivery.packages.push({ id: "p2", name: "Second fiber route" });
+partialDelivery.design.packages.push(secondDetail);
+partialDelivery.design.releases.push({ ...release, id: "release-2", packageId: "p2", packageRevision: 1, snapshot: secondDetail });
+assert.equal(model.currentReviewedCompletion(partialDelivery, "p1")?.reviewedQuantity, 12, "The first package retains reviewed delivery");
+assert.equal(model.currentReviewedCompletion(partialDelivery, "p2"), null, "An unreported second package remains incomplete");
+assert.throws(() => applyDeployCommand(partialDelivery, { action: "accept-work", workId: "w1", packageId: "p1", signerName: "Customer", signerOrganization: "Owner", signerRole: "Director", authorityBasis: "Delegation", source: "final.pdf", expectedRevision: serial + 1, commandId: "partial-work-acceptance" }, actor.reviewer, schedule), (error) => error.code === "work_acceptance_blocked", "Accepted first-package scope must not imply whole-work acceptance");
 rejects({ action: "accept-work", packageId: "p1", signerName: "Customer", signerOrganization: "Owner", signerRole: "Director", authorityBasis: "Delegation", source: "final.pdf" }, "acceptance_independence", { ...actor.supervisor, role: "project_manager" });
 send({ action: "accept-work", packageId: "p1", signerName: "Customer", signerOrganization: "Owner", signerRole: "Director", authorityBasis: "Delegation", source: "final.pdf" }, actor.reviewer);
 assert.equal(work.deploy.signoffs.at(-1).kind, "Final client acceptance");
