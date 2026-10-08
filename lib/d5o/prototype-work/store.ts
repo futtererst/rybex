@@ -7,6 +7,7 @@ import { assertSnapshotDefineIntegrity } from "./define-command";
 import { assertSnapshotDesignIntegrity } from "./design-command";
 import { assertSnapshotDeployIntegrity } from "./deploy-command";
 import { assertSnapshotOperateIntegrity } from "./operate-command";
+import { assertSnapshotPositionIntegrity } from "./position-integrity";
 import type { PricingPolicyState } from "@/components/d5o/platform/develop-pricing";
 import { PrototypeWorkError } from "./store-error";
 
@@ -79,6 +80,7 @@ export async function savePrototypeWork(workspace: WorkspaceKey, expectedRevisio
     assertSnapshotDesignIntegrity(state.records, records);
     assertSnapshotDeployIntegrity(state.records, records);
     assertSnapshotOperateIntegrity(state.records, records);
+    assertSnapshotPositionIntegrity(state.records, records);
     state.records = records;
     state.revision++;
     await writeUnlocked(workspace, state);

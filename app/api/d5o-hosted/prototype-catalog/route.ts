@@ -47,6 +47,16 @@ export async function POST(request: NextRequest) {
           candidate.type, candidate.phaseConfigurationVersionId, true))
         return reply({ error: "configuration_changed",
           message: "Select a Work Type from the active synthetic prototype configuration." }, 409);
+      if (input.action === "register-record") {
+        // Registration connects a Work Record created by a governed command to
+        // the shared package catalog; it cannot import an arbitrary browser row.
+        const workState = await context.read("work");
+        const existing = (workState.state?.records as Array<Record<string, unknown>> | undefined)
+          ?.find((record) => record.id === input.record.id && record.workspace === workspace);
+        if (!existing || existing.stage !== input.record.stage || existing.type !== input.record.type
+          || existing.phaseConfigurationVersionId !== input.record.phaseConfigurationVersionId)
+          return reply({ error: "unregistered_work_import" }, 409);
+      }
     }
     if (input.action === "create-package") {
       const workState = await context.read("work");
