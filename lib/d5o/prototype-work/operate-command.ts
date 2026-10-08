@@ -3,6 +3,7 @@ import { assessOperationalReadiness, coverageFor, emptyOperate, operateState, re
 import { PrototypeWorkError } from "./store-error";
 import { legacyOperateControlPolicy, type OperateControlPolicy } from "@/components/d5o/platform/operate-policy";
 import { evaluatePricing, formatMinor, type PricingInput, type PricingPolicyState } from "@/components/d5o/platform/develop-pricing";
+import { currentAcceptedRelease, currentReviewedCompletion } from "@/components/d5o/platform/deploy-model";
 
 export type OperateCommand = { action: "receive-handoff" | "onboard-legacy" | "add-asset" | "accept-support" | "transfer-support" | "activate" | "resume" | "suspend" | "deactivate" | "add-agreement" | "approve-agreement" | "open-request" | "triage-request" | "decide-coverage" | "record-chargeable-disposition" | "save-service-estimate" | "submit-service-pricing" | "approve-service-pricing" | "return-service-pricing" | "record-service-authorization" | "link-service-pricing" | "record-response" | "record-restoration" | "pause-sla" | "resume-sla" | "create-job" | "link-execution" | "complete-job" | "resolve-request" | "close-request" | "reopen-request" | "add-maintenance" | "generate-maintenance" | "defer-maintenance" | "add-review" | "open-lifecycle" | "update-finance" | "add-lesson";
   workId: string; expectedRevision: number; commandId: string; note?: string; id?: string; assetId?: string; requestId?: string; planId?: string; sourceWorkId?: string; turnoverId?: string;
@@ -218,6 +219,16 @@ export function applyOperateCommand(work: WorkRecord, all: WorkRecord[], command
   } else if (command.action === "complete-job") {
     requireOperations(); const job = state.jobs.find((item) => item.id === command.id);
     if (!job || job.status !== "Execution linked" || !job.evidence.length || job.linkedByActorId === actor.id || reason.length < 10) fail("job_completion_invalid", "A different operations authority must review linked execution and record completion basis.");
+    const execution = all.find((item) => item.id === job.workId && item.workspace === work.workspace && item.serviceSource?.parentWorkId === work.id);
+    if (!execution) fail("execution_missing", "The service Work Record is unavailable for completion review.");
+    const packageIds = [...new Set(execution.design?.releases.map((item) => item.packageId) ?? [])];
+    if (!packageIds.length) fail("job_scope_incomplete", "The service job has no released package scope to complete.");
+    const completions = packageIds.map((packageId) => {
+      const release = currentAcceptedRelease(execution, packageId);
+      return release?.snapshot?.completionBasis ? currentReviewedCompletion(execution, packageId) : null;
+    });
+    if (completions.some((item) => !item)) fail("job_scope_incomplete", "Every service package requires current reviewed completion against its accepted release and verification.");
+    job.completionRefs = completions.map((item) => `${execution.id}:completion:${item!.id}:release:${item!.releaseId}`);
     job.status = "Completed"; job.completedAt = now; job.completedByActorId = actor.id; job.completionReason = reason;
     if (job.planId) { const plan = state.maintenance.find((item) => item.id === job.planId); if (plan?.mode === "Completion relative") { const next = new Date(now); next.setUTCDate(next.getUTCDate() + plan.frequencyDays); plan.nextDue = next.toISOString().slice(0, 10); } }
     addEvent("Service visit completed", job.id);

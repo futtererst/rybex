@@ -20,7 +20,7 @@ const actor = {
   reviewer: { id: "reviewer", name: "Reviewer", membershipId: "m-reviewer", role: "project_manager" },
   leader: { id: "leader", name: "Leader", membershipId: "m-leader", role: "operations_leader" }
 };
-const detail = { packageId: "p1", revision: 2, scope: "Certify data hall fiber", location: "Hall A", requirementIds: ["fiber-cert"], predecessorIds: [], materialLines: [{ id: "m1", item: "Fiber", quantity: 2, availableQuantity: 2, unit: "reel", status: "Available", source: "Count" }], materialStatus: "Available", access: "Authorized", permit: "Approved permit", safetyControls: "Isolation", method: "MOP-1", verification: "Certify every strand", crewDemandRequired: true };
+const detail = { packageId: "p1", revision: 2, scope: "Certify data hall fiber", location: "Hall A", requirementIds: ["fiber-cert"], predecessorIds: [], completionBasis: { kind: "Measured", plannedQuantity: 12, unit: "m" }, materialLines: [{ id: "m1", item: "Fiber", quantity: 2, availableQuantity: 2, unit: "reel", status: "Available", source: "Count" }], materialStatus: "Available", access: "Authorized", permit: "Approved permit", safetyControls: "Isolation", method: "MOP-1", verification: "Certify every strand", crewDemandRequired: true };
 const release = { id: "release-1", packageId: "p1", packageRevision: 2, configurationVersionId: "pin-1", status: "Accepted", snapshot: detail, crewDemandSnapshot: { minimumPeople: 1 }, documentRefs: ["doc@1"], sourceSnapshot: null };
 let work = { id: "w1", workspace: "rybex", title: "Fiber", type: "Technical delivery", customer: "Customer", site: "Hall A", owner: "PM", stage: "Deploy", nextAction: "Execute", progress: 0, value: "", status: "moving", proof: [], blockers: [], history: [], packages: [{ id: "p1", name: "Fiber" }], phaseConfigurationVersionId: "pin-1", design: { releases: [release], packages: [detail], documents: [], reviews: [], history: [] } };
 const assignment = { id: "booking-1", crew: "Fiber", people: ["Alex"], workId: "w1", packageId: "p1", week: 0, day: 0, date: "2026-10-12", shift: "07:00–15:30" };
@@ -43,13 +43,16 @@ rejects({ action: "save-report", packageId: "p1", bookingId: "booking-1", report
 send({ action: "submit-report", packageId: "p1", reportId: report.id }, actor.worker);
 rejects({ action: "review-report", packageId: "p1", reportId: report.id, decision: "Reviewed", note: "Reviewed physical record" }, "report_review_denied", { ...actor.supervisor, id: "worker" });
 send({ action: "review-report", packageId: "p1", reportId: report.id, decision: "Reviewed", note: "Reviewed physical record" });
+assert.equal(model.currentReviewedCompletion(work, "p1"), null, "A reviewed report alone does not complete the package");
+const zeroActivity = structuredClone(work); zeroActivity.deploy.reports[0].quantity = 0;
+assert(model.assessPackageCompletion(zeroActivity, "p1").blockers.some((item) => item.includes("12 m")), "A zero-quantity report cannot complete measurable scope");
 rejects({ action: "record-inspection", packageId: "p1", bookingId: "booking-1", reportId: report.id, requirementId: "fiber-cert", requirement: "Fiber certification", method: "Light test", result: "Fail" }, "inspection_report_scope_denied", actor.otherWorker);
 rejects({ action: "record-inspection", packageId: "p1", bookingId: "booking-1", reportId: report.id, requirement: "Fiber certification", method: "Light test", result: "Fail" }, "inspection_requirement_invalid", actor.worker);
 send({ action: "record-inspection", packageId: "p1", bookingId: "booking-1", reportId: report.id, requirementId: "fiber-cert", requirement: "Fiber certification", method: "Light test", result: "Fail" }, actor.worker);
 const failure = work.deploy.inspections[0];
 send({ action: "review-inspection", packageId: "p1", inspectionId: failure.id, decision: "Verified", note: "Failure confirmed from result" }, actor.reviewer);
-send({ action: "assemble-turnover", packageId: "p1", operateOwner: "Lifecycle manager" }, actor.supervisor);
-rejects({ action: "accept-client", packageId: "p1", turnoverId: work.deploy.turnovers[0].id, signerName: "Customer", signerOrganization: "Owner", authorityBasis: "Delegation", source: "letter.pdf" }, "acceptance_blocked", actor.reviewer);
+rejects({ action: "review-completion", packageId: "p1", note: "Review released planned scope" }, "completion_blocked", actor.reviewer);
+rejects({ action: "assemble-turnover", packageId: "p1", operateOwner: "Lifecycle manager" }, "completion_required", actor.supervisor);
 send({ action: "record-inspection", packageId: "p1", bookingId: "booking-1", reportId: report.id, requirementId: "fiber-cert", requirement: "Fiber certification", method: "Retest", result: "Pass", supersedesId: failure.id }, actor.worker);
 const retest = work.deploy.inspections.at(-1);
 send({ action: "review-inspection", packageId: "p1", inspectionId: retest.id, decision: "Verified", note: "Retest passed after correction" }, actor.reviewer);
@@ -58,6 +61,8 @@ assert.equal(work.deploy.permits.at(-1).status, "Held");
 rejects({ action: "resume", packageId: "p1", note: "Conditions reviewed again" }, "start_blocked");
 send({ action: "resolve-issue", packageId: "p1", issueId: work.deploy.issues[0].id, resolution: "Connector replaced and retested" }, actor.supervisor);
 send({ action: "resume", packageId: "p1", note: "Resolution and crew checked" });
+send({ action: "review-completion", packageId: "p1", note: "Twelve metres certified against released scope" }, actor.reviewer);
+assert.equal(model.currentReviewedCompletion(work, "p1")?.reviewedQuantity, 12);
 const signatureId = crypto.randomUUID();
 work = applyDeployCommand(work, { action: "attach-evidence", packageId: "p1", workId: "w1", expectedRevision: ++serial, commandId: `deploy-${serial}`, purpose: "Customer signature", caption: `Captured for reviewed report ${report.id}` }, actor.worker, schedule, { id: signatureId, filename: "customer.png", mimeType: "image/png", sizeBytes: 100, checksumSha256: "a".repeat(64) });
 rejects({ action: "save-report", packageId: "p1", bookingId: "booking-1", quantity: 1, unit: "m", laborHours: 1, summary: "Other worker's field record", evidenceIds: [signatureId] }, "evidence_scope_invalid", actor.otherWorker);
