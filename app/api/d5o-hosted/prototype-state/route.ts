@@ -125,7 +125,11 @@ export async function POST(request: NextRequest) {
     try { assertSnapshotCommercialIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); assertSnapshotDefineIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); assertSnapshotDesignIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); assertSnapshotDeployIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); assertSnapshotOperateIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records); assertSnapshotPositionIntegrity(preserved.records, (input.state as { records: Record<string, unknown>[] }).records, catalogRecords); }
     catch (error) { return reply({ error: error instanceof Error && "code" in error ? error.code : "protected_state_changed", message: error instanceof Error ? error.message : undefined }, error instanceof Error && "status" in error ? Number(error.status) : 409); }
   }
-  const state = key === "work" ? { ...(input.state as Record<string, unknown>), pricingPolicies: preserved?.pricingPolicies ?? [], activePricingPolicy: preserved?.activePricingPolicy ?? null, pricingPolicyHistory: preserved?.pricingPolicyHistory ?? [] } : input.state;
+  const state = { ...(input.state as Record<string, unknown>) };
+  if (key === "work") for (const field of ["pricingPolicies", "activePricingPolicy", "pricingPolicyHistory"] as const) {
+    delete state[field];
+    if (preserved && Object.prototype.hasOwnProperty.call(preserved, field)) state[field] = preserved[field];
+  }
   const result = await scope.call("d5o_hosted_prototype_save_v1", {
     p_workspace_key: workspace, p_state_key: key,
     p_expected_revision: input.expectedRevision, p_state: state

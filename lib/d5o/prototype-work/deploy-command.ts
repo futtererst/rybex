@@ -3,6 +3,7 @@ import type { SharedSchedule } from "@/components/d5o/platform/schedule-model";
 import { assessDeployReadiness, assessPackageCompletion, currentAcceptedRelease, currentReviewedCompletion, deployState, type DeployActor, type FieldReport } from "@/components/d5o/platform/deploy-model";
 import { legacyDeployControlPolicy, type DeployControlPolicy } from "@/components/d5o/platform/deploy-policy";
 import { PrototypeWorkError } from "./store-error";
+import { sameJsonValue } from "./semantic-json";
 import { serviceExecutionBasisIssue } from "./service-execution-basis";
 
 export type DeployCommand = {
@@ -21,7 +22,7 @@ const manager = new Set(["admin", "operations_leader", "project_manager", "field
 const quality = new Set(["admin", "operations_leader", "project_manager"]);
 function fail(code: string, message: string, status = 409): never { throw new PrototypeWorkError(code, status, message); }
 const clean = (value: unknown, max = 2000) => typeof value === "string" ? value.trim().slice(0, max) : "";
-const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+const same = sameJsonValue;
 const finite = (value: unknown, max = 1000000) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= max;
 const list = (value: unknown) => Array.isArray(value) ? [...new Set(value.filter((item): item is string => typeof item === "string" && !!item.trim()).map((item) => item.trim()))] : [];
 export const deployCommandFingerprint = (command: DeployCommand) => JSON.stringify(Object.entries(command).sort(([left], [right]) => left.localeCompare(right)));

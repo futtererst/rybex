@@ -1,6 +1,7 @@
 import type { WorkRecord } from "@/components/d5o/platform/work-types";
 import { assessOperationalReadiness, coverageFor, emptyOperate, operateState, responseDeadline, shiftSlaDeadline, type CoverageAgreement, type OperateActor, type OperateState, type ServiceJob, type ServiceRequest } from "@/components/d5o/platform/operate-model";
 import { PrototypeWorkError } from "./store-error";
+import { sameJsonValue } from "./semantic-json";
 import { legacyOperateControlPolicy, type OperateControlPolicy } from "@/components/d5o/platform/operate-policy";
 import { evaluatePricing, formatMinor, type PricingInput, type PricingPolicyState } from "@/components/d5o/platform/develop-pricing";
 import { currentAcceptedRelease, currentReviewedCompletion } from "@/components/d5o/platform/deploy-model";
@@ -191,7 +192,7 @@ export function applyOperateCommand(work: WorkRecord, all: WorkRecord[], command
     if (!due || !assetId) fail("job_incomplete", "A dated obligation and linked asset are required.", 400);
     const duplicate = state.jobs.find((item) => item.planId === plan?.id && item.dueDate === due && !!plan);
     if (duplicate) fail("job_exists", "A job has already been generated for this maintenance due date.");
-    const id = crypto.randomUUID(), jobWorkId = `${work.workspace}-${id.replaceAll("-", "")}`, name = plan?.title ?? req!.title;
+    const id = crypto.randomUUID(), jobWorkId = `${work.workspace}-${command.commandId.replaceAll("-", "")}`, name = plan?.title ?? req!.title;
     const approved = req?.serviceEstimate;
     const authorized = approved?.status === "Approved" && approved.requestCycleAt === (req?.reopenedAt ?? req?.reportedAt) && req?.serviceAuthorization?.estimateRevision === approved.revision ? req.serviceAuthorization : undefined;
     const pricing = approved && authorized ? { estimateRevision: approved.revision, policyId: approved.policySnapshot.id, policyVersion: approved.policySnapshot.version, currency: authorized.currency, amountMinor: authorized.amountMinor, customerAuthorizationSource: authorized.source } : undefined;
@@ -279,7 +280,7 @@ export function applyOperateCommand(work: WorkRecord, all: WorkRecord[], command
     if (command.requestId && !state.requests.some((item) => item.id === command.requestId && (!command.assetId || item.assetId === command.assetId))) fail("request_missing", "Select a request linked to this support scope.", 404);
     const basis = `${command.assetId ?? ""}:${command.requestId ?? ""}:${text(command.rationale).toLowerCase()}`;
     if (state.lifecycleLinks.some((item) => command.requestId ? item.requestId === command.requestId : `${item.assetId ?? ""}:${item.requestId ?? ""}:${item.rationale.toLowerCase()}` === basis)) fail("opportunity_exists", "This underlying lifecycle opportunity is already linked.");
-    const id = `${work.workspace}-${crypto.randomUUID().replaceAll("-", "")}`;
+    const id = `${work.workspace}-${command.commandId.replaceAll("-", "")}`;
     related = { id, workspace: work.workspace, title: text(command.title) || `Lifecycle opportunity · ${work.customer}`, type: "Lifecycle service", customer: work.customer, site: work.site, stage: "Qualification", owner: text(command.owner), nextAction: "Qualify lifecycle need in Discover", progress: 0, value: "Indicative value unknown", status: "moving", proof: [], blockers: [], history: [`${now} · Originating Operate Work Record ${work.id}; rationale: ${text(command.rationale)}`], phaseConfigurationVersionId: work.phaseConfigurationVersionId, discovery: { source: "Lifecycle referral", need: text(command.rationale), procurement: "Unknown", phase: "Qualification", fit: "Unassessed", closeDate: "", estimate: { revision: 0, labor: 0, materials: 0, subcontract: 0, travel: 0, contingency: 0, targetMargin: 0, sellPrice: 0, status: "Not started", assumption: "" }, proposal: { status: "Not started", dueDate: "", method: "Customer portal", recipient: "", response: "" } } };
     state.lifecycleLinks.push({ id: crypto.randomUUID(), opportunityWorkId: id, assetId: command.assetId, requestId: command.requestId, rationale: text(command.rationale), owner: text(command.owner), at: now }); addEvent("Lifecycle opportunity opened", id);
   } else if (command.action === "update-finance") {
@@ -299,8 +300,8 @@ export function assertSnapshotOperateIntegrity(before: Record<string, unknown>[]
     const item = next.get(prior.id);
     if (!item && (prior.operate || prior.serviceSource)) fail("protected_operate_deleted", "A Work Record with Operate or service-job history cannot be removed.");
     if (!item) continue;
-    if (JSON.stringify(prior.operate ?? null) !== JSON.stringify(item.operate ?? null)) fail("protected_operate_changed", "Operate records require a governed server command.");
-    if (JSON.stringify(prior.serviceSource ?? null) !== JSON.stringify(item.serviceSource ?? null)) fail("protected_service_source_changed", "A service Work Record's source identity requires a governed server command.");
+    if (!sameJsonValue(prior.operate, item.operate)) fail("protected_operate_changed", "Operate records require a governed server command.");
+    if (!sameJsonValue(prior.serviceSource, item.serviceSource)) fail("protected_service_source_changed", "A service Work Record's source identity requires a governed server command.");
   }
   for (const item of after) if (!before.some((prior) => prior.id === item.id) && (item.operate || item.serviceSource)) fail("protected_operate_import", "A new Work Record cannot import governed Operate or service-job history.");
 }

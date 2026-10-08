@@ -14,6 +14,7 @@ export function useSharedWorkCatalog(workspace: WorkspaceKey, hostedPreview = fa
   const [canEdit, setCanEdit] = useState(false);
   const [error, setError] = useState("");
   const current = useRef<SharedWorkCatalog | null>(null);
+  const pendingCreate = useRef<{ fingerprint: string; commandId: string } | null>(null);
   const refresh = useCallback(async () => {
     const response = await fetch(endpoint, { cache: "no-store" });
     if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "Sign in to your authorized workspace to view shared work." : "Shared work is unavailable.");
@@ -32,11 +33,16 @@ export function useSharedWorkCatalog(workspace: WorkspaceKey, hostedPreview = fa
     }));
     return () => { active = false; cancelAnimationFrame(frame); };
   }, [refresh]);
-  const mutate = useCallback(async (change: Change): Promise<{ catalog: SharedWorkCatalog; created: CatalogWorkRecord | CatalogWorkPackage }> => {
+  const mutate = useCallback(async (change: Change): Promise<{ catalog: SharedWorkCatalog; created: CatalogWorkRecord | CatalogWorkPackage; workRevision?: number }> => {
     const state = current.current;
     if (!state) throw new Error("Load shared work before changing it.");
-    const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...change, expectedRevision: state.revision }) });
-    const result = await response.json() as { catalog?: SharedWorkCatalog; created?: CatalogWorkRecord | CatalogWorkPackage; error?: string; message?: string };
+    const fingerprint = change.action === "create-record" ? JSON.stringify(change) : "";
+    const commandId = change.action === "create-record"
+      ? change.commandId ?? (pendingCreate.current?.fingerprint === fingerprint
+        ? pendingCreate.current.commandId : crypto.randomUUID()) : undefined;
+    if (commandId && change.action === "create-record") pendingCreate.current = { fingerprint, commandId };
+    const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...change, commandId, expectedRevision: state.revision }) });
+    const result = await response.json() as { catalog?: SharedWorkCatalog; created?: CatalogWorkRecord | CatalogWorkPackage; workRevision?: number; error?: string; message?: string };
     if (!response.ok || !result.catalog || !result.created) {
       if (response.status === 409) await refresh();
       const message = result.message ?? result.error ?? "Shared work change failed.";
@@ -44,9 +50,10 @@ export function useSharedWorkCatalog(workspace: WorkspaceKey, hostedPreview = fa
       throw new Error(message);
     }
     current.current = result.catalog;
+    if (change.action === "create-record") pendingCreate.current = null;
     setCatalog(result.catalog);
     setError("");
-    return { catalog: result.catalog, created: result.created };
+    return { catalog: result.catalog, created: result.created, workRevision: result.workRevision };
   }, [refresh, endpoint]);
   return { catalog, canEdit, error, refresh, mutate };
 }

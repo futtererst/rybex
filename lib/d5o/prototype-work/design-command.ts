@@ -2,6 +2,7 @@ import type { WorkRecord } from "@/components/d5o/platform/work-types";
 import type { PackageCrewDemand } from "@/components/d5o/platform/schedule-model";
 import { assessDesignPackage, designRequirementRefs, designState, documentRef, forecastDesignPackage, type DesignDocument, type DesignMaterial, type DesignPackage, type DesignReview, type DesignRelease } from "@/components/d5o/platform/design-model";
 import { PrototypeWorkError } from "./store-error";
+import { sameJsonValue } from "./semantic-json";
 import { legacyDesignControlPolicy, type DesignControlPolicy } from "@/components/d5o/platform/design-policy";
 import { serviceExecutionBasisIssue } from "./service-execution-basis";
 
@@ -21,7 +22,7 @@ function fail(code: string, message: string, status = 409): never { throw new Pr
 const editable = new Set(["admin", "operations_leader", "project_manager", "field_supervisor"]);
 const engineering = new Set(["admin", "operations_leader", "project_manager"]);
 const delivery = new Set(["admin", "operations_leader", "project_manager"]);
-const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+const same = sameJsonValue;
 const clean = (value: unknown, max = 2000) => typeof value === "string" ? value.trim().slice(0, max) : "";
 const list = (value: unknown) => Array.isArray(value) ? [...new Set(value.filter((item): item is string => typeof item === "string" && !!item.trim()).map((item) => item.trim()))] : [];
 const date = (value: unknown) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
@@ -220,7 +221,7 @@ export function assertSnapshotDesignIntegrity(before: Record<string, unknown>[],
       if (!same(oldRegisters?.[key], newRegisters?.[key])) fail("protected_design_register_changed", "Design register changes require a controlled command.");
     const work = next as unknown as WorkRecord;
     if (work.discovery?.pursuitControl && (work.discovery.outcome !== "Won" || work.discovery.designHandoff?.status !== "accepted")) {
-      if (!same(prior.packages, next.packages) || !same(oldRegisters?.["design.verification_plan"], newRegisters?.["design.verification_plan"])) fail("design_handoff_required", "Accept the Develop handoff before package planning.");
+      if (!same(prior.packages ?? [], next.packages ?? []) || !same(oldRegisters?.["design.verification_plan"], newRegisters?.["design.verification_plan"])) fail("design_handoff_required", "Accept the Develop handoff before package planning.");
     }
     if (work.discovery?.pursuitControl && work.discovery.outcome === "Won") {
       const oldPackages = Array.isArray(prior.packages) ? prior.packages as Array<Record<string, unknown>> : [];

@@ -3,9 +3,11 @@ import type { WorkspaceKey } from "@/components/d5o/platform/schedule-model";
 import type { CatalogMutation, SharedWorkCatalog } from "@/components/d5o/platform/work-catalog-model";
 import { applyCatalogMutation, CatalogError, initialHostedCatalog } from "@/lib/d5o/work-catalog/store";
 import { HostedStateError, hostedPrototypeContext } from "@/lib/d5o/hosted/prototype-context";
-import { hostedSyntheticInventory } from "@/lib/d5o/hosted/synthetic-inventory";
+import { hostedConfigurationInventory } from "@/lib/d5o/hosted/configuration-inventory";
 import { publishedWorkTypePinIsValid } from "@/components/d5o/platform/published-phase-configuration";
 import { validLocalScheduleOrigin } from "@/lib/d5o/scheduling/request-origin";
+import { createRybexSupabaseAdminClient } from "@/lib/d5o/auth/supabase-server";
+import { resolvePublishedPhaseConfiguration } from "@/components/d5o/platform/published-phase-configuration";
 
 export const dynamic = "force-dynamic";
 const workspaces = new Set(["rybex", "rotork"]);
@@ -39,14 +41,44 @@ export async function POST(request: NextRequest) {
     const input = JSON.parse(body) as CatalogMutation;
     const context = await hostedPrototypeContext(workspace);
     if (!context.canEdit) return reply({ error: "workspace_forbidden" }, 403);
+    if (process.env.D5O_ISOLATED_PILOT === "1" && input.action === "register-record")
+      return reply({ error: "connected_creation_required", message: "Pilot work must be created with its canonical identity and catalog row in one transaction." }, 409);
     if (input.action === "create-record" || input.action === "register-record") {
       const candidate = input.action === "create-record" ? input : input.record;
-      const inventory = hostedSyntheticInventory(workspace as WorkspaceKey);
+      const inventory = await hostedConfigurationInventory(workspace as WorkspaceKey);
       if (!candidate.phaseConfigurationVersionId ||
         !publishedWorkTypePinIsValid(inventory, workspace as WorkspaceKey,
           candidate.type, candidate.phaseConfigurationVersionId, true))
         return reply({ error: "configuration_changed",
-          message: "Select a Work Type from the active synthetic prototype configuration." }, 409);
+          message: "Select a Work Type from the active published configuration." }, 409);
+      if (process.env.D5O_ISOLATED_PILOT === "1" && input.action === "create-record") {
+        const type = resolvePublishedPhaseConfiguration(inventory, workspace as WorkspaceKey, input.type);
+        if (!type || !input.commandId || !/^[0-9a-f-]{36}$/i.test(input.commandId))
+          return reply({ error: "invalid_connected_command" }, 400);
+        const currentWork = await context.read("work");
+        const admin = createRybexSupabaseAdminClient();
+        const call = admin.rpc.bind(admin) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { code?: string; message: string } | null }>;
+        const result = await call("d5o_hosted_create_connected_work_v1", {
+          p_workspace_key: workspace, p_command_id: input.commandId,
+          p_expected_work_revision: currentWork.revision,
+          p_expected_catalog_revision: input.expectedRevision,
+          p_configuration_version_id: inventory.activeVersionId,
+          p_work_type_key: type.workTypeKey,
+          p_title: input.title, p_customer: input.customer,
+          p_site: input.site, p_owner: input.owner,
+          p_initial_discovery: input.initialDiscovery ?? null,
+          p_actor_user_id: context.actor.id, p_membership_id: context.actor.membershipId
+        });
+        if (result.error) return reply({ error: result.error.message },
+          result.error.code === "23505" ? 409 : result.error.code === "42501" ? 403 : result.error.code === "22023" ? 422 : 503);
+        const identity = result.data as { presentationId?: string; workRevision?: number } | null;
+        const saved = await context.read("catalog");
+        const catalog = { ...saved.state, revision: saved.revision } as SharedWorkCatalog;
+        const created = catalog.records.find((item) => item.id === identity?.presentationId);
+        if (!created) return reply({ error: "connected_result_unavailable" }, 502);
+        return reply({ catalog, created, canonicalWorkId: created.canonicalWorkId,
+          workRevision: identity?.workRevision, synthetic: false }, 201);
+      }
       if (input.action === "register-record") {
         // Registration connects a Work Record created by a governed command to
         // the shared package catalog; it cannot import an arbitrary browser row.

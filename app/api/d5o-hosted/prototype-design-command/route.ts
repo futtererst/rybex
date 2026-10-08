@@ -5,7 +5,7 @@ import { HostedStateError, hostedPrototypeContext } from "@/lib/d5o/hosted/proto
 import { validLocalScheduleOrigin } from "@/lib/d5o/scheduling/request-origin";
 import type { WorkRecord } from "@/components/d5o/platform/work-types";
 import type { SharedSchedule } from "@/components/d5o/platform/schedule-model";
-import { hostedSyntheticInventory } from "@/lib/d5o/hosted/synthetic-inventory";
+import { hostedConfigurationInventory } from "@/lib/d5o/hosted/configuration-inventory";
 import { resolvePublishedPhaseConfiguration } from "@/components/d5o/platform/published-phase-configuration";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     const schedule = command.action === "release-package" || command.action === "release-set" ? (await context.read("schedule")).state as SharedSchedule | null : null;
     const crewDemand = schedule?.packageDemands.find((item) => item.packageId === command.packageId && item.workId === command.workId) ?? null;
     const work = records[index] as WorkRecord;
-    const config = resolvePublishedPhaseConfiguration(hostedSyntheticInventory(workspace as WorkRecord["workspace"]), work.workspace, work.type, work);
+    const config = resolvePublishedPhaseConfiguration(await hostedConfigurationInventory(workspace as WorkRecord["workspace"]), work.workspace, work.type, work);
     if (work.discovery?.pursuitControl && !config) return reply({ error: "design_policy_unavailable" }, 409);
     const next = applyDesignCommand(work, command, context.actor, crewDemand, config?.designControls, schedule?.packageDemands ?? [], records as WorkRecord[]);
     const saved = await context.save("work", loaded.revision, { ...loaded.state, revision: loaded.revision + 1, records: records.map((item, i) => i === index ? next : item) });

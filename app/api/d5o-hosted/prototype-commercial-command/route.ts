@@ -4,7 +4,7 @@ import type { WorkRecord } from "@/components/d5o/platform/work-types";
 import { applyCommercialCommand, type CommercialCommand } from "@/lib/d5o/prototype-work/commercial-command";
 import { PrototypeWorkError } from "@/lib/d5o/prototype-work/store-error";
 import { HostedStateError, hostedPrototypeContext } from "@/lib/d5o/hosted/prototype-context";
-import { hostedSyntheticInventory } from "@/lib/d5o/hosted/synthetic-inventory";
+import { hostedConfigurationInventory } from "@/lib/d5o/hosted/configuration-inventory";
 import { validLocalScheduleOrigin } from "@/lib/d5o/scheduling/request-origin";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     const next = applyCommercialCommand(current, command,
       { id: context.actor.id, name: context.actor.name,
         membershipId: context.actor.membershipId, role: context.actor.role },
-      hostedSyntheticInventory(workspace as WorkspaceKey), state as Record<string, unknown>);
+      await hostedConfigurationInventory(workspace as WorkspaceKey), state as Record<string, unknown>);
     const nextState = { ...state, revision: loaded.revision + 1,
       records: records.map((record, position) => position === index ? next : record) };
     const saved = await context.save("work", loaded.revision, nextState);

@@ -5,7 +5,7 @@ import { HostedStateError, hostedPrototypeContext } from "@/lib/d5o/hosted/proto
 import { validLocalScheduleOrigin } from "@/lib/d5o/scheduling/request-origin";
 import type { WorkRecord } from "@/components/d5o/platform/work-types";
 import type { SharedSchedule } from "@/components/d5o/platform/schedule-model";
-import { hostedSyntheticInventory } from "@/lib/d5o/hosted/synthetic-inventory";
+import { hostedConfigurationInventory } from "@/lib/d5o/hosted/configuration-inventory";
 import { resolvePublishedPhaseConfiguration } from "@/components/d5o/platform/published-phase-configuration";
 import { createRybexSupabaseAdminClient } from "@/lib/d5o/auth/supabase-server";
 import { createHash, randomUUID } from "node:crypto";
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     const schedule = (await context.read("schedule")).state as SharedSchedule | null;
     const actor = { ...context.actor, person: null }; // Hosted crew identity binding is not yet provisioned; field self-service remains blocked.
     const work = records[index] as WorkRecord;
-    const config = resolvePublishedPhaseConfiguration(hostedSyntheticInventory(workspace as WorkRecord["workspace"]), work.workspace, work.type, work);
+    const config = resolvePublishedPhaseConfiguration(await hostedConfigurationInventory(workspace as WorkRecord["workspace"]), work.workspace, work.type, work);
     if (work.phaseConfigurationVersionId && !config) return reply({ error: "deploy_policy_unavailable" }, 409);
     const next = applyDeployCommand(work, command, actor, schedule, undefined, config?.deployControls, records as WorkRecord[]);
     const saved = await context.save("work", loaded.revision, { ...loaded.state, revision: loaded.revision + 1, records: records.map((item, i) => i === index ? next : item) });
@@ -70,7 +70,7 @@ export async function PUT(request: NextRequest) {
     const index = records?.findIndex((item) => item.id === workId && item.workspace === workspace) ?? -1;
     if (index < 0 || !records) return reply({ error: "work_unavailable" }, 404);
     if (expectedRevision !== loaded.revision) return reply({ error: "stale_state" }, 409);
-    const work = records[index], config = resolvePublishedPhaseConfiguration(hostedSyntheticInventory(workspace as WorkRecord["workspace"]), work.workspace, work.type, work);
+    const work = records[index], config = resolvePublishedPhaseConfiguration(await hostedConfigurationInventory(workspace as WorkRecord["workspace"]), work.workspace, work.type, work);
     if (work.phaseConfigurationVersionId && !config) return reply({ error: "deploy_policy_unavailable" }, 409);
     const bytes = Buffer.from(await file.arrayBuffer()), id = randomUUID();
     uploadedPath = objectPath(workspace, workId, id);

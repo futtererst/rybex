@@ -1,4 +1,5 @@
 import type { ConfigurationInventory } from "@/lib/d5o/configuration/version-inventory";
+import { sameJsonValue } from "./semantic-json";
 import { phaseContractFromManifest } from "@/components/d5o/platform/published-phase-configuration";
 import { assessCommercialAuthority, syntheticDemoCommercialProfiles } from "@/components/d5o/platform/commercial-authority";
 import type { DesignHandoffBrief, WorkRecord, WorkspaceKey } from "@/components/d5o/platform/work-types";
@@ -25,7 +26,7 @@ export type CommercialCommand = {
 type Actor = { id: string; name: string; membershipId: string; role: string };
 const invalid = (code: string, message: string, status = 409): never => { throw new PrototypeWorkError(code, status, message); };
 const date = (value: string | undefined) => Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T12:00:00Z`)) && new Date(`${value}T12:00:00Z`).toISOString().slice(0, 10) === value);
-const same = (left: unknown, right: unknown) => JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+const same = sameJsonValue;
 
 function requireApprovedDefinition(work: WorkRecord, inventory: ConfigurationInventory, requireEstimateSource = true) {
   const definition = work.definition;
@@ -269,7 +270,7 @@ export function assertSnapshotCommercialIntegrity(before: Record<string, unknown
       const oldRegisters = oldRecord.phaseRegisters as Record<string, unknown> | undefined;
       const newRegisters = newRecord.phaseRegisters as Record<string, unknown> | undefined;
       const designKeys = new Set([...Object.keys(oldRegisters ?? {}), ...Object.keys(newRegisters ?? {})].filter((key) => key.startsWith("design.")));
-      if (!same(oldRecord.packages, newRecord.packages) || !same(oldRecord.design, newRecord.design) || [...designKeys].some((key) => !same(oldRegisters?.[key], newRegisters?.[key])))
+      if (!same(oldRecord.packages ?? [], newRecord.packages ?? []) || !same(oldRecord.design, newRecord.design) || [...designKeys].some((key) => !same(oldRegisters?.[key], newRegisters?.[key])))
         invalid("design_handoff_required", "An awarded Work Record requires an accepted Design handoff before package planning.");
     }
     if (["Approved", "Submitted"].includes(oldProposal.status) && !newOffer && (!same(prior.discovery.phase, next.discovery!.phase) || !same(oldProposal.history, newProposal.history))) invalid("protected_customer_decision_changed", "The controlled commercial phase and event history require a server command.");

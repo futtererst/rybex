@@ -7,7 +7,7 @@ import { deployWorkerProjection } from "@/lib/d5o/prototype-work/deploy-worker-p
 import { PrototypeWorkError } from "@/lib/d5o/prototype-work/store-error";
 import { HostedStateError } from "@/lib/d5o/hosted/prototype-context";
 import { hostedWorkerContext } from "@/lib/d5o/hosted/worker-context";
-import { hostedSyntheticInventory } from "@/lib/d5o/hosted/synthetic-inventory";
+import { hostedConfigurationInventory } from "@/lib/d5o/hosted/configuration-inventory";
 import { resolvePublishedPhaseConfiguration } from "@/components/d5o/platform/published-phase-configuration";
 import { validLocalScheduleOrigin } from "@/lib/d5o/scheduling/request-origin";
 
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
       return reply({ ...scoped(work, command.packageId, command.bookingId, context.actor.id, loaded.revision), replay: true });
     }
     if (loaded.revision !== command.expectedRevision) return reply({ error: "stale_state" }, 409);
-    const config = resolvePublishedPhaseConfiguration(hostedSyntheticInventory(workspace), workspace, work.type, work);
+    const config = resolvePublishedPhaseConfiguration(await hostedConfigurationInventory(workspace), workspace, work.type, work);
     if (work.phaseConfigurationVersionId && !config) return reply({ error: "deploy_policy_unavailable" }, 409);
     const next = applyDeployCommand(work, command, context.actor, schedule, undefined, config?.deployControls, records);
     const saved = await context.save("work", loaded.revision, { ...loaded.state, revision: loaded.revision + 1, records: records.map((item, i) => i === index ? next : item) });
@@ -74,7 +74,7 @@ export async function PUT(request: NextRequest) {
     const index = records?.findIndex((item) => item.id === workId && item.workspace === workspace) ?? -1;
     if (index < 0 || !records || !schedule || !assigned(schedule, context.person, workId, packageId, bookingId)) return reply({ error: "assignment_required" }, 403);
     if (expectedRevision !== loaded.revision) return reply({ error: "stale_state" }, 409);
-    const work = records[index], config = resolvePublishedPhaseConfiguration(hostedSyntheticInventory(workspace), workspace, work.type, work);
+    const work = records[index], config = resolvePublishedPhaseConfiguration(await hostedConfigurationInventory(workspace), workspace, work.type, work);
     if (work.phaseConfigurationVersionId && !config) return reply({ error: "deploy_policy_unavailable" }, 409);
     const bytes = Buffer.from(await file.arrayBuffer()), id = randomUUID();
     uploadedPath = objectPath(workId, id);

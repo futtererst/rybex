@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { HostedStateError, hostedPrototypeContext } from "@/lib/d5o/hosted/prototype-context";
 import { validLocalScheduleOrigin } from "@/lib/d5o/scheduling/request-origin";
-import { hostedSyntheticInventory } from "@/lib/d5o/hosted/synthetic-inventory";
+import { hostedConfigurationInventory } from "@/lib/d5o/hosted/configuration-inventory";
 import { applyDefineCommand, defineCommandFingerprint, type DefineCommand } from "@/lib/d5o/prototype-work/define-command";
 import { PrototypeWorkError } from "@/lib/d5o/prototype-work/store-error";
 import type { WorkRecord, WorkspaceKey } from "@/components/d5o/platform/work-types";
@@ -30,7 +30,8 @@ export async function POST(request: NextRequest) {
       return reply({ state: { ...loaded.state, revision: loaded.revision }, synthetic: true, replay: true });
     }
     if (loaded.revision !== command.expectedRevision) return reply({ error: "stale_state" }, 409);
-    const next = records.map((item, i) => i === index ? applyDefineCommand(item, command, context.actor, hostedSyntheticInventory(workspace as WorkspaceKey)) : item);
+    const inventory = await hostedConfigurationInventory(workspace as WorkspaceKey);
+    const next = records.map((item, i) => i === index ? applyDefineCommand(item, command, context.actor, inventory) : item);
     const saved = await context.save("work", loaded.revision, { ...loaded.state, records: next, revision: loaded.revision + 1 });
     return reply({ state: { ...saved.state, revision: saved.revision }, synthetic: true });
   } catch (error) {

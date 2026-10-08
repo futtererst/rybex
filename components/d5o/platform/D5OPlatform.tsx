@@ -59,7 +59,7 @@ type EvidenceItem = { id: string; name: string; kind: string; state: "draft" | "
 type ControlledIssue = { id: string; title: string; impact: string; owner: string; status: "open" | "resolved"; created: string; blocker?: string; resolution?: string; proofId?: string; requiredProofKind?: string; affectedPackageId?: string; allowsException?: boolean; exceptionAuthority?: string; authorityBasis?: string };
 type LifecycleAction = { id: string; action: string; owner: string; due: string; status: "planned" | "active" };
 type Work = {
-  id: string; workspace: WorkspaceKey; title: string; type: string; customer: string; site: string; stage: string; owner: string;
+  id: string; canonicalWorkId?: string; workspace: WorkspaceKey; title: string; type: string; customer: string; site: string; stage: string; owner: string;
   nextAction: string; progress: number; value: string; status: "attention" | "moving" | "complete"; proof: string[]; blockers: string[]; history: string[]; issue?: string;
   nextActionDue?: string | null; nextActionImpact?: ActionImpact | null;
   heldFrom?: string; heldNextAction?: string; heldNextActionDue?: string | null; heldNextActionImpact?: ActionImpact | null;
@@ -184,7 +184,7 @@ function mergeSharedWork(local: Work[], catalog: SharedWorkCatalog): Work[] {
   return changed ? merged : local;
 }
 
-export function D5OPlatform({ initialWorkspace, configurationInventory, actorLabel, actorRole, actorId, hostedPreview = false, sourceVersion = "source-unidentified" }: { initialWorkspace: WorkspaceKey; configurationInventory: ConfigurationInventory; actorLabel?: string; actorRole?: string; actorId?: string; hostedPreview?: boolean; sourceVersion?: string }) {
+export function D5OPlatform({ initialWorkspace, configurationInventory, actorLabel, actorRole, actorId, hostedPreview = false, isolatedPilot = false, sourceVersion = "source-unidentified" }: { initialWorkspace: WorkspaceKey; configurationInventory: ConfigurationInventory; actorLabel?: string; actorRole?: string; actorId?: string; hostedPreview?: boolean; isolatedPilot?: boolean; sourceVersion?: string }) {
   const [activeWorkspace] = useState<WorkspaceKey>(initialWorkspace);
   const [accent, setAccent] = useState<string>(workspace[initialWorkspace].color);
   const [workspaceDark, setWorkspaceDark] = useState<string>(workspace[initialWorkspace].dark);
@@ -213,6 +213,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
   const pendingDiscoverSave = useRef<string | null>(null);
   const pendingReviewQueue = useRef<"pricing" | "proposal" | "definition" | null>(null);
   const sharedWorkRevisionRef = useRef<number | null>(null);
+  const pendingOperateCommand = useRef<{ fingerprint: string; commandId: string; expectedRevision: number } | null>(null);
   const [selectedId, setSelectedId] = useState("rotork-1");
   const [tab, setTab] = useState<RecordTab>("Overview");
   const [operateFocus, setOperateFocus] = useState<{ workId: string; section: OperateTab } | null>(null);
@@ -257,8 +258,9 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
         } catch { /* Seed data remains available without browser storage. */ }
       }
       if (!active) return;
-      const serialized = JSON.stringify(restored);
-      lastSharedWork.current = fromShared ? serialized : "";
+      const serialized = JSON.stringify(isolatedPilot ? restored.filter((record) => !!record.canonicalWorkId) : restored);
+      // An empty isolated database must not import the bundled presentation examples.
+      lastSharedWork.current = fromShared || isolatedPilot ? serialized : "";
       sharedWorkRevisionRef.current = revision;
       setSharedWorkRevision(revision);
       setWork(restored);
@@ -266,7 +268,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     };
     void restore();
     return () => { active = false; };
-  }, [initialWorkspace, hostedPreview, workStateEndpoint]);
+  }, [initialWorkspace, hostedPreview, isolatedPilot, workStateEndpoint]);
 
   useEffect(() => {
     let savedAccent: string = workspace[initialWorkspace].color;
@@ -303,19 +305,22 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
 
   useEffect(() => {
     if (!workLoaded || sharedWorkRevision === null) return;
-    const serialized = JSON.stringify(work);
+    const persistedWork = isolatedPilot ? work.filter((record) => !!record.canonicalWorkId) : work;
+    const serialized = JSON.stringify(persistedWork);
     if (serialized === lastSharedWork.current) return;
     const timer = window.setTimeout(async () => {
       try {
         const response = await fetch(workStateEndpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: hostedPreview
           ? JSON.stringify({ workspace: activeWorkspace, key: "work", expectedRevision: sharedWorkRevisionRef.current,
-              state: { schemaVersion: 1, workspace: activeWorkspace, revision: (sharedWorkRevisionRef.current ?? 0) + 1, records: work } })
-          : JSON.stringify({ expectedRevision: sharedWorkRevisionRef.current, records: work }) });
-        const payload = await response.json() as { state?: { revision: number }; message?: string };
+              state: { schemaVersion: 1, workspace: activeWorkspace, revision: (sharedWorkRevisionRef.current ?? 0) + 1, records: persistedWork } })
+          : JSON.stringify({ expectedRevision: sharedWorkRevisionRef.current, records: persistedWork }) });
+        const payload = await response.json() as { state?: { revision: number }; error?: string; message?: string };
         if (!response.ok || !payload.state) {
           pendingReviewQueue.current = null;
-          if (response.status === 409) setNotice("This Work Record changed in another browser. Your current edits are preserved here; refresh to load the latest shared workspace state.");
-          else if (pendingDiscoverSave.current) setNotice("The Discover change was not saved to the shared workspace. Retry after the service is available.");
+          if (response.status === 409 && payload.error === "stale_state") setNotice("This Work Record changed in another browser. Your current edits are preserved here; refresh to load the latest shared workspace state.");
+          else if (response.status === 409) setNotice(`The Work Record draft was blocked: ${payload.message ?? payload.error ?? "conflicting change"}.`);
+          else if (pendingDiscoverSave.current) setNotice(`The Discover change was not saved: ${payload.message ?? payload.error ?? `HTTP ${response.status}`}.`);
+          else setNotice(`The Work Record draft was not saved: ${payload.message ?? payload.error ?? `HTTP ${response.status}`}.`);
           return;
         }
         lastSharedWork.current = serialized;
@@ -330,13 +335,13 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
           setMobileMenuOpen(false);
           setNotice(`${review === "definition" ? "Definition" : review === "pricing" ? "Pricing" : "Proposal"} review saved to the shared workspace and opened in its role queue.`);
         }
-      } catch {
+      } catch (error) {
         pendingReviewQueue.current = null;
-        if (pendingDiscoverSave.current) setNotice("The Discover change was not saved to the shared workspace. Retry after the service is available.");
+        if (pendingDiscoverSave.current) setNotice(`The Discover change was not saved: ${error instanceof Error ? error.message : "Connection failed"}.`);
       }
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [work, activeWorkspace, workLoaded, sharedWorkRevision, hostedPreview, workStateEndpoint]);
+  }, [work, activeWorkspace, workLoaded, sharedWorkRevision, hostedPreview, isolatedPilot, workStateEndpoint]);
 
   useEffect(() => {
     if (!workLoaded || sharedWorkRevision === null) return;
@@ -393,7 +398,8 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       pinned,
     };
   };
-  const visibleWork = useMemo(() => work.filter((item) => item.workspace === activeWorkspace).map((item) => ({ ...item, status: item.status === "complete" ? "complete" as const : item.status === "attention" || transitionBlockers(item, resolvePublishedPhaseConfiguration(configurationInventory, item.workspace, item.type, item as WorkRecord)).length ? "attention" as const : "moving" as const })), [work, activeWorkspace, configurationInventory]);
+  const visibleWork = useMemo(() => work.filter((item) => item.workspace === activeWorkspace &&
+    (!isolatedPilot || !!item.canonicalWorkId || !seededWorkIds[activeWorkspace].includes(item.id))).map((item) => ({ ...item, status: item.status === "complete" ? "complete" as const : item.status === "attention" || transitionBlockers(item, resolvePublishedPhaseConfiguration(configurationInventory, item.workspace, item.type, item as WorkRecord)).length ? "attention" as const : "moving" as const })), [work, activeWorkspace, configurationInventory, isolatedPilot]);
   const operateTimezones = useMemo(() => Object.fromEntries(visibleWork.map((item) => [item.id, resolvePublishedPhaseConfiguration(configurationInventory, item.workspace, item.type, item as WorkRecord)?.operateControls?.timezone ?? legacyOperateControlPolicy.timezone])), [visibleWork, configurationInventory]);
   const operationalWork = useMemo(() => visibleWork.map((item) => ({ ...item, blockers: transitionBlockers(item, resolvePublishedPhaseConfiguration(configurationInventory, item.workspace, item.type, item as WorkRecord)) })), [visibleWork, configurationInventory]);
   const schedulingProfiles = useMemo(() => applyAvailability(peopleProfiles[activeWorkspace], availabilityBlocks), [activeWorkspace, availabilityBlocks]);
@@ -560,11 +566,20 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     if (expectedRevision === null || JSON.stringify(work) !== lastSharedWork.current) {
       setNotice("Wait for the Work Record to finish saving before recording an Operate action."); return false;
     }
+    const fingerprint = JSON.stringify(command);
+    const pending = pendingOperateCommand.current?.fingerprint === fingerprint
+      ? pendingOperateCommand.current : { fingerprint, commandId: crypto.randomUUID(), expectedRevision };
+    pendingOperateCommand.current = pending;
     try {
       const endpoint = hostedPreview ? `/api/d5o-hosted/prototype-operate-command?workspace=${encodeURIComponent(activeWorkspace)}` : "/api/work/operate-command";
-      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...command, expectedRevision, commandId: crypto.randomUUID() }) });
+      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...command, expectedRevision: pending.expectedRevision, commandId: pending.commandId }) });
       const payload = await response.json() as { state?: { revision: number; records: Work[] }; message?: string };
-      if (!response.ok || !payload.state) { setNotice(payload.message ?? (response.status === 409 ? "The Operate basis changed. Refresh and retry." : "Operate action could not be saved.")); return false; }
+      if (!response.ok || !payload.state) {
+        if (response.status === 400 || response.status === 403 || response.status === 409 || response.status === 422)
+          pendingOperateCommand.current = null;
+        setNotice(payload.message ?? (response.status === 409 ? "The Operate basis changed. Refresh and retry." : "Operate action could not be saved.")); return false;
+      }
+      pendingOperateCommand.current = null;
       const next = payload.state.records.map(hydrate);
       lastSharedWork.current = JSON.stringify(next); sharedWorkRevisionRef.current = payload.state.revision;
       setSharedWorkRevision(payload.state.revision); setWork(next);
@@ -637,6 +652,10 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     try {
       const result = await sharedWork.mutate({ action: "create-record", title, customer, site, type, phaseConfigurationVersionId, value, owner });
       const created = result.created as CatalogWorkRecord;
+      if (isolatedPilot && result.workRevision !== undefined) {
+        sharedWorkRevisionRef.current = result.workRevision;
+        setSharedWorkRevision(result.workRevision);
+      }
       setWork((all) => [hydrate(created), ...all.filter((item) => item.id !== created.id)]);
       setSelectedId(created.id); setTab("Overview"); setScreen("record");
       setNotice("Work Record started in the shared workspace. Complete Discover intake before qualification.");
@@ -647,11 +666,18 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     const result = await sharedWork.mutate({ action: "create-record", title: record.title,
       customer: record.customer, site: record.site, type: record.type,
       phaseConfigurationVersionId: record.phaseConfigurationVersionId ?? "",
-      value: record.value, owner: record.owner });
+      value: record.value, owner: record.owner, initialDiscovery: record.discovery ? {
+        source: record.discovery.source, need: record.discovery.need,
+        procurement: record.discovery.procurement, closeDate: record.discovery.closeDate
+      } : undefined });
     const created = result.created as CatalogWorkRecord;
+    if (isolatedPilot && result.workRevision !== undefined) {
+      sharedWorkRevisionRef.current = result.workRevision;
+      setSharedWorkRevision(result.workRevision);
+    }
     // The catalog owns the stable identity and initial position. Discover owns
     // the opportunity details, which are then saved on that same Work Record.
-    const next = hydrate({ ...record, id: created.id, stage: created.stage,
+    const next = hydrate({ ...record, id: created.id, canonicalWorkId: created.canonicalWorkId, stage: created.stage,
       status: created.status, progress: created.progress,
       phaseConfigurationVersionId: created.phaseConfigurationVersionId });
     pendingDiscoverSave.current = created.id;

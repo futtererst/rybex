@@ -4,6 +4,7 @@ import { evaluateRule } from "@/components/d5o/platform/phase-configuration";
 import type { ConfigurationInventory } from "@/lib/d5o/configuration/version-inventory";
 import { resolvePublishedPhaseConfiguration } from "@/components/d5o/platform/published-phase-configuration";
 import { PrototypeWorkError } from "./store-error";
+import { sameJsonValue } from "./semantic-json";
 
 export type DefineCommand = {
   action: "submit" | "approve-review" | "return-review" | "submit-handoff" |
@@ -112,7 +113,7 @@ export function applyDefineCommand(work: WorkRecord, command: DefineCommand, act
 
 export function assertSnapshotDefineIntegrity(before: Record<string, unknown>[], after: Record<string, unknown>[]) {
   const next = new Map(after.map((item) => [item.id, item as WorkRecord]));
-  const protectedFields = (definition?: DefinitionRecord) => JSON.stringify({
+  const protectedFields = (definition?: DefinitionRecord) => ({
     revision: definition?.revision, status: definition?.status, reviews: definition?.reviews,
     baselines: definition?.approvedBaselines, receipt: definition?.developHandoff,
     decisions: definition?.decisions
@@ -122,10 +123,10 @@ export function assertSnapshotDefineIntegrity(before: Record<string, unknown>[],
     if (!current && prior.definition) fail("protected_definition_deleted", "A Work Record with a Define basis cannot be removed through a snapshot.");
     if (current && !prior.definition && current.definition?.status === "Draft" && current.definition.revision === 1
       && !current.definition.decisions?.length && !current.definition.reviews && !current.definition.developHandoff) continue;
-    if (current && protectedFields(prior.definition) !== protectedFields(current.definition))
+    if (current && !sameJsonValue(protectedFields(prior.definition), protectedFields(current.definition)))
       fail("protected_definition_changed", "Define decisions and revisions require an authenticated server command.");
     if (current && prior.definition && prior.definition.status !== "Draft"
-      && JSON.stringify(prior.definition) !== JSON.stringify(current.definition))
+      && !sameJsonValue(prior.definition, current.definition))
       fail("protected_definition_changed", "A submitted or approved Define revision cannot be edited through a draft snapshot.");
   }
   for (const item of after) if (!before.some((prior) => prior.id === item.id)) {

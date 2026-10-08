@@ -6,7 +6,7 @@ import { crewPersonForUser, scheduleWorkspaceKeys } from "@/lib/d5o/scheduling/c
 import { loadConfigurationInventory } from "@/lib/d5o/configuration/server";
 import { createRybexSupabaseServerClient } from "@/lib/d5o/auth/supabase-server";
 import { hostedD5OTargetReady } from "@/lib/d5o/auth/hosted-target";
-import { hostedSyntheticInventory } from "@/lib/d5o/hosted/synthetic-inventory";
+import { hostedConfigurationInventory } from "@/lib/d5o/hosted/configuration-inventory";
 import type { WorkspaceKey } from "@/components/d5o/platform/work-types";
 import Link from "next/link";
 import "./enterprise.css";
@@ -20,6 +20,7 @@ export default async function WorkHomePage({ searchParams }: {
   searchParams?: Promise<{ workspace?: string }>;
 }) {
   const sourceVersion = process.env.D5O_SOURCE_SHA ?? process.env.VERCEL_GIT_COMMIT_SHA ?? "source-unidentified";
+  const isolatedPilot = process.env.D5O_ISOLATED_PILOT === "1";
   if (process.env.D5O_HOSTED_ENABLED === "1") {
     if (!hostedD5OTargetReady()) throw new Error("hosted_target_unavailable");
     const client = await createRybexSupabaseServerClient();
@@ -34,7 +35,7 @@ export default async function WorkHomePage({ searchParams }: {
     if (!selected) return <main className={styles.entry}>
       <div className={styles.brand}>D5O <span>System of work</span></div>
       <section className={styles.intro}>
-        <p>YOUR WORKSPACES · SYNTHETIC PROTOTYPE</p>
+        <p>YOUR WORKSPACES · {isolatedPilot ? "ISOLATED PILOT" : "SYNTHETIC PROTOTYPE"}</p>
         <h1>Choose the work you’re here to move forward.</h1>
         <span>Each workspace has its own people, Work Records, configuration and decisions. Your membership controls which one you can open.</span>
       </section>
@@ -48,7 +49,7 @@ export default async function WorkHomePage({ searchParams }: {
         <strong>Open workspace →</strong>
       </Link>)}</div>
       {!entries.length ? <p role="status">No D5O workspace membership is assigned to this account.</p> : null}
-      <p className={styles.notice}>Synthetic review data only. Actions in this prototype do not grant real business authority or deploy to production. Build {sourceVersion.slice(0, 12)}.</p>
+      <p className={styles.notice}>{isolatedPilot ? "Isolated pilot database. Decision authority remains under qualification." : "Synthetic review data only. Actions in this prototype do not grant real business authority or deploy to production."} Build {sourceVersion.slice(0, 12)}.</p>
       <Link className={styles.signout} href="/auth/sign-out">Switch account</Link>
     </main>;
     const permitted = entries.find((entry) => entry.workspaceKey === selected);
@@ -59,9 +60,9 @@ export default async function WorkHomePage({ searchParams }: {
       redirect(`/work/my-schedule?workspace=${encodeURIComponent(permitted.workspaceKey)}`);
     const workspace = selected as WorkspaceKey;
     return <D5OPlatform initialWorkspace={workspace} actorId={userData.user.id} actorRole={permitted.role}
-      configurationInventory={hostedSyntheticInventory(workspace)}
-      actorLabel={`${userData.user.email ?? "Workspace member"} · ${permitted.role.replaceAll("_", " ")} · synthetic preview`}
-      hostedPreview sourceVersion={sourceVersion} />;
+      configurationInventory={await hostedConfigurationInventory(workspace)}
+      actorLabel={`${userData.user.email ?? "Workspace member"} · ${permitted.role.replaceAll("_", " ")} · ${isolatedPilot ? "isolated pilot" : "synthetic preview"}`}
+      hostedPreview isolatedPilot={isolatedPilot} sourceVersion={sourceVersion} />;
   }
   assertProofEnvironment();
   const context = await getRequestContext();
