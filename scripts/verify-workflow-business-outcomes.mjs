@@ -70,7 +70,8 @@ for (const phrase of [
   "workflow-historical-record-panel",
   "workflow-outcome-next-step-cta",
   "pilot-workflow-outcome-summary",
-  "Billing backup completion and pay application readiness",
+  "billing-v2-outcome-record",
+  "billing-v2-historical-record",
   "Field issue control and escalation",
   "Closeout requirement completion and acceptance readiness"
 ]) {

@@ -33,6 +33,7 @@ function readRequired(path, label) {
 
 const report = readRequired(reportPath, "CTA outcome clarity QA report");
 const backlog = readRequired(backlogPath, "CTA outcome remediation backlog");
+const currentReport = report.split("## Command Center")[1] ?? "";
 
 for (const route of priorityRoutes) {
   if (!report.includes(`Route: \`${route}\``)) {
@@ -53,6 +54,18 @@ if (scoreMatches.length < priorityRoutes.length) {
   failures.push("CTA outcome report must include clarity scores.");
 }
 
+if (currentReport.includes("Outcome clarity: Needs remediation")) {
+  failures.push("CTA outcome report contains a current route with Needs remediation.");
+}
+
+const currentFailRows = currentReport
+  .split("\n")
+  .filter((line) => line.startsWith("|") && line.includes("| Fail |"));
+
+if (currentFailRows.length > 0) {
+  failures.push(`CTA outcome report contains current failing CTA row(s): ${currentFailRows.join(" / ")}`);
+}
+
 for (const category of ["Must Fix Before Founder Review", "Should Fix Before Executive Demo", "Later"]) {
   if (!backlog.includes(category)) {
     failures.push(`CTA outcome backlog missing category: ${category}`);
@@ -62,6 +75,27 @@ for (const category of ["Must Fix Before Founder Review", "Should Fix Before Exe
 const mustSection = backlog.split("## Should Fix Before Executive Demo")[0] ?? "";
 if (mustSection.includes("| Open |") && !mustSection.includes("Deferred")) {
   failures.push("Must Fix CTA outcome items remain open without documented reason.");
+}
+
+for (const billingSectionName of ["## Command Center", "## Billing cash blocker"]) {
+  const section = report.split(billingSectionName)[1]?.split("\n## ")[0] ?? "";
+
+  if (!section) {
+    failures.push(`CTA outcome report missing section: ${billingSectionName.replace("## ", "")}`);
+    continue;
+  }
+
+  if (!section.includes("- Outcome clarity: Pass")) {
+    failures.push(`${billingSectionName.replace("## ", "")} must show outcome clarity Pass for the Billing primary CTA path.`);
+  }
+
+  if (!/\| Add missing billing backup \| cockpit \| yes \| 5\/5 \| Pass \| Opens Billing v2 guided workflow/.test(section)) {
+    failures.push(`${billingSectionName.replace("## ", "")} must verify Add missing billing backup opens the Billing v2 guided workflow.`);
+  }
+}
+
+if (/Add missing billing backup.*Needs remediation|Add missing billing backup.*\| Open \|/s.test(backlog)) {
+  failures.push("Billing primary CTA path must not remain open in the CTA outcome remediation backlog.");
 }
 
 for (const doc of [

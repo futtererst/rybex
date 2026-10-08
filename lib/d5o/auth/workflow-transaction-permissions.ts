@@ -1,4 +1,4 @@
-import { getPermissionsForRole, hasPermission, type RybexPermission } from "../rbac";
+import { getPermissionsForRole, hasPermission, type CanonicalWorkspaceRole, type RybexPermission } from "../rbac";
 import type { UserRole } from "../types";
 import type { WorkflowTransactionType } from "../workflow/transactions";
 import type { OperatingWorkflowType } from "../workflow/types";
@@ -80,7 +80,7 @@ export const workflowTransactionPermissionRules: WorkflowTransactionPermissionRu
 
 export type WorkflowTransactionPermissionCheck = {
   allowed: boolean;
-  role: UserRole;
+  role: UserRole | CanonicalWorkspaceRole;
   requiredPermissions: RybexPermission[];
   message: string;
 };
@@ -99,7 +99,7 @@ export function getPermissionsForWorkflowTransaction(
 }
 
 export function checkWorkflowTransactionPermission(
-  role: UserRole,
+  role: UserRole | CanonicalWorkspaceRole,
   transactionType: WorkflowTransactionType,
   workflowType: OperatingWorkflowType
 ): WorkflowTransactionPermissionCheck {

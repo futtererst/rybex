@@ -1,0 +1,217 @@
+.root {
+  --d5o-content-max: 1400px;
+  --d5o-content-gutter: clamp(16px, 2.2vw, 32px);
+  --d5o-section-gap: 14px;
+  --d5o-card-radius: 8px;
+  --d5o-control-radius: 6px;
+  --d5o-control-height: 38px;
+  --d5o-surface: #fff;
+  --d5o-surface-muted: #f5f8fa;
+  --d5o-ink: #183544;
+  --d5o-muted: #627984;
+  --d5o-border: #dce5e9;
+  color: var(--d5o-ink);
+  min-width: 0;
+}
+
+/* Shared frame: every top-level D5O surface aligns to the same content grid. */
+.root :global(.d5o-page),
+.root :global(.d5o-ops-home),
+.root :global(.d5o-ops-mywork),
+.root :global(.d5o-portfolio-concept),
+.root :global(.d5o-decisions-board),
+.root :global(.d5o-crew-concept),
+.root :global(.d5o-capacity-board),
+.root :global(.d5o-execution-board),
+.root :global(.d5o-handoff-concept),
+.root :global(.d5o-library-board),
+.root :global(.d5o-record-full) {
+  box-sizing: border-box;
+  color: var(--d5o-ink);
+  margin-inline: auto;
+  max-width: var(--d5o-content-max);
+  min-width: 0;
+  width: 100%;
+}
+
+.root :global(.d5o-surface-host) {
+  min-width: 0;
+}
+
+.root :global(.d5o-surface-host > :is(.d5o-page, .d5o-ops-home, .d5o-ops-mywork, .d5o-portfolio-concept, .d5o-decisions-board, .d5o-crew-concept, .d5o-capacity-board, .d5o-execution-board, .d5o-handoff-concept, .d5o-library-board, .d5o-record-full)) {
+  margin-inline: auto;
+  max-width: var(--d5o-content-max);
+  width: 100%;
+}
+
+/* Direct worksurface bands fill the shared frame instead of sizing to their contents. */
+.root :global(.d5o-page > .d5o-page-band) {
+  box-sizing: border-box;
+  margin-inline: 0;
+  max-width: none;
+  min-width: 0;
+  width: 100%;
+}
+
+/* Shared heading, eyebrow, and introductory-copy rhythm. */
+.root :global(.d5o-surface-host h1) {
+  color: var(--d5o-ink);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2rem, 3vw, 3rem);
+  letter-spacing: -.04em;
+  line-height: 1.04;
+}
+
+.root :global(.d5o-surface-host h2),
+.root :global(.d5o-surface-host h3) {
+  color: var(--d5o-ink);
+}
+
+.root :global(.d5o-page-kicker),
+.root :global(.d5o-command-header > p),
+.root :global(.d5o-ops-home > header > p),
+.root :global(.d5o-ops-mywork > header > p),
+.root :global(.d5o-portfolio-concept > header p),
+.root :global(.d5o-decisions-board > header p),
+.root :global(.d5o-crew-concept-head p),
+.root :global(.d5o-capacity-board > header p),
+.root :global(.d5o-board-hero > div > p),
+.root :global(.d5o-handoff-concept > header p),
+.root :global(.d5o-library-board > header > div:first-child > p),
+.root :global(.d5o-record-full > header p) {
+  color: color-mix(in srgb, var(--d5o-accent) 68%, #253f4b);
+  font-size: .65rem;
+  font-weight: 900;
+  letter-spacing: .12em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.root :global(.d5o-page-lead),
+.root :global(.d5o-command-header > div:first-child > span),
+.root :global(.d5o-ops-home > header > span),
+.root :global(.d5o-ops-mywork > header > span),
+.root :global(.d5o-portfolio-concept > header span),
+.root :global(.d5o-decisions-board > header > div > span),
+.root :global(.d5o-crew-concept-head > div > span),
+.root :global(.d5o-capacity-board > header > div > span),
+.root :global(.d5o-board-hero > div > span),
+.root :global(.d5o-handoff-concept > header > div > span),
+.root :global(.d5o-library-board > header > div:first-child > span) {
+  color: var(--d5o-muted);
+  font-size: .82rem;
+  line-height: 1.5;
+  max-width: 78ch;
+}
+
+/* Card surfaces and metric strips share border, radius, and surface color. */
+.root :global(.d5o-panel),
+.root :global(.d5o-command-header),
+.root :global(.d5o-mywork-list),
+.root :global(.d5o-mywork-focus),
+.root :global(.d5o-portfolio-flow),
+.root :global(.d5o-portfolio-consol),
+.root :global(.d5o-week-board),
+.root :global(.d5o-decisions-list),
+.root :global(.d5o-decision-focus),
+.root :global(.d5o-people-register),
+.root :global(.d5o-library-register),
+.root :global(.d5o-handoff-matrix),
+.root :global(.d5o-lifecycle-board),
+.root :global(.d5o-ops-panel),
+.root :global(.d5o-crew-board),
+.root :global(.d5o-crew-callout),
+.root :global(.d5o-execution-main),
+.root :global(.d5o-handoff-queue),
+.root :global(.d5o-lifecycle-actions),
+.root :global(.d5o-insight-grid > article),
+.root :global(.d5o-record-workspace > section),
+.root :global(.d5o-record-workspace > aside) {
+  border-color: var(--d5o-border);
+  border-radius: var(--d5o-card-radius);
+  box-shadow: 0 1px 2px rgb(18 45 58 / 5%);
+}
+
+.root :global(.d5o-system-metrics > article),
+.root :global(.d5o-command-metrics > article),
+.root :global(.d5o-execution-pulse > article),
+.root :global(.d5o-handoff-stats > article),
+.root :global(.d5o-people-summary > article),
+.root :global(.d5o-crew-overview > article),
+.root :global(.d5o-record-summary > article) {
+  background: var(--d5o-surface);
+  border: 1px solid var(--d5o-border);
+  border-radius: var(--d5o-card-radius);
+  min-width: 0;
+}
+
+/* Shared controls: predictable sizing, workspace-accent focus, and readable labels. */
+.root :global(.d5o-surface-host button) {
+  font-family: inherit;
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease, box-shadow .16s ease;
+}
+
+.root :global(.d5o-surface-host :is(input:not([type="checkbox"]):not([type="radio"]):not([type="color"]), select, textarea)) {
+  border-radius: var(--d5o-control-radius);
+  font: inherit;
+  max-width: 100%;
+}
+
+.root :global(.d5o-surface-host :is(button, a, input, select, textarea):focus-visible) {
+  outline: 3px solid color-mix(in srgb, var(--d5o-accent) 50%, transparent);
+  outline-offset: 2px;
+}
+
+.root :global(.d5o-primary),
+.root :global(.d5o-outline),
+.root :global(.d5o-quiet) {
+  border-radius: var(--d5o-control-radius);
+  font-weight: 800;
+  min-height: var(--d5o-control-height);
+}
+
+.root :global(.d5o-surface-host :is(.d5o-panel, .d5o-ops-panel, .d5o-command-grid > article, .d5o-command-bottom > article, .d5o-mywork-list, .d5o-mywork-focus, .d5o-portfolio-flow, .d5o-portfolio-consol, .d5o-week-board, .d5o-decisions-list, .d5o-decision-focus, .d5o-people-register, .d5o-library-register, .d5o-handoff-matrix, .d5o-lifecycle-board, .d5o-crew-board, .d5o-crew-callout, .d5o-execution-main, .d5o-handoff-queue, .d5o-lifecycle-actions, .d5o-record-workspace > section, .d5o-record-workspace > aside)) {
+  background-color: var(--d5o-surface);
+  border-color: var(--d5o-border);
+  border-radius: var(--d5o-card-radius);
+}
+
+/* Shared filters and surface navigation use one compact tab treatment. */
+.root :global(.d5o-decisions-board > nav),
+.root :global(.d5o-execution-filters),
+.root :global(.d5o-portfolio-view),
+.root :global(.d5o-record-full > nav:not(.d5o-work-phase-nav)),
+.root :global(.d5o-library-register > header > nav) {
+  align-items: center;
+  border-bottom: 1px solid var(--d5o-border);
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.root :global(.d5o-decisions-board > nav button),
+.root :global(.d5o-execution-filters button),
+.root :global(.d5o-portfolio-view button),
+.root :global(.d5o-record-full > nav:not(.d5o-work-phase-nav) button),
+.root :global(.d5o-library-register > header > nav button) {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* Keep the shared frame usable at narrow laptop and tablet widths. */
+@media (max-width: 900px) {
+  .root :global(.d5o-page),
+  .root :global(.d5o-ops-home),
+  .root :global(.d5o-ops-mywork),
+  .root :global(.d5o-portfolio-concept),
+  .root :global(.d5o-decisions-board),
+  .root :global(.d5o-crew-concept),
+  .root :global(.d5o-capacity-board),
+  .root :global(.d5o-execution-board),
+  .root :global(.d5o-handoff-concept),
+  .root :global(.d5o-library-board),
+  .root :global(.d5o-record-full) {
+    max-width: none;
+  }
+}

@@ -26,6 +26,8 @@ const routes = [
   { route: "/admin", focus: "Admin readiness review" }
 ];
 
+const routesAllowedWithoutImportantCtas = new Set(["/admin"]);
+
 const bannedVagueLabels = [
   /^open priority$/i,
   /^open action details$/i,
@@ -123,6 +125,7 @@ async function collectOutcomeCandidates(page) {
 
 function scoreOutcome(result) {
   if (result.vagueLabel || result.genericRouteOnly || result.sectionOnlyHighlight || result.missingFocusedTask || result.missingInstruction) return 1;
+  if (result.billingV2GuidedWorkflow && result.billingV2ProcessRail && result.billingV2ActiveStep && result.billingV2ContextPanel && result.billingV2BusinessObjectVisible && result.billingV2CashImpactVisible) return 5;
   if (result.modalOpened) return 5;
   if (result.focusedTaskPanel && result.hasTaskInstruction) return 5;
   if (result.pathChanged) return 5;
@@ -138,8 +141,12 @@ function notesFor(result) {
   if (result.vagueLabel) return "CTA label is too vague to describe the task outcome.";
   if (result.genericRouteOnly) return "Routes to a module page without focus metadata or task instruction.";
   if (result.sectionOnlyHighlight) return "Only highlights a generic details section, not an exact task.";
+  if (result.missingFocusedTask && result.expectsBillingV2GuidedWorkflow) return "Focus metadata is present but the Billing v2 guided workflow did not appear.";
   if (result.missingFocusedTask) return "Focus metadata is present but no focused task panel appeared.";
   if (result.missingInstruction) return "Focused task panel appeared without a visible 'You are here to' instruction.";
+  if (result.billingV2GuidedWorkflow && result.billingV2ProcessRail && result.billingV2ActiveStep && result.billingV2ContextPanel && result.billingV2BusinessObjectVisible && result.billingV2CashImpactVisible) {
+    return "Opens Billing v2 guided workflow with process rail, active step, and readiness context.";
+  }
   if (result.focusedTaskPanel && result.hasTaskInstruction) return "Opens a focused task panel with clear next-step instructions.";
   if (result.pathChanged) return "Routes to a different relevant page.";
   if (result.modalOpened) return "Opens a modal/dialog with a clear action surface.";
@@ -192,13 +199,19 @@ async function clickAndAssess(page, route, candidate) {
     await locator.click({ timeout: 3000 });
     await page.waitForLoadState("domcontentloaded", { timeout: 1500 }).catch(() => undefined);
     await page.waitForFunction(
-      (previousUrl) => window.location.href !== previousUrl || Boolean(document.querySelector('[data-qa="focused-task-panel"]')),
+      (previousUrl) =>
+        window.location.href !== previousUrl ||
+        Boolean(document.querySelector('[data-qa="focused-task-panel"]')) ||
+        Boolean(document.querySelector('[data-qa="billing-v2-guided-workflow"]')),
       beforeUrl,
       { timeout: candidate.primary ? 2500 : 800 }
     ).catch(() => undefined);
     await page.waitForTimeout(250);
     if (page.url().includes("focus=") || page.url().includes("#focused-task")) {
-      await page.waitForSelector('[data-qa="focused-task-panel"]', { timeout: 1800 }).catch(() => undefined);
+      const focusedSelector = /add missing billing backup/i.test(label)
+        ? '[data-qa="billing-v2-guided-workflow"]'
+        : '[data-qa="focused-task-panel"]';
+      await page.waitForSelector(focusedSelector, { timeout: /add missing billing backup/i.test(label) ? 9000 : 1800 }).catch(() => undefined);
     }
   } catch (error) {
     markProgress(`candidate click failed ${route} ${candidate.label}`);
@@ -216,6 +229,16 @@ async function clickAndAssess(page, route, candidate) {
 
   const afterUrl = page.url();
   const afterParsed = new URL(afterUrl);
+  const expectsBillingV2GuidedWorkflow =
+    /add missing billing backup/i.test(label) ||
+    afterParsed.pathname === "/billing" && afterParsed.searchParams.get("focus") === "billing-billing-backup-cash-recovery";
+  if (expectsBillingV2GuidedWorkflow) {
+    const guidedVisible = await visibleCount(page, '[data-qa="billing-v2-guided-workflow"]') > 0;
+    if (!guidedVisible && afterParsed.pathname === "/billing" && afterParsed.searchParams.get("focus") === "billing-billing-backup-cash-recovery") {
+      await page.goto(afterUrl, { waitUntil: "domcontentloaded", timeout: 10000 }).catch(() => undefined);
+      await page.waitForSelector('[data-qa="billing-v2-guided-workflow"]', { timeout: 9000 }).catch(() => undefined);
+    }
+  }
   const afterOpenDetails = await visibleCount(page, "details[open]");
   const afterDialog = await visibleCount(page, "[role='dialog'], dialog, .modal, .workflow-transaction-modal");
   const afterScroll = await page.evaluate(() => window.scrollY);
@@ -225,11 +248,28 @@ async function clickAndAssess(page, route, candidate) {
   const focusedTaskPanel = await visibleCount(page, '[data-qa="focused-task-panel"]');
   const focusedTaskText = await page.locator('[data-qa="focused-task-panel"]').first().innerText({ timeout: 200 }).catch(() => "");
   const hasTaskInstruction = /you are here to/i.test(focusedTaskText);
+  const billingV2GuidedWorkflow = await visibleCount(page, '[data-qa="billing-v2-guided-workflow"]') > 0;
+  const billingV2ProcessRail = await visibleCount(page, '[data-qa="billing-v2-process-rail"]') > 0;
+  const billingV2ActiveStep = await visibleCount(page, '[data-qa="billing-v2-active-step"]') > 0;
+  const billingV2ContextPanel = await visibleCount(page, '[data-qa="billing-v2-context-panel"]') > 0;
+  const pageText = expectsBillingV2GuidedWorkflow ? normalize(await page.locator("main").innerText({ timeout: 500 }).catch(() => "")) : "";
+  const billingV2BusinessObjectVisible = /Pay App 003/i.test(pageText);
+  const billingV2CashImpactVisible = /\$84,000|84,000/.test(pageText);
+  const billingV2FocusedOutcome =
+    expectsBillingV2GuidedWorkflow &&
+    afterParsed.pathname === "/billing" &&
+    afterParsed.searchParams.get("focus") === "billing-billing-backup-cash-recovery" &&
+    billingV2GuidedWorkflow &&
+    billingV2ProcessRail &&
+    billingV2ActiveStep &&
+    billingV2ContextPanel &&
+    billingV2BusinessObjectVisible &&
+    billingV2CashImpactVisible;
   const hasFocusMetadata = afterParsed.searchParams.has("focus") || afterParsed.hash === "#focused-task";
   const genericRouteOnly = candidate.primary && beforeParsed.pathname !== afterParsed.pathname && !hasFocusMetadata;
   const sectionOnlyHighlight = candidate.primary && afterParsed.hash === "#details-records" && focusedTaskPanel === 0;
-  const missingFocusedTask = candidate.primary && hasFocusMetadata && focusedTaskPanel === 0;
-  const missingInstruction = focusedTaskPanel > 0 && !hasTaskInstruction;
+  const missingFocusedTask = candidate.primary && hasFocusMetadata && focusedTaskPanel === 0 && !billingV2FocusedOutcome;
+  const missingInstruction = focusedTaskPanel > 0 && !hasTaskInstruction && !billingV2FocusedOutcome;
   const vagueLabel = isBannedVagueLabel(label);
 
   const result = {
@@ -245,6 +285,13 @@ async function clickAndAssess(page, route, candidate) {
     pathChanged: beforeParsed.pathname !== afterParsed.pathname,
     focusedTaskPanel: focusedTaskPanel > 0,
     hasTaskInstruction,
+    expectsBillingV2GuidedWorkflow,
+    billingV2GuidedWorkflow,
+    billingV2ProcessRail,
+    billingV2ActiveStep,
+    billingV2ContextPanel,
+    billingV2BusinessObjectVisible,
+    billingV2CashImpactVisible,
     vagueLabel,
     genericRouteOnly,
     sectionOnlyHighlight,
@@ -272,13 +319,13 @@ function writeDocs(results) {
     "",
     "A CTA passes when the user can clearly see the outcome: route change, modal/drawer, expanded details, highlighted/focused section, transaction feedback, or clear unavailable/demo messaging.",
     "",
-    "## Manual Founder Review Failures",
+    "## Historical Manual Review Failures Resolved",
     "",
     "- Observed behavior: Command Center `Open priority` routed to `/projects` without a task instruction.",
     "- Observed behavior: Pipeline `Open action details` highlighted the Pipeline Details bar without an exact object or next step.",
-    "- Why it failed: both outcomes worked mechanically but left the user guessing.",
-    "- Fix implemented: cockpit CTAs now use concrete labels, focus metadata, and a focused task panel with `You are here to` and `Do next` instructions.",
-    "- Verification: this QA fails vague labels, generic route-only outcomes, generic section-only highlights, and missing focused task panels.",
+    "- Why these historical outcomes failed manual review: both worked mechanically but left the user guessing.",
+    "- Fix implemented: cockpit CTAs now use concrete labels, focus metadata, and a focused task surface. Billing v2 is accepted when the guided workflow, process rail, active step, and readiness context appear.",
+    "- Verification: this QA fails vague labels, generic route-only outcomes, generic section-only highlights, missing focused task surfaces, and missing Billing v2 guided workflow outcomes.",
     ""
   ];
 
@@ -300,7 +347,9 @@ function writeDocs(results) {
       lines.push(`| ${result.label} | ${result.area} | ${result.primary ? "yes" : "no"} | ${result.clarityScore}/5 | ${result.pass ? "Pass" : "Fail"} | ${result.notes} |`);
     }
 
-    if (routeResults.length === 0) {
+    if (routeResults.length === 0 && routesAllowedWithoutImportantCtas.has(routeInfo.route)) {
+      lines.push("| No important CTAs detected | - | - | N/A | Pass | No primary CTA required for this readiness/status route. |");
+    } else if (routeResults.length === 0) {
       lines.push("| No important CTAs detected | - | - | 1/5 | Fail | Page needs a primary outcome path. |");
     }
 
@@ -313,7 +362,7 @@ function writeDocs(results) {
   const backlog = [
     "# CTA Outcome Remediation Backlog",
     "",
-    "## Manual Founder Review Failures",
+    "## Historical Manual Review Failures Resolved",
     "",
     "| Observed behavior | Why it failed | Fix implemented | Verification | Status |",
     "| --- | --- | --- | --- | --- |",
@@ -425,6 +474,15 @@ writeFileSync(resultsPath, `${JSON.stringify({ baseUrl, generatedAt: new Date().
 writeDocs(results);
 
 const failures = results.filter((result) => !result.pass);
+const blockingFailures = failures.filter((result) => result.primary || result.area === "cockpit" || result.area === "header");
 console.log(`CTA outcome QA complete: ${results.length} CTA checks, ${failures.length} clarity issue(s).`);
 console.log(`Report written to ${reportPath}`);
 console.log(`Backlog written to ${backlogPath}`);
+
+if (blockingFailures.length > 0) {
+  console.error("Blocking CTA outcome failures remain:");
+  for (const failure of blockingFailures) {
+    console.error(`- ${failure.route}: ${failure.label} - ${failure.notes}`);
+  }
+  process.exit(1);
+}

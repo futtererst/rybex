@@ -12,7 +12,7 @@ export function PilotModeHeader({ completionModeLabel, status }: PilotModeHeader
         <div>
           <p className="eyebrow">Pilot Mode</p>
           <h1>Pilot Mode</h1>
-          <p>Complete the three proven RybexOS operating workflows.</p>
+          <p>Complete the three proven D5O operating workflows.</p>
         </div>
         <Link className="button button-secondary" href="/command-center">
           Command Center

@@ -9,6 +9,10 @@ export function getWorkflowTransactionStoreMode(): WorkflowTransactionStoreMode 
     return configuredMode as WorkflowTransactionStoreMode;
   }
 
+  if (process.env.RYBEXOS_RUNTIME_MODE === "production") {
+    return "database";
+  }
+
   return "local";
 }
 

@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import { assessDiscover, activeForecast, assessmentBasis, defaultDiscoverPolicy, weightedPotential } from '../components/d5o/platform/discover-decision.ts';
+
+const policy = { ...defaultDiscoverPolicy(), version: 'published-review-1', source: 'published' };
+const crm = { contacts: [{ id: 'c1', role: 'Decision-maker', relationship: 'Engaged' }], activities: [], tasks: [], buyingProcess: 'Committee decision', funding: 'Confirmed', strategicFit: 5, needCredibility: 4, commercialAttractiveness: 4, deliveryFeasibility: 4, risk: 4, disqualifier: 'None', forecast: { value: 100000, currency: 'USD', probability: 40, awardDate: '2026-12-15', category: 'Pipeline' }, assessmentHistory: [] };
+const work = { customer: 'Synthetic customer', site: 'Site A', owner: 'Account owner', discovery: { need: 'Modernize service', crm, pursuitControl: { status: 'draft' } } };
+const assessed = assessDiscover(work, policy, '2026-10-06T00:00:00Z');
+assert.equal(assessed.recommendation, 'Pursue');
+assert.equal(assessed.coverage, 100);
+assert.equal(assessed.policyVersion, policy.version);
+assert.equal(assessed.basis, assessmentBasis(work));
+assert.equal(weightedPotential(crm), 40000);
+assert.equal(weightedPotential({ ...crm, forecast: { ...crm.forecast, probability: null } }), null);
+assert.equal(assessDiscover({ ...work, discovery: { ...work.discovery, crm: { ...crm, disqualifier: 'Unsafe delivery' } } }, policy).recommendation, 'Decline');
+assert.equal(assessDiscover({ ...work, discovery: { ...work.discovery, crm: { ...crm, funding: 'Unknown' } } }, policy).recommendation, 'Hold for information');
+assert.equal(assessDiscover({ ...work, discovery: { ...work.discovery, crm: { ...crm, strategicFit: null } } }, policy).score, null);
+assert.equal(assessDiscover({ ...work, discovery: { ...work.discovery, crm: { ...crm, risk: 2 } } }, policy).recommendation, 'Pursue with conditions');
+assert.match(assessDiscover({ ...work, discovery: { ...work.discovery, crm: { ...crm, risk: 2 } } }, policy).conditions.join(' '), /risk mitigation/);
+assert.notEqual(assessmentBasis(work), assessmentBasis({ ...work, discovery: { ...work.discovery, crm: { ...crm, buyingProcess: 'Tender' } } }));
+assert.equal(activeForecast(work), true);
+assert.equal(activeForecast({ ...work, discovery: { ...work.discovery, pursuitControl: { status: 'held' } } }), false);
+assert.equal(activeForecast({ ...work, discovery: { ...work.discovery, outcome: 'Won' } }), false);
+assert.equal(activeForecast({ ...work, discovery: { ...work.discovery, crm: { ...crm, commercialStatus: 'Awarded' } } }), false);
+console.log('PASS: Discover decision order, unknowns, arithmetic, stale basis and forecast exclusions');

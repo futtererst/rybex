@@ -9,6 +9,10 @@ export function getDataSourceMode(): RybexDataSourceMode {
     return configuredMode as RybexDataSourceMode;
   }
 
+  if (process.env.RYBEXOS_RUNTIME_MODE === "production") {
+    return "database";
+  }
+
   return "seed";
 }
 

@@ -1,346 +1,292 @@
 import Link from "next/link";
-import { ActionWorkspaceLayout, CollapsedDetails } from "@/components/d5o/end-user";
-import { OpportunityCard } from "@/components/d5o/OpportunityCard";
-import { OpportunityRiskPanel } from "@/components/d5o/OpportunityRiskPanel";
-import { OpportunityTable } from "@/components/d5o/OpportunityTable";
-import { PageHeader } from "@/components/d5o/PageHeader";
-import { PipelineSummaryMetric } from "@/components/d5o/PipelineSummaryMetric";
-import { WorkflowModuleContext } from "@/components/d5o/workflow/WorkflowModuleContext";
-import { getEndUserWorkspaceSummary } from "@/lib/d5o/end-user/page-focus-config";
-import { calculateGoNoGo } from "@/lib/d5o/go-no-go";
-import {
-  activePipelineStatuses,
-  decisionLabels,
-  opportunityStatusMap,
-  pipelineBoardStatuses,
-  recommendationLabels,
-  recommendationTone,
-  riskLevelLabels,
-  riskLevelTone
-} from "@/lib/d5o/opportunity-config";
-import { gcPerformanceProfiles, opportunities, riskLibraryItems } from "@/lib/d5o/seed-data";
-import { chipClass, compactCurrency, currency, dateLabel } from "@/lib/d5o/presentation";
-import type { Opportunity } from "@/lib/d5o/types";
-
-const operatingDate = "2026-06-10";
-
-const activeOpportunities = opportunities.filter((opportunity) =>
-  activePipelineStatuses.includes(opportunity.status)
-);
-const pipelineValue = activeOpportunities.reduce(
-  (total, opportunity) => total + opportunity.estimatedValue,
-  0
-);
-const dueSoon = activeOpportunities.filter((opportunity) => daysUntil(opportunity.bidDueDate) <= 7);
-const awaitingDecision = activeOpportunities.filter(
-  (opportunity) => opportunity.status === "awaiting_go_no_go"
-);
-const highRisk = activeOpportunities.filter((opportunity) =>
-  ["high", "severe"].includes(calculateGoNoGo(opportunity).riskLevel)
-);
-const approvedPursuits = activeOpportunities.filter(
-  (opportunity) =>
-    opportunity.status === "approved_to_bid" ||
-    opportunity.status === "estimating" ||
-    opportunity.decision === "approve_to_bid"
-);
-const upcomingDeadlines = [...activeOpportunities]
-  .sort((a, b) => a.bidDueDate.localeCompare(b.bidDueDate))
-  .slice(0, 6);
-const recentIntake = [...opportunities]
-  .sort((a, b) => b.receivedDate.localeCompare(a.receivedDate))
-  .slice(0, 5);
+import { listOpportunityActions } from "@/lib/d5o/opportunities/supabase-repository";
+import type { OpportunityAction } from "@/lib/d5o/opportunities/types";
 
 export const metadata = {
   title: "Pipeline | RybexOS"
 };
 
-export default function PipelinePage() {
+type SearchParams = Record<string, string | string[] | undefined>;
+
+export default async function PipelinePage({ searchParams }: { searchParams?: Promise<SearchParams> }) {
+  const query = searchParams ? await searchParams : {};
+  const state = readParam(query.state);
+  if (state === "queue-unavailable") return <QueueUnavailable />;
+  if (state === "loading-preview") return <QueueLoading />;
+  if (state === "empty-assignment") return <EstimatorEmptyAssignments />;
+  const result = await listOpportunityActions();
+  if (!result.success) return <QueueUnavailable />;
+  const opportunities = rankOpportunities(result.items);
+
   return (
-    <div className="command-grid pipeline-page">
-      <PageHeader
-        context={`Reporting context: ${dateLabel(operatingDate)}`}
-        eyebrow="D1 Discover"
-        primaryAction={{ href: "/pipeline/new", label: "New Opportunity", tone: "primary" }}
-        secondaryActions={[{ href: "/command-center", label: "Command Center" }]}
-        subtitle="Qualify subcontractor opportunities before estimating resources are committed."
-        tags={["Go / no-go discipline"]}
-        title="Pipeline"
-      />
-
-      <ActionWorkspaceLayout summary={getEndUserWorkspaceSummary("pipeline")} />
-
-      <CollapsedDetails
-        title="Pipeline details"
-        summary="Opportunity board, go/no-go scoring, bid calendar, and pursuit intelligence."
-      >
-      <section className="pipeline-guardrail">
-        <strong>D1 pursuit discipline:</strong>
-        <span>
-          Estimating resources should not be committed until the D1 pursuit gate is approved.
-          Holds, exclusions, and no-bid decisions protect margin before takeoff starts.
-        </span>
-      </section>
-
-      <section className="pipeline-guardrail">
-        <strong>Optimize intelligence:</strong>
-        <span>
-          GC performance history and risk-library updates should influence pursuit posture. Review <Link href="/reports">Optimize</Link> before approving high-risk pursuits.
-        </span>
-      </section>
-
-      <WorkflowModuleContext
-        queueTitle="Pursuit workflow actions"
-        workflowType="pursuit_control"
-      />
-
-      <section className="metrics-grid" aria-label="Pipeline summary">
-        <PipelineSummaryMetric
-          detail="Open D1/D2 pursuits"
-          label="Open Opportunities"
-          value={activeOpportunities.length}
-        />
-        <PipelineSummaryMetric
-          detail="Estimated opportunity value"
-          label="Bid Value"
-          value={compactCurrency.format(pipelineValue)}
-        />
-        <PipelineSummaryMetric
-          detail="Bids due in next 7 days"
-          label="Deadline Pressure"
-          tone={dueSoon.length > 0 ? "warning" : "success"}
-          value={dueSoon.length}
-        />
-        <PipelineSummaryMetric
-          detail="Need D1 pursuit gate decision"
-          label="Awaiting Go/No-Go"
-          tone="warning"
-          value={awaitingDecision.length}
-        />
-        <PipelineSummaryMetric
-          detail="High or severe pursuit exposure"
-          label="High Risk"
-          tone={highRisk.length > 0 ? "critical" : "success"}
-          value={highRisk.length}
-        />
-        <PipelineSummaryMetric
-          detail="Approved for estimating or bid"
-          label="Approved Pursuits"
-          tone="success"
-          value={approvedPursuits.length}
-        />
-      </section>
-
-      <section className="panel">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">D1 Intelligence Inputs</p>
-            <h2>GC posture and risk updates that should shape go/no-go scoring</h2>
-          </div>
-          <Link className="button button-secondary" href="/reports">Optimize</Link>
+    <main className="pipeline-experience" data-pipeline-screen="opportunity-queue">
+      <header className="pipeline-topbar">
+        <div>
+          <p className="pipeline-kicker">Pipeline</p>
+          <h1>Opportunity queue</h1>
+          <p>{queueSummary(opportunities.length)}</p>
         </div>
-        <div className="operating-columns">
-          {gcPerformanceProfiles
-            .filter((profile) => ["caution", "avoid", "pursue_with_controls"].includes(profile.recommendedPursuitPosture))
-            .slice(0, 3)
-            .map((profile) => (
-              <section className="control-list" key={profile.id}>
-                <h3>{profile.gcClient}</h3>
-                <p>{profile.notes}</p>
-                <p className="missing-callout">Pursuit posture: {profile.recommendedPursuitPosture.replaceAll("_", " ")}</p>
-              </section>
-            ))}
-          {riskLibraryItems
-            .filter((risk) => risk.shouldUpdateGoNoGoScoring)
-            .slice(0, 3)
-            .map((risk) => (
-              <section className="control-list" key={risk.id}>
-                <h3>{risk.title}</h3>
-                <p>{risk.recommendedMitigation}</p>
-                <p className="missing-callout">Update D1 scoring before similar pursuits.</p>
-              </section>
-            ))}
-        </div>
-      </section>
-
-      <section className="panel">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Opportunity Board</p>
-            <h2>Governed pursuit status</h2>
-          </div>
-          <span className="muted">Grouped by D1/D2 control status</span>
-        </div>
-        <div className="pipeline-board">
-          {pipelineBoardStatuses.map((statusId) => {
-            const status = opportunityStatusMap[statusId];
-            const statusOpportunities = activeOpportunities.filter(
-              (opportunity) => opportunity.status === statusId
-            );
-
-            return (
-              <section className="pipeline-lane" key={statusId}>
-                <div className="phase-lane-header">
-                  <div>
-                    <strong>{status.label}</strong>
-                    <p className="muted">{status.description}</p>
-                  </div>
-                  <span className={chipClass(status.tone)}>{statusOpportunities.length}</span>
-                </div>
-                <div className="project-stack">
-                  {statusOpportunities.length > 0 ? (
-                    statusOpportunities.map((opportunity) => (
-                      <OpportunityCard key={opportunity.id} opportunity={opportunity} />
-                    ))
-                  ) : (
-                    <p className="muted">No opportunities in this status.</p>
-                  )}
-                </div>
-              </section>
-            );
-          })}
-        </div>
-      </section>
-
-      <div className="content-grid">
-        <section className="panel">
-          <div className="section-heading">
+        <div className="pipeline-toolbar" aria-label="Opportunity queue controls">
+          <label className="pipeline-search">
+            <span className="sr-only">Search opportunities</span>
+            <input name="search" placeholder="Search opportunities" />
+          </label>
+          <details className="pipeline-filter">
+            <summary>Filters</summary>
             <div>
-              <p className="eyebrow">Go/No-Go Queue</p>
-              <h2>Decisions needed before estimating starts</h2>
+              <p>Focus the queue by status, owner, or due date.</p>
             </div>
-            <span className="muted">{awaitingDecision.length} awaiting decision</span>
-          </div>
-          <div className="project-stack">
-            {awaitingDecision.map((opportunity) => (
-              <DecisionQueueItem key={opportunity.id} opportunity={opportunity} />
-            ))}
-          </div>
-        </section>
-
-        <aside className="panel">
-          <p className="eyebrow">Bid Calendar</p>
-          <h2>Upcoming deadlines</h2>
-          <ul className="deadline-list">
-            {upcomingDeadlines.map((opportunity) => (
-              <li key={opportunity.id}>
-                <div>
-                  <strong>{opportunity.name}</strong>
-                  <small className="muted">
-                    {opportunity.gcClient} | due {dateLabel(opportunity.bidDueDate)}
-                  </small>
-                </div>
-                <span className={daysUntil(opportunity.bidDueDate) <= 7 ? "chip chip-warning" : "chip chip-neutral"}>
-                  {daysUntil(opportunity.bidDueDate)} days
-                </span>
-              </li>
-            ))}
-          </ul>
-        </aside>
-      </div>
-
-      <div className="content-grid">
-        <section className="panel">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">High-Risk Pursuits</p>
-              <h2>Mitigation required before approval</h2>
-            </div>
-            <span className="muted">{highRisk.length} high-risk opportunities</span>
-          </div>
-          <div className="project-stack">
-            {highRisk.map((opportunity) => {
-              const score = calculateGoNoGo(opportunity);
-
-              return (
-                <article className="opportunity-detail-panel" key={opportunity.id}>
-                  <div className="status-row">
-                    <div>
-                      <h3>{opportunity.name}</h3>
-                      <p className="muted">{opportunity.scopeSummary}</p>
-                    </div>
-                    <span className={chipClass(riskLevelTone[score.riskLevel])}>
-                      {riskLevelLabels[score.riskLevel]} Risk
-                    </span>
-                  </div>
-                  <OpportunityRiskPanel risks={opportunity.riskFactors} />
-                </article>
-              );
-            })}
-          </div>
-        </section>
-
-        <aside className="panel">
-          <p className="eyebrow">Recent Intake</p>
-          <h2>Next actions</h2>
-          <ul className="compact-list">
-            {recentIntake.map((opportunity) => (
-              <li key={opportunity.id}>
-                <span className="artifact-state artifact-pending" />
-                <span>
-                  <strong>{opportunity.name}</strong>
-                  <small className="muted">
-                    Received {dateLabel(opportunity.receivedDate)} | owner{" "}
-                    {opportunity.nextActionOwner}
-                  </small>
-                  <p>{opportunity.nextAction}</p>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </aside>
-      </div>
-
-      <section className="panel">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Pipeline Control Table</p>
-            <h2>All opportunity qualification records</h2>
-          </div>
-          <span className="muted">Score, risk, decision, and next action in one view</span>
+          </details>
+          <Link className="button button-primary" href="/pipeline/new">
+            New opportunity
+          </Link>
         </div>
-        <OpportunityTable opportunities={opportunities} />
+      </header>
+
+      <section className="pipeline-queue-panel" aria-labelledby="opportunity-queue-title">
+        <div className="pipeline-table-head">
+          <span>Rank</span>
+          <span id="opportunity-queue-title">Opportunity</span>
+          <span>Why it is here</span>
+          <span>Value</span>
+          <span>Due</span>
+          <span aria-hidden="true" />
+        </div>
+
+        {opportunities.length > 0 ? (
+          <>
+            <div className="pipeline-ranked-list">
+              {opportunities.map((opportunity, index) => (
+                <OpportunityRow
+                  key={opportunity.id}
+                  opportunity={opportunity}
+                  rank={index + 1}
+                  highlighted={index === 0}
+                />
+              ))}
+            </div>
+            {opportunities.length > 5 ? (
+              <button className="pipeline-show-more" type="button">
+                Show {opportunities.length - 5} more opportunities
+              </button>
+            ) : null}
+          </>
+        ) : (
+          <div className="pipeline-state-card">
+            <p className="pipeline-kicker">No opportunity work needs attention</p>
+            <h2>Start with the next intake when a real pursuit is ready.</h2>
+            <p>
+              New opportunities appear here after intake begins. Qualification, evidence, and decision handoff work stay ranked by business consequence.
+            </p>
+            <Link className="button button-primary" href="/pipeline/new">
+              Create opportunity intake
+            </Link>
+          </div>
+        )}
       </section>
-      </CollapsedDetails>
-    </div>
+    </main>
   );
 }
 
-function DecisionQueueItem({ opportunity }: { opportunity: Opportunity }) {
-  const score = calculateGoNoGo(opportunity);
-
+function QueueUnavailable() {
   return (
-    <article className="decision-item">
-      <div className="status-row">
+    <main className="pipeline-experience" data-pipeline-screen="queue-unavailable">
+      <header className="pipeline-topbar">
         <div>
-          <h3>{opportunity.name}</h3>
-          <p className="muted">
-            {opportunity.gcClient} | {currency.format(opportunity.estimatedValue)} | bid due{" "}
-            {dateLabel(opportunity.bidDueDate)}
-          </p>
+          <p className="pipeline-kicker">Pipeline</p>
+          <h1>Opportunity queue temporarily unavailable</h1>
+          <p>No opportunity work changed. Return to Command Center or try the queue again.</p>
         </div>
-        <span className={chipClass(recommendationTone[score.recommendation])}>
-          {recommendationLabels[score.recommendation]}
-        </span>
+        <Link className="button button-secondary" href="/command-center">Go to Command Center</Link>
+      </header>
+      <section className="pipeline-state-card">
+        <h2>The queue cannot be refreshed right now.</h2>
+        <p>Your saved opportunity records remain authoritative. Retry is safe and will not create duplicate submissions.</p>
+        <Link className="button button-primary" href="/pipeline">Retry queue</Link>
+      </section>
+    </main>
+  );
+}
+
+function QueueLoading() {
+  return (
+    <main className="pipeline-experience" data-pipeline-screen="queue-loading">
+      <header className="pipeline-topbar">
+        <div>
+          <p className="pipeline-kicker">Pipeline</p>
+          <h1>Opportunity queue</h1>
+          <p>Loading the ranked work list.</p>
+        </div>
+      </header>
+      <section className="pipeline-queue-panel" aria-label="Loading opportunity queue">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <div className="pipeline-row pipeline-row-skeleton" key={index}>
+            <div className="pipeline-rank">{index + 1}</div>
+            <div className="pipeline-row-main"><h2>Preparing opportunity row</h2><p>Checking current responsibility and due date.</p></div>
+            <div className="pipeline-row-reason"><strong>Loading rank reason</strong><span>Saved work is not changing.</span></div>
+          </div>
+        ))}
+      </section>
+    </main>
+  );
+}
+
+function EstimatorEmptyAssignments() {
+  return (
+    <main className="pipeline-experience" data-pipeline-screen="estimator-empty">
+      <header className="pipeline-topbar">
+        <div>
+          <p className="pipeline-kicker">Estimator assignment</p>
+          <h1>No estimating assignments need action</h1>
+          <p>Assigned estimating contributions will appear here with due date, return owner, and scoped evidence.</p>
+        </div>
+        <Link className="button button-primary" href="/command-center">Return to permitted work</Link>
+      </header>
+    </main>
+  );
+}
+
+function OpportunityRow({
+  opportunity,
+  rank,
+  highlighted
+}: {
+  opportunity: OpportunityAction & { priorityReason: PriorityReason };
+  rank: number;
+  highlighted: boolean;
+}) {
+  return (
+    <article className={`pipeline-row ${highlighted ? "pipeline-row-primary" : ""}`}>
+      <div className="pipeline-rank" aria-label={`Rank ${rank}`}>
+        {rank}
       </div>
-      <p>{opportunity.nextAction}</p>
-      <div className="detail-grid">
-        <div className="detail">
-          <span>Decision</span>
-          <strong>{decisionLabels[opportunity.decision]}</strong>
-        </div>
-        <div className="detail">
-          <span>Owner</span>
-          <strong>{opportunity.nextActionOwner}</strong>
-        </div>
+      <div className="pipeline-row-main">
+        <h2>{opportunity.name}</h2>
+        <p>
+          {opportunity.customerGc} · {opportunity.location}
+        </p>
       </div>
+      <div className="pipeline-row-reason">
+        <strong>{opportunity.priorityReason.title}</strong>
+        <span>{opportunity.priorityReason.detail}</span>
+      </div>
+      <div className="pipeline-row-value">
+        <span>Est. value</span>
+        <strong>{formatMoney(opportunity.estimatedValue)}</strong>
+      </div>
+      <div className="pipeline-row-due">
+        <span>Material due</span>
+        <strong>{formatDate(opportunity.bidDueDate)}</strong>
+      </div>
+      <Link aria-label={`Open ${opportunity.name}`} className="pipeline-row-action" href={`/pipeline/${opportunity.id}`}>
+        Open
+      </Link>
     </article>
   );
 }
 
-function daysUntil(date: string) {
-  const now = new Date(`${operatingDate}T12:00:00`);
-  const target = new Date(`${date}T12:00:00`);
+type PriorityReason = {
+  weight: number;
+  title: string;
+  detail: string;
+};
 
-  return Math.max(0, Math.ceil((target.getTime() - now.getTime()) / 86400000));
+function rankOpportunities(opportunities: OpportunityAction[]) {
+  return opportunities
+    .map((opportunity) => ({
+      ...opportunity,
+      priorityReason: getPriorityReason(opportunity)
+    }))
+    .sort((a, b) => {
+      if (a.priorityReason.weight !== b.priorityReason.weight) return b.priorityReason.weight - a.priorityReason.weight;
+      return dueTime(a.bidDueDate) - dueTime(b.bidDueDate);
+    });
+}
+
+function getPriorityReason(opportunity: OpportunityAction): PriorityReason {
+  const days = daysUntil(opportunity.bidDueDate);
+  if (opportunity.lifecycleStatus === "decision_required") {
+    if (opportunity.decisionReadinessStatus === "decision_approved") {
+      return {
+        weight: 980 - Math.max(days, 0),
+        title: "Pursuit Authorization gate",
+        detail: "Qualified in P1-01A; decide whether Rybex should pursue"
+      };
+    }
+    return {
+      weight: 900 - Math.max(days, 0),
+      title: days <= 1 ? "Decision due now" : `Decision due ${formatRelativeDays(days)}`,
+      detail: "Package is ready for assigned decision review"
+    };
+  }
+  if (!opportunity.qualificationComplete && opportunity.lifecycleStatus === "qualifying") {
+    return {
+      weight: 700 - Math.max(days, 0),
+      title: days <= 0 ? "Qualification blocker overdue" : `Bid due ${formatRelativeDays(days)}`,
+      detail: "Qualification blocker needs action"
+    };
+  }
+  if (!opportunity.ownerUserId) {
+    return {
+      weight: 650 - Math.max(days, 0),
+      title: "Owner needed",
+      detail: "Accountable owner must be confirmed"
+    };
+  }
+  if (opportunity.estimatedValue && opportunity.estimatedValue >= 1_000_000) {
+    return {
+      weight: 500 + Math.min(opportunity.estimatedValue / 100_000, 120),
+      title: `${formatMoney(opportunity.estimatedValue)} opportunity`,
+      detail: "Commercial viability is next"
+    };
+  }
+  return {
+    weight: 300 - Math.max(days, 0),
+    title: days <= 14 ? `Bid due ${formatRelativeDays(days)}` : "Intake ready",
+    detail: opportunity.lifecycleStatus === "draft" ? "Opportunity fit has not started" : "Next qualification section is ready"
+  };
+}
+
+function queueSummary(count: number) {
+  if (count === 0) return "No opportunities require attention right now.";
+  return `${count} opportunities require attention · ranked by deadline, blockers, and business value`;
+}
+
+function daysUntil(value: string | null) {
+  if (!value) return 99;
+  const due = new Date(`${value}T12:00:00`).getTime();
+  const now = Date.now();
+  return Math.ceil((due - now) / 86_400_000);
+}
+
+function dueTime(value: string | null) {
+  return value ? new Date(`${value}T12:00:00`).getTime() : Number.MAX_SAFE_INTEGER;
+}
+
+function formatRelativeDays(days: number) {
+  if (days < 0) return `${Math.abs(days)} days ago`;
+  if (days === 0) return "today";
+  if (days === 1) return "tomorrow";
+  return `in ${days} days`;
+}
+
+function formatMoney(value: number | null) {
+  return value === null
+    ? "Not set"
+    : new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: value >= 1_000_000 ? 1 : 0,
+        notation: value >= 1_000_000 ? "compact" : "standard"
+      }).format(value);
+}
+
+function formatDate(value: string | null) {
+  if (!value) return "Not set";
+  return new Date(`${value}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function readParam(value: string | string[] | undefined) {
+  if (Array.isArray(value)) return value[0] ?? "";
+  return value ?? "";
 }

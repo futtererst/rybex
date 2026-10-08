@@ -1,0 +1,101 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import vm from "node:vm";
+import ts from "typescript";
+
+function load(file, dependencies = {}) {
+  const compiled = ts.transpileModule(readFileSync(file, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const exports = {};
+  vm.runInNewContext(compiled, { exports, require: (key) => { if (!(key in dependencies)) throw new Error(`Unexpected dependency: ${key}`); return dependencies[key]; }, structuredClone, crypto, Date, Set, Map }, { filename: file });
+  return exports;
+}
+const deployPolicy = load("components/d5o/platform/deploy-policy.ts");
+const model = load("components/d5o/platform/deploy-model.ts", { "./deploy-policy": deployPolicy });
+const errors = load("lib/d5o/prototype-work/store-error.ts");
+const { applyDeployCommand, assertSnapshotDeployIntegrity } = load("lib/d5o/prototype-work/deploy-command.ts", { "@/components/d5o/platform/deploy-model": model, "@/components/d5o/platform/deploy-policy": deployPolicy, "./store-error": errors });
+const actor = {
+  worker: { id: "worker", name: "Worker", membershipId: "m-worker", role: "field_technician", person: "Alex" },
+  otherWorker: { id: "other-worker", name: "Other Worker", membershipId: "m-other-worker", role: "field_technician", person: "Casey" },
+  supervisor: { id: "supervisor", name: "Supervisor", membershipId: "m-supervisor", role: "field_supervisor" },
+  reviewer: { id: "reviewer", name: "Reviewer", membershipId: "m-reviewer", role: "project_manager" },
+  leader: { id: "leader", name: "Leader", membershipId: "m-leader", role: "operations_leader" }
+};
+const detail = { packageId: "p1", revision: 2, scope: "Certify data hall fiber", location: "Hall A", requirementIds: ["fiber-cert"], predecessorIds: [], materialLines: [{ id: "m1", item: "Fiber", quantity: 2, availableQuantity: 2, unit: "reel", status: "Available", source: "Count" }], materialStatus: "Available", access: "Authorized", permit: "Approved permit", safetyControls: "Isolation", method: "MOP-1", verification: "Certify every strand", crewDemandRequired: true };
+const release = { id: "release-1", packageId: "p1", packageRevision: 2, configurationVersionId: "pin-1", status: "Accepted", snapshot: detail, crewDemandSnapshot: { minimumPeople: 1 }, documentRefs: ["doc@1"], sourceSnapshot: null };
+let work = { id: "w1", workspace: "rybex", title: "Fiber", type: "Technical delivery", customer: "Customer", site: "Hall A", owner: "PM", stage: "Deploy", nextAction: "Execute", progress: 0, value: "", status: "moving", proof: [], blockers: [], history: [], packages: [{ id: "p1", name: "Fiber" }], phaseConfigurationVersionId: "pin-1", design: { releases: [release], packages: [detail], documents: [], reviews: [], history: [] } };
+const assignment = { id: "booking-1", crew: "Fiber", people: ["Alex"], workId: "w1", packageId: "p1", week: 0, day: 0, date: "2026-10-12", shift: "07:00–15:30" };
+const schedule = { revision: 2, assignments: [assignment], publications: [{ id: "publication-1", week: 0, assignments: [assignment] }], receipts: [], packageDemands: [] };
+let serial = 0;
+const send = (action, who = actor.supervisor) => { work = applyDeployCommand(work, { ...action, workId: work.id, expectedRevision: ++serial, commandId: `deploy-${serial}` }, who, schedule); return work; };
+const rejects = (action, code, who = actor.supervisor) => assert.throws(() => send(action, who), (error) => error.code === code, code);
+assert.equal(model.assessDeployReadiness(work, "p1", null).recommendation, "Hold for resolution");
+assert.equal(model.assessDeployReadiness(work, "p1", schedule).recommendation, "Ready for authorized start");
+rejects({ action: "save-report", packageId: "p1", bookingId: "booking-1", quantity: 1, unit: "m", laborHours: 4, summary: "Work done" }, "assignment_required", { ...actor.worker, person: "Not Alex" });
+send({ action: "authorize-start", packageId: "p1", note: "Crew and conditions reviewed" });
+const startCount = work.deploy.events.length;
+assert.equal(applyDeployCommand(work, { action: "authorize-start", packageId: "p1", note: "Crew and conditions reviewed", workId: "w1", expectedRevision: serial, commandId: `deploy-${serial}` }, actor.supervisor, schedule), work);
+assert.equal(work.deploy.events.length, startCount);
+assert.throws(() => applyDeployCommand(work, { action: "hold", packageId: "p1", note: "Different action reused", workId: "w1", expectedRevision: serial, commandId: `deploy-${serial}` }, actor.supervisor, schedule), (error) => error.code === "command_reuse_conflict");
+send({ action: "save-report", packageId: "p1", bookingId: "booking-1", quantity: 12, unit: "m", laborHours: 4, summary: "Installed and labeled 12 metres" }, actor.worker);
+const report = work.deploy.reports[0];
+assignment.people.push("Casey");
+rejects({ action: "save-report", packageId: "p1", bookingId: "booking-1", reportId: report.id, quantity: 12, unit: "m", laborHours: 4, summary: "Changed another worker's draft" }, "report_scope_denied", actor.otherWorker);
+send({ action: "submit-report", packageId: "p1", reportId: report.id }, actor.worker);
+rejects({ action: "review-report", packageId: "p1", reportId: report.id, decision: "Reviewed", note: "Reviewed physical record" }, "report_review_denied", { ...actor.supervisor, id: "worker" });
+send({ action: "review-report", packageId: "p1", reportId: report.id, decision: "Reviewed", note: "Reviewed physical record" });
+rejects({ action: "record-inspection", packageId: "p1", bookingId: "booking-1", reportId: report.id, requirementId: "fiber-cert", requirement: "Fiber certification", method: "Light test", result: "Fail" }, "inspection_report_scope_denied", actor.otherWorker);
+rejects({ action: "record-inspection", packageId: "p1", bookingId: "booking-1", reportId: report.id, requirement: "Fiber certification", method: "Light test", result: "Fail" }, "inspection_requirement_invalid", actor.worker);
+send({ action: "record-inspection", packageId: "p1", bookingId: "booking-1", reportId: report.id, requirementId: "fiber-cert", requirement: "Fiber certification", method: "Light test", result: "Fail" }, actor.worker);
+const failure = work.deploy.inspections[0];
+send({ action: "review-inspection", packageId: "p1", inspectionId: failure.id, decision: "Verified", note: "Failure confirmed from result" }, actor.reviewer);
+send({ action: "assemble-turnover", packageId: "p1", operateOwner: "Lifecycle manager" }, actor.supervisor);
+rejects({ action: "accept-client", packageId: "p1", turnoverId: work.deploy.turnovers[0].id, signerName: "Customer", signerOrganization: "Owner", authorityBasis: "Delegation", source: "letter.pdf" }, "acceptance_blocked", actor.reviewer);
+send({ action: "record-inspection", packageId: "p1", bookingId: "booking-1", reportId: report.id, requirementId: "fiber-cert", requirement: "Fiber certification", method: "Retest", result: "Pass", supersedesId: failure.id }, actor.worker);
+const retest = work.deploy.inspections.at(-1);
+send({ action: "review-inspection", packageId: "p1", inspectionId: retest.id, decision: "Verified", note: "Retest passed after correction" }, actor.reviewer);
+send({ action: "raise-issue", packageId: "p1", title: "Damaged connector", owner: "Supervisor" }, actor.worker);
+assert.equal(work.deploy.permits.at(-1).status, "Held");
+rejects({ action: "resume", packageId: "p1", note: "Conditions reviewed again" }, "start_blocked");
+send({ action: "resolve-issue", packageId: "p1", issueId: work.deploy.issues[0].id, resolution: "Connector replaced and retested" }, actor.supervisor);
+send({ action: "resume", packageId: "p1", note: "Resolution and crew checked" });
+const signatureId = crypto.randomUUID();
+work = applyDeployCommand(work, { action: "attach-evidence", packageId: "p1", workId: "w1", expectedRevision: ++serial, commandId: `deploy-${serial}`, purpose: "Customer signature", caption: `Captured for reviewed report ${report.id}` }, actor.worker, schedule, { id: signatureId, filename: "customer.png", mimeType: "image/png", sizeBytes: 100, checksumSha256: "a".repeat(64) });
+rejects({ action: "save-report", packageId: "p1", bookingId: "booking-1", quantity: 1, unit: "m", laborHours: 1, summary: "Other worker's field record", evidenceIds: [signatureId] }, "evidence_scope_invalid", actor.otherWorker);
+rejects({ action: "capture-customer-signoff", packageId: "p1", bookingId: "other-booking", reportId: report.id, signerName: "Customer", signerOrganization: "Owner", signerRole: "Representative", authorityBasis: "Service report review", signatureEvidenceId: signatureId }, "signature_report_scope_denied", actor.worker);
+send({ action: "capture-customer-signoff", packageId: "p1", bookingId: "booking-1", reportId: report.id, signerName: "Customer", signerOrganization: "Owner", signerRole: "Representative", authorityBasis: "Service report review", signatureEvidenceId: signatureId }, actor.worker);
+assert.equal(work.deploy.signoffs[0].recordRevision, report.revision);
+assert.equal(work.deploy.signoffs[0].method, "Captured on device");
+send({ action: "assemble-turnover", packageId: "p1", operateOwner: "Lifecycle manager" }, actor.supervisor);
+const conditional = work.deploy.turnovers.at(-1);
+send({ action: "accept-client", packageId: "p1", turnoverId: conditional.id, signerName: "Customer", signerOrganization: "Owner", authorityBasis: "Delegation", source: "conditional-letter.pdf", conditions: "Provide final as-built index" }, actor.reviewer);
+assert.equal(work.deploy.turnovers.at(-1).status, "Conditionally accepted");
+rejects({ action: "accept-work", packageId: "p1", signerName: "Customer", signerOrganization: "Owner", signerRole: "Director", authorityBasis: "Delegation", source: "final.pdf" }, "work_acceptance_blocked", actor.reviewer);
+send({ action: "assemble-turnover", packageId: "p1", operateOwner: "Lifecycle manager" }, actor.supervisor);
+const turnover = work.deploy.turnovers.at(-1);
+rejects({ action: "accept-client", packageId: "p1", turnoverId: turnover.id, signerName: "Customer", signerOrganization: "Owner", authorityBasis: "Delegation", source: "letter.pdf" }, "acceptance_role_denied", actor.supervisor);
+send({ action: "accept-client", packageId: "p1", turnoverId: turnover.id, signerName: "Customer", signerOrganization: "Owner", authorityBasis: "Delegation", source: "letter.pdf" }, actor.reviewer);
+assert.equal(turnover.status, "Draft");
+assert.equal(work.deploy.turnovers.at(-1).status, "Client accepted");
+assert.equal(work.deploy.signoffs.at(-1).kind, "Customer scope acceptance");
+rejects({ action: "accept-work", packageId: "p1", signerName: "Customer", signerOrganization: "Owner", signerRole: "Director", authorityBasis: "Delegation", source: "final.pdf" }, "acceptance_independence", { ...actor.supervisor, role: "project_manager" });
+send({ action: "accept-work", packageId: "p1", signerName: "Customer", signerOrganization: "Owner", signerRole: "Director", authorityBasis: "Delegation", source: "final.pdf" }, actor.reviewer);
+assert.equal(work.deploy.signoffs.at(-1).kind, "Final client acceptance");
+send({ action: "respond-operate", packageId: "p1", turnoverId: turnover.id, decision: "Accepted", note: "Received the exact scope" }, actor.leader);
+assert.equal(work.deploy.turnovers.at(-1).receipt, "Accepted");
+rejects({ action: "respond-operate-work", packageId: "p1", decision: "Accepted", note: "Whole work received" }, "operate_receipt_incomplete", { ...actor.reviewer, role: "operations_leader" });
+send({ action: "respond-operate-work", packageId: "p1", decision: "Accepted", note: "Whole work received" }, actor.leader);
+assert.equal(work.deploy.workAcceptance.receipt, "Accepted");
+assert.throws(() => assertSnapshotDeployIntegrity([work], [{ ...work, deploy: undefined }]), (error) => error.code === "protected_deploy_changed");
+assert.throws(() => assertSnapshotDeployIntegrity([work], [{ ...work, packages: [{ id: "p1", installed: 100 }] }]), (error) => error.code === "protected_execution_changed");
+const exempt = structuredClone({ ...work, deploy: undefined, design: { ...work.design, releases: [{ ...release, snapshot: { ...detail, crewDemandRequired: false } }] } });
+assert.equal(model.assessDeployReadiness(exempt, "p1", null).recommendation, "Ready for authorized start");
+const exemptStarted = applyDeployCommand(exempt, { action: "authorize-start", workId: "w1", packageId: "p1", expectedRevision: 1, commandId: "crew-exempt", note: "Approved no-crew work basis" }, actor.supervisor, null);
+assert.equal(exemptStarted.deploy.permits[0].publicationId, "crew-exempt");
+const { deployWorkerProjection } = load("lib/d5o/prototype-work/deploy-worker-projection.ts", { "server-only": {} });
+const workerView = deployWorkerProjection({ ...work, value: "$500,000", discovery: { secret: "commercial" } }, "p1", "booking-1", actor.worker.id);
+assert.equal(workerView.value, "");
+assert.equal(workerView.discovery, undefined);
+assert.equal(workerView.design.releases[0].sourceSnapshot, null);
+assert(workerView.deploy.reports.every((item) => item.authorId === actor.worker.id && item.bookingId === "booking-1"));
+assert.equal(workerView.deploy.turnovers.length, 0);
+console.log("Deploy command and readiness controls passed.");

@@ -1639,3 +1639,57 @@ Billing v2 engineering readiness guardrails created. The package includes:
 The next implementation pass must be Billing v2 Phase 1A domain-only: state machine, command contract, guards, events, local/demo state, and domain tests before UI work. No implementation occurred in this guardrail pass. No UI/runtime/persistence/auth/RLS/Pilot Mode behavior changed, no Field/Closeout refactor occurred, and Billing v2 remains future work until Phase 1A is explicitly run.
 
 Verification: `npm run billing-v2:verify-engineering-readiness`.
+
+## Billing v2 Phase 1A Domain Layer
+
+Billing v2 Phase 1A domain layer implemented as domain-only code. Added:
+
+- `lib/d5o/billing-v2/types.ts`
+- `lib/d5o/billing-v2/demo-state.ts`
+- `lib/d5o/billing-v2/billing-v2-service.ts`
+- `scripts/qa-billing-v2-domain.mjs`
+- `scripts/verify-billing-v2-domain.mjs`
+
+The domain layer includes the BillingBackupPackage model, deterministic Pay App 003 demo state, state machine commands, guards, structured evidence references, review task object, review decisions, readiness logic, blocker-clearance rules, outcome generation, and historical record generation.
+
+No Billing v2 user-facing workflow implementation has occurred. No UI components, routes, `app/billing/page.tsx`, Pilot Mode behavior, persistence, auth, RLS, Field workflow, or Closeout workflow changed in Phase 1A. Existing `WorkflowCompletionProvider` remains the shared architecture boundary for later integration.
+
+Verification:
+
+```powershell
+npm run billing-v2:qa-domain
+npm run billing-v2:verify-domain
+```
+
+## Billing v2 Phase 1A Domain Review And Hardening
+
+Billing v2 Phase 1A domain review and hardening completed. Added explicit separation for events, readiness, outcomes, history, command orchestration, and public exports:
+
+- `lib/d5o/billing-v2/billing-v2-events.ts`
+- `lib/d5o/billing-v2/billing-v2-readiness.ts`
+- `lib/d5o/billing-v2/billing-v2-outcomes.ts`
+- `lib/d5o/billing-v2/billing-v2-history.ts`
+- `lib/d5o/billing-v2/index.ts`
+- `docs/billing-v2-phase-1a-domain-review.md`
+- `docs/billing-v2-phase-1a-domain-implementation-report.md`
+
+The review recommendation is Accepted for Phase 1B UI. Phase 1B may begin only as a separate UI pass that consumes the domain layer. Billing v2 is not user-facing yet, UI is not implemented, routes are unchanged, Pilot Mode is unchanged, and no persistence/auth/RLS/Field/Closeout behavior changed.
+
+## Billing v2 Interaction Design Reset
+
+Billing v2 Phase 1B UI attempt failed manual review. The attempted interface felt like forms and buttons, was visually cluttered, was hard to understand, and did not clearly guide the user through the Billing Backup Package business process.
+
+A guided interaction redesign package was created:
+
+- `docs/billing-v2-ui-failure-review.md`
+- `docs/billing-v2-guided-workflow-interaction-design.md`
+- `docs/billing-v2-step-by-step-storyboard.md`
+- `docs/billing-v2-replacement-ui-implementation-plan.md`
+
+No replacement UI implementation occurred in this pass. Do not pop or apply the failed UI stash as accepted UI. Billing v2 domain layer remains the accepted foundation for a future guided workflow implementation.
+
+Verification:
+
+```powershell
+npm run billing-v2:verify-interaction-design
+```

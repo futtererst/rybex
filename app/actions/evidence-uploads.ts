@@ -5,6 +5,7 @@ import { isDatabaseMode } from "@/lib/d5o/data/data-source";
 import { insertSupabaseRow, readSupabaseTable, updateSupabaseRows, uploadSupabaseStorageObject } from "@/lib/d5o/data/database-client";
 import { isDatabaseEvidenceStore } from "@/lib/d5o/evidence/evidence-store";
 import { hasPermission, type RybexPermission } from "@/lib/d5o/rbac";
+import { isProductionRuntime, productionLocalAdapterError } from "@/lib/d5o/security/runtime-mode";
 
 const evidenceBucket = "rybexos-evidence";
 const maxFileSizeBytes = 10 * 1024 * 1024;
@@ -70,8 +71,10 @@ export async function uploadEvidenceAttachment(formData: FormData): Promise<Uplo
   if (!isDatabaseMode() || !isDatabaseEvidenceStore()) {
     return {
       success: false,
-      mode: "local",
-      message: "Database evidence upload pilot is not enabled. Use local demo evidence actions or set RYBEXOS_DATA_SOURCE=database and RYBEXOS_EVIDENCE_STORE=database."
+      mode: isProductionRuntime() ? "database" : "local",
+      message: isProductionRuntime()
+        ? productionLocalAdapterError("Evidence uploads")
+        : "Database evidence upload pilot is not enabled. Use local demo evidence actions or set RYBEXOS_DATA_SOURCE=database and RYBEXOS_EVIDENCE_STORE=database."
     };
   }
 

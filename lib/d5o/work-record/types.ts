@@ -1,0 +1,20 @@
+export type JsonObject = Record<string, unknown>;
+export type WorkRecordView = {
+  work: { id: string; workspace_id: string; title: string; lifecycle_state: string; record_version: number; configuration_version_id: string; work_type_key: string; gate_key: string; configuration_snapshot: JsonObject };
+  actor: { profile: string; workspace_role: string };
+  configurationAvailable: boolean;
+  configurationError: string | null;
+  ownerCanPrepare: boolean;
+  proof: { id: string; proof_package_revision: number; status: string } | null;
+  blockers: JsonObject[];
+  actions: { right: string; label: string; blockers: JsonObject[] }[];
+  participants: JsonObject[];
+  decisions: JsonObject[];
+  outcomes: JsonObject[];
+  commitments: JsonObject[];
+  history: JsonObject[];
+};
+export type WorkCommand = { workspaceId: string; workId: string; expectedVersion: number; proofRevision: number | null; commandId: string; kind: 'new_proof' | 'submit_proof' | 'decide'; payload: JsonObject };
+export type CreateWorkRecord = { workspaceId: string; commandId: string; title: string; workTypeKey: string; gateKey: string; configurationVersionId: string };
+export type WorkRecordSummary = { id: string; workspace_id: string; title: string; work_type_key: string; gate_key: string; lifecycle_state: string; record_version: number; configuration_version_id: string; created_at: string; proof_package_revision: number | null; proof_status: string | null; decision_count: number };
+export type WorkRecordQueue = { workspaceId: string; records: WorkRecordSummary[] };

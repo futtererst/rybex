@@ -1,0 +1,90 @@
+import { NextRequest, NextResponse } from "next/server";
+import { hostedPrototypeContext, HostedStateError } from "@/lib/d5o/hosted/prototype-context";
+import { initialHostedCatalog } from "@/lib/d5o/work-catalog/store";
+import { lifecycleProfiles, stateFor } from "@/components/d5o/platform/lifecycle-profiles";
+import type { WorkspaceKey } from "@/components/d5o/platform/work-types";
+
+export const dynamic = "force-dynamic";
+type Work = Record<string, unknown> & { id: string; title: string; customer: string; site: string; type: string;
+  stage: string; owner: string; status: "attention" | "moving" | "complete"; progress: number;
+  blockers: string[]; nextAction: string; value: string };
+const reply = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
+const str = (value: unknown) => typeof value === "string" ? value : "";
+function project(value: Record<string, unknown>): Work | null {
+  if (!str(value.id) || !str(value.title)) return null;
+  return { ...value, id: str(value.id), title: str(value.title), customer: str(value.customer), site: str(value.site),
+    type: str(value.type), stage: str(value.stage), owner: str(value.owner),
+    status: value.status === "attention" || value.status === "complete" ? value.status : "moving",
+    progress: Number(value.progress) || 0, blockers: Array.isArray(value.blockers) ? value.blockers.filter((item): item is string => typeof item === "string") : [],
+    nextAction: str(value.nextAction), value: str(value.value) };
+}
+const pricing = (r: Work) => { const e = (r.discovery as { estimate?: { status?: string; revision?: number; review?: { revision?: number } } } | undefined)?.estimate;
+  return e?.status === "Pricing review" && e.review?.revision === e.revision; };
+const proposal = (r: Work) => { const p = (r.discovery as { proposal?: { status?: string; package?: { revision?: number }; review?: { revision?: number; authorityRole?: string } } } | undefined)?.proposal;
+  return p?.status === "Internal review" && p.review?.revision === p.package?.revision; };
+const definition = (r: Work) => { const d = r.definition as { status?: string; revision?: number; reviews?: { revision?: number; commercial?: string; delivery?: string } } | undefined;
+  return d?.status === "In review" && d.reviews?.revision === d.revision && (d.reviews?.commercial === "Pending" || d.reviews?.delivery === "Pending"); };
+
+export async function GET(request: NextRequest) {
+  const p = request.nextUrl.searchParams;
+  const workspace = p.get("workspace") ?? "";
+  const view = p.get("view") ?? "search";
+  const filter = p.get("filter") ?? "all";
+  const query = (p.get("q") ?? "").trim().toLocaleLowerCase();
+  const owner = p.get("owner") ?? "";
+  const recordId = p.get("record");
+  const rawPosition = p.get("position");
+  const position = rawPosition === null ? null : Number(rawPosition);
+  const cursor = p.get("cursor");
+  if ((workspace !== "rybex" && workspace !== "rotork") || !["search", "portfolio", "actions", "decisions"].includes(view)
+    || query.length > 120 || owner.length > 120 || (recordId?.length ?? 0) > 120 || (cursor?.length ?? 0) > 200
+    || (position !== null && (!Number.isInteger(position) || position < 0 || position > 30))) return reply({ error: "invalid_search" }, 400);
+  try {
+    const ctx = await hostedPrototypeContext(workspace);
+    const [work, catalog] = await Promise.all([ctx.read("work"), ctx.read("catalog")]);
+    const catalogRecords = Array.isArray(catalog.state?.records) ? catalog.state.records : initialHostedCatalog(workspace as WorkspaceKey).records;
+    const workRecords = Array.isArray(work.state?.records) ? work.state.records : [];
+    const index = new Map<string, Work>();
+    for (const item of [...catalogRecords, ...workRecords]) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+      const value = project(item as Record<string, unknown>);
+      if (value) index.set(value.id, value);
+    }
+    if (recordId) return index.has(recordId) ? reply({ record: index.get(recordId) }) : reply({ error: "record_unavailable" }, 404);
+    const all = [...index.values()].sort((a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
+    const lifecycle = lifecycleProfiles[workspace as WorkspaceKey].states;
+    const pos = (r: Work) => lifecycle.indexOf(stateFor(workspace as WorkspaceKey, r.stage, r.progress));
+    const matched = all.filter((r) => (!query || [r.id, r.title, r.customer, r.site, r.type, r.stage, r.owner]
+      .some((v) => v.toLocaleLowerCase().includes(query))) && (view === "portfolio"
+        ? (position === null || pos(r) === position) && (filter === "all" || filter === "blocked" && r.blockers.length > 0 || filter === r.status)
+        : view === "actions" ? filter === "all" || filter === "mine" && r.owner === owner || filter === "waiting" && r.status === "attention"
+          || filter === "pricing" && pricing(r) || filter === "proposal" && proposal(r) || filter === "definition" && definition(r)
+        : view === "decisions" ? filter === "all" || filter === "blocked" && r.blockers.length > 0 || filter === "actionable" && r.blockers.length === 0 && r.status !== "complete" || filter === "completed" && r.status === "complete"
+        : filter === "all" || filter === "mine" && r.owner === owner || filter === "attention" && r.status === "attention"));
+    const revision = `${work.revision}:${catalog.revision}`;
+    let offset = 0;
+    if (cursor) {
+      let decoded: { revision?: string; offset?: number };
+      try { decoded = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")); } catch { return reply({ error: "invalid_cursor" }, 400); }
+      if (decoded.revision !== revision) return reply({ error: "search_changed" }, 409);
+      if (!Number.isSafeInteger(decoded.offset) || Number(decoded.offset) < 0 || Number(decoded.offset) > matched.length) return reply({ error: "invalid_cursor" }, 400);
+      offset = Number(decoded.offset);
+    }
+    const records = matched.slice(offset, offset + 25);
+    const nextCursor = offset + 25 < matched.length ? Buffer.from(JSON.stringify({ revision, offset: offset + 25 })).toString("base64url") : null;
+    if (view === "portfolio") return reply({ records, total: matched.length, nextCursor,
+      overview: { total: all.length, attention: all.filter((r) => r.status === "attention").length,
+        stages: Object.fromEntries(lifecycle.map((_, i) => [i, all.filter((r) => pos(r) === i).length])) } });
+    if (view === "actions") return reply({ records, total: matched.length, nextCursor,
+      roles: [...new Set(all.filter(proposal).map((r) => (r.discovery as { proposal?: { review?: { authorityRole?: string } } } | undefined)?.proposal?.review?.authorityRole).filter(Boolean))],
+      overview: { total: all.length, mine: all.filter((r) => r.owner === owner).length, waiting: all.filter((r) => r.status === "attention").length,
+        pricing: all.filter(pricing).length, proposal: all.filter(proposal).length, definition: all.filter(definition).length } });
+    if (view === "decisions") return reply({ records, total: matched.length, nextCursor,
+      overview: { total: all.length, blocked: all.filter((r) => r.blockers.length > 0).length,
+        actionable: all.filter((r) => r.blockers.length === 0 && r.status !== "complete").length, completed: all.filter((r) => r.status === "complete").length } });
+    return reply({ records, total: matched.length, nextCursor });
+  } catch (error) {
+    if (error instanceof HostedStateError) return reply({ error: error.code }, error.status);
+    return reply({ error: "search_unavailable" }, 503);
+  }
+}

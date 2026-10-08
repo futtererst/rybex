@@ -1,0 +1,12 @@
+-- Configuration Foundation 0026 - Template-pack seed data placeholder.
+-- Local file creation only. Do not run without separate migration execution authorization.
+--
+-- Seed data is deferred by the accepted migration-creation authority package.
+-- This migration intentionally inserts no records.
+--
+-- Future seed authority must separately approve any Rybex Data Center Infrastructure
+-- Template Pack, Rotork Industrial Service Lifecycle Template Pack, or Generic D5O Enterprise
+-- Template Pack default records before this file is replaced or expanded.
+--
+-- No tenant-local assumptions, Rybex-only defaults, Rotork runtime behavior, project
+-- readiness, mobilization, demo readiness, or production readiness are created here.

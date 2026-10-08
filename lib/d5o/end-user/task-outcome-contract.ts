@@ -172,7 +172,9 @@ export function buildTaskOutcomeContract(
     targetRoute: action.href.split(/[?#]/)[0] || `/${targetModule}`,
     targetHref: buildFocusedTaskHref(action.href, focusId),
     concreteCtaLabel,
-    expectedOutcome: `Focused task panel opens for ${targetObjectTitle}.`,
+    expectedOutcome: isBillingBackupProof
+      ? "Missing billing backup can be added, reviewed, and approved so blocked cash can move."
+      : `Focused task panel opens for ${targetObjectTitle}.`,
     targetSection: targetSections[targetModule],
     targetObjectTitle: isBillingBackupProof
       ? "Add missing billing backup"
@@ -182,7 +184,7 @@ export function buildTaskOutcomeContract(
           ? "Complete closeout requirement"
         : targetObjectTitle,
     nextStepInstruction: isBillingBackupProof
-      ? "Mark backup attached, waive with a reason, or send the item to review."
+      ? "Start the backup package, add required proof, then send the package to commercial review."
       : isFieldIssueProof
         ? "Create an RFI, create a change event, or mark the issue controlled."
         : isCloseoutProof

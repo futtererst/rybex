@@ -1,14 +1,18 @@
 import Link from "next/link";
-import { ActionWorkspaceLayout, CollapsedDetails } from "@/components/d5o/end-user";
+import { CollapsedDetails } from "@/components/d5o/end-user";
 import { D4ControlScoreCard } from "@/components/d5o/field-execution/D4ControlScoreCard";
 import { FieldExecutionDashboard } from "@/components/d5o/field-execution/FieldExecutionDashboard";
+import { FieldIssueEscalationWorkflowClient } from "@/components/d5o/field-issue-escalation/FieldIssueEscalationWorkflowClient";
 import { PageHeader } from "@/components/d5o/PageHeader";
 import { PipelineSummaryMetric } from "@/components/d5o/PipelineSummaryMetric";
 import { WorkflowModuleContext } from "@/components/d5o/workflow/WorkflowModuleContext";
 import { evaluateD4Gate } from "@/lib/d5o/d4-gate";
-import { getEndUserWorkspaceSummary } from "@/lib/d5o/end-user/page-focus-config";
+import {
+  getFieldIssueActionState,
+  getFieldIssueSeedDataOverlay
+} from "@/lib/d5o/field-issue-escalation/store";
 import { billingBackupItems, dailyReports, mobilizationPlans, projects, scheduleOfValues, workPackages } from "@/lib/d5o/seed-data";
-import type { RybexProject } from "@/lib/d5o/types";
+import type { DailyReport, RybexProject } from "@/lib/d5o/types";
 
 const activeFieldReports = dailyReports.filter((report) =>
   ["draft", "submitted", "supervisor_review", "approved", "missing", "late"].includes(report.reportStatus)
@@ -45,23 +49,99 @@ export const metadata = {
   title: "Field Execution | RybexOS"
 };
 
-export default function FieldExecutionPage() {
+export const dynamic = "force-dynamic";
+
+export default async function FieldExecutionPage() {
+  const fieldIssueState = await getFieldIssueActionState();
+  const fieldIssueOverlay = await getFieldIssueSeedDataOverlay();
+  const pageDailyReports = fieldIssueOverlay.dailyReports;
+  const activeFieldReports = pageDailyReports.filter((report) =>
+    ["draft", "submitted", "supervisor_review", "approved", "missing", "late"].includes(report.reportStatus)
+  );
+  const activeFieldProjectIds = new Set(activeFieldReports.map((report) => report.projectId));
+  const activeFieldProjects = projects.filter((project) => activeFieldProjectIds.has(project.id));
+  const activeWorkPackages = workPackages.filter((workPackage) =>
+    ["in_progress", "ready_for_field", "blocked"].includes(workPackage.status)
+  );
+  const missingReports = pageDailyReports.filter((report) =>
+    ["missing", "late"].includes(report.reportStatus)
+  );
+  const openFieldIssues = pageDailyReports.flatMap((report) => report.blockers);
+  const delayEvents = pageDailyReports.flatMap((report) => report.delays);
+  const potentialChangeEvents = pageDailyReports.filter(
+    (report) => report.changeEventNeeded || report.changedConditions.some((condition) => condition.changeEventNeeded)
+  );
+  const safetySignals = pageDailyReports.flatMap((report) => [
+    ...report.safetyObservations,
+    ...report.safetyIncidents
+  ]);
+  const qualitySignals = pageDailyReports.flatMap((report) => [
+    ...report.qualityChecks.filter((check) => check.status !== "passed"),
+    ...report.qualityDeficiencies
+  ]);
+  const signoffQueue = pageDailyReports.filter((report) => report.supervisorSignoff.status !== "signed");
+  const fieldControlProjects = activeFieldProjects.slice(0, 4);
+  const billingBackupRisk = billingBackupItems.filter((item) =>
+    ["daily_report", "quantity_record", "photo", "test_report"].includes(item.type) &&
+    ["missing", "partial"].includes(item.status)
+  );
+  const fieldIssue = fieldIssueState.issue;
+  const fieldIssueResolved = fieldIssue.state === "resolved";
+  const fieldIssueNextStep = getFieldIssuePageNextStep(fieldIssue.state);
+  const fieldIssueScheduleExposure = fieldIssue.assessment?.scheduleDays ?? (fieldIssue.scheduleImpact ? 2 : 0);
+  const fieldIssueCostExposure = fieldIssue.assessment?.costExposure ?? fieldIssue.costExposure;
+
   return (
-    <div className="command-grid">
+    <div className={`command-grid field-execution-page active-workbench-page ${fieldIssueResolved ? "field-execution-page-resolved" : "field-execution-page-unresolved"}`}>
       <PageHeader
-        context="D4 captures proof, protects change recovery, supports billing, and builds closeout evidence as work is performed."
-        eyebrow="D4 Deliver"
-        primaryAction={{ href: "/field-execution/daily-report/new", label: "New Daily Report", tone: "primary" }}
-        secondaryActions={[{ href: "/command-center", label: "Command Center" }]}
-        subtitle="Control daily field work, production, safety, quality, and issue escalation."
-        tags={["Daily field control"]}
+        context="Use the active escalation workbench to turn the field issue into the right follow-up path."
+        eyebrow="Field Operations"
+        subtitle="Turn a field issue into the right RFI or change path before it affects schedule or margin."
+        tags={["Field issue"]}
         title="Field Execution"
       />
 
-      <ActionWorkspaceLayout summary={getEndUserWorkspaceSummary("field-execution")} />
+      <section className="workbench-situation-hero field-situation-hero" data-qa="field-issue-situation-hero">
+        <div className="workbench-situation-copy field-situation-copy">
+          <p className="eyebrow">Field issue workbench</p>
+          <h2>Escalate field issue</h2>
+          <p>
+            Complete this workflow to turn the field condition into the right RFI or change path before it affects schedule or margin.
+          </p>
+          <p className="mobile-workbench-summary">
+            {fieldIssue.location}. {fieldIssueScheduleExposure}-day exposure · {fieldIssueCostExposure.toLocaleString("en-US", { currency: "USD", style: "currency", maximumFractionDigits: 0 })} at risk. {fieldIssue.summary}. Next: {fieldIssueNextStep.toLowerCase()}
+          </p>
+        </div>
+        <dl className="workbench-situation-facts field-situation-facts">
+          <div>
+            <dt>Project / location</dt>
+            <dd>{fieldIssue.projectName} · {fieldIssue.location}</dd>
+          </div>
+          <div>
+            <dt>Issue summary</dt>
+            <dd>{fieldIssue.summary}</dd>
+          </div>
+          <div>
+            <dt>Schedule / commercial impact</dt>
+            <dd>{fieldIssueScheduleExposure} day exposure · {fieldIssueCostExposure.toLocaleString("en-US", { currency: "USD", style: "currency", maximumFractionDigits: 0 })} at risk</dd>
+          </div>
+          <div>
+            <dt>Current status</dt>
+            <dd>{fieldIssueResolved ? "Original field issue resolved" : fieldIssue.state.replaceAll("_", " ")}</dd>
+          </div>
+          <div>
+            <dt>Next step</dt>
+            <dd>{fieldIssueNextStep}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section className="active-workflow-mode" aria-label="Field issue active workflow mode">
+        <FieldIssueEscalationWorkflowClient initialState={fieldIssueState} />
+      </section>
 
       <CollapsedDetails
-        title="Field execution records"
+        title="Supporting field details"
         summary="Daily reports, production, field issues, billing support, and closeout evidence signals."
       >
       <section className="pipeline-guardrail">
@@ -103,14 +183,14 @@ export default function FieldExecutionPage() {
               key={project.id}
               mobilizationPlan={mobilizationPlans.find((plan) => plan.projectId === project.id)}
               project={project}
-              reports={dailyReports.filter((report) => report.projectId === project.id)}
+              reports={pageDailyReports.filter((report) => report.projectId === project.id)}
               workPackages={workPackages.filter((workPackage) => workPackage.projectId === project.id)}
             />
           ))}
         </div>
       </section>
 
-      <FieldExecutionDashboard reports={dailyReports} workPackages={workPackages} />
+      <FieldExecutionDashboard reports={pageDailyReports} workPackages={workPackages} />
 
       <section className="panel">
         <div className="section-heading">
@@ -122,7 +202,7 @@ export default function FieldExecutionPage() {
         </div>
         <div className="operating-columns">
           {activeFieldProjects.map((project) => (
-            <CloseoutSignal project={project} key={project.id} />
+            <CloseoutSignal project={project} key={project.id} reports={pageDailyReports} />
           ))}
         </div>
       </section>
@@ -167,8 +247,19 @@ export default function FieldExecutionPage() {
   );
 }
 
-function CloseoutSignal({ project }: { project: RybexProject }) {
-  const projectReports = dailyReports.filter((report) => report.projectId === project.id);
+function getFieldIssuePageNextStep(state: string) {
+  if (state === "unresolved") return "Start the escalation.";
+  if (state === "in_progress") return "Save the impact assessment.";
+  if (state === "assessed") return "Add an evidence reference.";
+  if (state === "evidence_added") return "Choose RFI or Change Event.";
+  if (state === "path_selected") return "Create the downstream record.";
+  if (state === "downstream_created") return "Clear the original field blocker.";
+  if (state === "resolved") return "Track the downstream record.";
+  return "Complete the next field issue step.";
+}
+
+function CloseoutSignal({ project, reports }: { project: RybexProject; reports: DailyReport[] }) {
+  const projectReports = reports.filter((report) => report.projectId === project.id);
   const photoGaps = projectReports.filter((report) => !report.requiredPhotosComplete).length;
   const testGaps = projectReports.filter((report) => !report.requiredTestsComplete).length;
   const punchItems = projectReports.flatMap((report) => report.punchItemsCreated);

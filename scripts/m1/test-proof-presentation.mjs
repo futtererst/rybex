@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import ts from 'typescript';
+import {save} from './implementation-context.mjs';
+const source=readFileSync('components/d5o/work-record/proof-presentation.ts','utf8');
+const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const {blockerLabel,requiredProof,outcomeLabel,readable}=await import('data:text/javascript;base64,'+Buffer.from(compiled).toString('base64'));
+const results=[];function test(name,fn){fn();results.push({name,status:'PASS'});}
+const config={gate:{id:'gate-a'},rights:[{decision_right_key:'right-a',label:'Independent review'}],outcomes:[{outcome_key:'result-a',label:'Released'}],evidenceTypes:[{id:'type-a',evidence_type_key:'proof-a',label:'Certification proof'},{id:'unused',label:'Unrelated type'}],requirements:[{id:'req-a',gate_id:'gate-a',status:'active',evidence_type_id:'type-a',requirement_level:'required'},{id:'other-gate',gate_id:'gate-b',status:'active',evidence_type_id:'unused'},{id:'retired',gate_id:'gate-a',status:'archived',evidence_type_id:'unused'}]};
+test('Only active current-gate requirements are presented',()=>assert.deepEqual(requiredProof(config),[{id:'req-a',label:'Certification proof',level:'Required'}]));
+test('Configured decision label resolves without scenario code',()=>assert.match(blockerLabel(config,{requirement:{op:'decision_recorded',right:'right-a'}}),/Independent review/));
+test('Configured evidence label resolves',()=>assert.match(blockerLabel(config,{requirement:{op:'evidence_valid',key:'proof-a'}}),/Certification proof/));
+test('Label swap changes presentation only',()=>{const changed={...config,rights:[{decision_right_key:'right-a',label:'Pilot evaluation'}]};assert.match(blockerLabel(changed,{requirement:{op:'decision_recorded',right:'right-a'}}),/Pilot evaluation/);assert.equal(config.rights[0].label,'Independent review');});
+test('Unknown rule remains unmet, never accepted',()=>assert.equal(blockerLabel(config,{requirement:{op:'unknown'}}),'A configured requirement remains unmet. Review its details before proceeding.'));
+test('Missing labels use neutral unmet explanation',()=>assert.match(blockerLabel(config,{requirement:{op:'evidence_valid',key:'unknown'}}),/^Required evidence:.*unmet/));
+test('Missing evidence type is still a configured requirement',()=>assert.equal(requiredProof({...config,evidenceTypes:[]})[0].label,'Configured evidence requirement'));
+test('Outcome uses its configured label',()=>assert.equal(outcomeLabel(config,'result-a'),'Released'));
+test('State formatting does not invent business meaning',()=>assert.equal(readable('awaiting-verification'),'Awaiting verification'));
+test('Input configuration is not mutated',()=>{const before=JSON.stringify(config);requiredProof(config);blockerLabel(config,{requirement:{op:'fact_equals',key:'installation_complete'}});assert.equal(JSON.stringify(config),before);});
+save('PROOF-PRESENTATION-'+new Date().toISOString().replaceAll(/[:.]/g,'-')+'.json',{status:'PASS',results});console.log(JSON.stringify({status:'PASS',pass:results.length}));

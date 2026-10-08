@@ -1,0 +1,21 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import vm from "node:vm";
+import ts from "typescript";
+
+const source = fs.readFileSync(new URL("../lib/d5o/configuration/version-inventory.ts", import.meta.url), "utf8");
+const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+const exports = {};
+vm.runInNewContext(compiled, { exports });
+const { resolveConfigurationInventory: resolve } = exports;
+const workspace = "workspace-a";
+const mapping = { id: "tenant-a", workspace_id: workspace, status: "active", active_configuration_version_id: "v1" };
+const version = { id: "v1", tenant_configuration_id: "config-a", version: 1, status: "published", base_configuration_version_id: null, published_at: "2026-10-05T00:00:00Z", effective_from: "2026-10-05T00:00:00Z", effective_to: null };
+assert.equal(resolve(workspace, [], [], true).status, "no_mapping");
+assert.equal(resolve(workspace, [mapping, { ...mapping, id: "tenant-b" }], [version], true).status, "ambiguous_mapping");
+assert.equal(resolve(workspace, [mapping], [], true).status, "unavailable_version");
+assert.equal(resolve(workspace, [mapping], [{ ...version, status: "draft" }], true).status, "unavailable_version");
+assert.equal(resolve(workspace, [mapping], [version], true).activeVersionId, "v1");
+assert.equal(resolve(workspace, [mapping], [version, { ...version, id: "v2", version: 2, status: "draft" }], false).versions.length, 1);
+assert.equal(resolve(workspace, [mapping], [version, { ...version, id: "v2", version: 2, status: "draft" }], true).versions.length, 2);
+console.log("Configuration inventory: 0/1/multiple mappings, unavailable version, active pin and administrator visibility PASS");

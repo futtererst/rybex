@@ -7,6 +7,11 @@ const failures = [];
 const requiredFiles = [
   "components/d5o/workflow-completion/GuidedCompletionFlow.tsx",
   "components/d5o/workflow-completion/WorkflowCompletionPanel.tsx",
+  "components/d5o/billing-v2/BillingV2GuidedWorkflow.tsx",
+  "components/d5o/billing-v2/BillingV2WorkflowClient.tsx",
+  "components/d5o/billing-v2/BillingV2ProcessRail.tsx",
+  "components/d5o/billing-v2/BillingV2ActiveStepWorkspace.tsx",
+  "components/d5o/billing-v2/BillingV2ReadinessContextPanel.tsx",
   "lib/d5o/workflow-completion/editable-field-contracts.ts",
   "components/d5o/end-user/FocusedTaskPanel.tsx",
   "docs/manual-pilot-failure-billing-task.md",
@@ -21,21 +26,41 @@ for (const file of requiredFiles) {
 }
 
 const guided = read("components/d5o/workflow-completion/GuidedCompletionFlow.tsx");
+const billingV2Ui = [
+  "components/d5o/billing-v2/BillingV2GuidedWorkflow.tsx",
+  "components/d5o/billing-v2/BillingV2WorkflowClient.tsx",
+  "components/d5o/billing-v2/BillingV2ProcessRail.tsx",
+  "components/d5o/billing-v2/BillingV2ActiveStepWorkspace.tsx",
+  "components/d5o/billing-v2/BillingV2ReadinessContextPanel.tsx",
+  "components/d5o/billing-v2/BillingV2StepUnderstandBlocker.tsx",
+  "components/d5o/billing-v2/BillingV2StepBuildPackage.tsx",
+  "components/d5o/billing-v2/BillingV2StepAddProof.tsx",
+  "components/d5o/billing-v2/BillingV2StepCommercialReview.tsx",
+  "components/d5o/billing-v2/BillingV2StepReviewDecision.tsx",
+  "components/d5o/billing-v2/BillingV2StepClearBlocker.tsx",
+  "components/d5o/billing-v2/BillingV2StepOutcomeRecord.tsx"
+].map(read).join("\n");
+
 for (const phrase of [
-  "Complete billing backup task",
-  "Follow these steps to clear the billing blocker.",
-  "Billing Backup Blocker -&gt; Pay Application Review Readiness",
-  "billing-v2-business-process-guide",
-  "billing-v2-business-object",
-  "billing-v2-handoff-owner",
-  "billing-v2-historical-record-location",
-  "Return to Pilot Mode",
-  "guided-completion-flow",
-  "guided-completion-complete"
+  "billing-v2-guided-workflow",
+  "billing-v2-process-rail",
+  "billing-v2-active-step",
+  "billing-v2-context-panel",
+  "Billing Backup Package",
+  "Pay App 003",
+  "blockedAmount",
+  "Commercial Review",
+  "billing-v2-outcome-record",
+  "billing-v2-historical-record",
+  "Return to Pilot Mode"
 ]) {
-  if (!guided.includes(phrase)) {
-    failures.push(`GuidedCompletionFlow missing visible phrase or selector: ${phrase}`);
+  if (!billingV2Ui.includes(phrase)) {
+    failures.push(`Billing v2 guided UI missing visible phrase or selector: ${phrase}`);
   }
+}
+
+if (!guided.includes("field-issue-escalation") || !guided.includes("closeout-requirement-final-billing-release")) {
+  failures.push("GuidedCompletionFlow must remain available for Field and Closeout completion workflows.");
 }
 
 const fieldContracts = read("lib/d5o/workflow-completion/editable-field-contracts.ts");
@@ -86,15 +111,14 @@ if (!focusedTask.includes("return-to-pilot-mode") || !focusedTask.includes("Retu
 const pilotQa = read("scripts/qa-pilot-mode.mjs");
 for (const phrase of [
   "runBillingManualFailureRegression",
-  "Complete billing backup task",
-  "backup-note-input",
-  "billing-evidence-reference-input",
-  "billing-resolution-note-input",
-  "Mark backup attached",
-  "Send to review",
-  "Resolve billing blocker",
-  "guided-completion-flow",
-  "guided-completion-complete",
+  "billing-v2-guided-workflow",
+  "billing-v2-process-rail",
+  "billing-v2-backup-summary-input",
+  "billing-v2-add-reference",
+  "billing-v2-send-review",
+  "billing-v2-review-note-input",
+  "billing-v2-clear-blocker",
+  "billing-v2-step-outcome",
   "resolved"
 ]) {
   if (!pilotQa.includes(phrase)) {
@@ -103,8 +127,8 @@ for (const phrase of [
 }
 
 const workflowQa = read("scripts/qa-workflow-completion.mjs");
-if (!workflowQa.includes("Guided completion flow visible")) {
-  failures.push("workflow-completion QA must assert guided completion flow visibility.");
+if (!workflowQa.includes("Guided Billing v2 workflow visible")) {
+  failures.push("workflow-completion QA must assert Billing v2 guided workflow visibility.");
 }
 
 const docs = read("docs/manual-pilot-failure-billing-task.md");

@@ -1,0 +1,15 @@
+import {randomUUID} from "node:crypto";
+import {sql,q,j} from "./implementation-context.mjs";
+// Variant construction is test-only. Engine code never receives a scenario selector.
+export function cloneConfiguration(f,transform=x=>x){
+ const version=randomUUID(),mapping=new Map([[f.version,version]]),tables=["config_phase_definitions","config_gate_definitions","config_work_item_type_definitions","config_role_definitions","config_evidence_type_definitions","config_gate_evidence_requirements","config_gate_decision_outcomes","config_decision_right_definitions","config_exception_rules","config_exception_approval_role_links"];
+ const rows=Object.fromEntries(tables.map(t=>[t,JSON.parse(sql(`select coalesce(jsonb_agg(to_jsonb(x)),'[]') from ${t} x where configuration_version_id=${q(f.version)};`))]));
+ for(const group of Object.values(rows))for(const row of group)mapping.set(row.id,randomUUID());
+ function remap(x){if(typeof x==="string")return mapping.get(x)??x;if(Array.isArray(x))return x.map(remap);if(x&&typeof x==="object")return Object.fromEntries(Object.entries(x).map(([k,v])=>[k,remap(v)]));return x;}
+ const source=JSON.parse(sql(`select to_jsonb(x) from config_configuration_versions x where id=${q(f.version)};`));source.id=version;source.version=Number(sql(`select max(version)+1 from config_configuration_versions where tenant_configuration_id=${q(f.configuration)};`));source.status="draft";source.published_at=null;source.effective_from=new Date(Date.now()-60000).toISOString();source.effective_to=null;
+ let s=`begin;insert into config_configuration_versions select * from jsonb_populate_record(null::config_configuration_versions,${j(source)});`;
+ for(const t of tables)for(const row of rows[t])s+=`insert into ${t} select * from jsonb_populate_record(null::${t},${j(transform(remap(row),t))});`;
+ s+=`update config_configuration_versions set status='superseded',effective_to=now() where tenant_configuration_id=${q(f.configuration)} and status='published';update config_configuration_versions set status='published',published_at=now(),effective_from=now() where id=${q(version)};update config_tenant_configurations set active_version_id=${q(version)} where id=${q(f.configuration)};update config_tenants set active_configuration_version_id=${q(version)} where id=${q(f.tenant)};commit;`;sql(s);
+ return {...f,version,gate:mapping.get(f.gate),phase:mapping.get(f.phase),roles:Object.fromEntries(Object.entries(f.roles).map(([k,v])=>[k,mapping.get(v)]))};
+}
+export function restoreDefault(f){sql(`begin;update config_configuration_versions set status='superseded',effective_to=now() where tenant_configuration_id=${q(f.configuration)} and status='published';update config_configuration_versions set status='published',effective_from=now(),effective_to=null where id=${q(f.version)};update config_tenant_configurations set active_version_id=${q(f.version)} where id=${q(f.configuration)};update config_tenants set active_configuration_version_id=${q(f.version)} where id=${q(f.tenant)};commit;`);}

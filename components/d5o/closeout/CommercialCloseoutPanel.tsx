@@ -17,8 +17,8 @@ export function CommercialCloseoutPanel({
     <section className="control-list">
       <h3>Final billing / commercial closure</h3>
       <ul className="record-list">
-        {unbilled.map((event, index) => (
-          <li key={`commercial-closeout-change-${event.id}-${event.changeNumber}-${index}`}>
+        {unbilled.map((event) => (
+          <li key={event.id}>
             <div>
               <strong>{event.changeNumber}: {event.title}</strong>
               <span>{event.projectName} | {currency.format(event.approvedAmount)} approved not billed</span>
@@ -26,8 +26,8 @@ export function CommercialCloseoutPanel({
             <p>{event.requiredAction}</p>
           </li>
         ))}
-        {finalBillingIssues.map((payApp, index) => (
-          <li key={`commercial-closeout-payapp-${payApp.id}-${payApp.payApplicationNumber}-${index}`}>
+        {finalBillingIssues.map((payApp) => (
+          <li key={payApp.id}>
             <div>
               <strong>{payApp.payApplicationNumber}: {payApp.projectName}</strong>
               <span>{currency.format(payApp.amountRequestedThisPeriod)} requested | {payApp.status.replaceAll("_", " ")}</span>

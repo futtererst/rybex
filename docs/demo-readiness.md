@@ -335,3 +335,34 @@ Billing v2 engineering readiness guardrails now exist: ADRs, state transition ma
 This is documentation-only. No implementation occurred, demo readiness is not expanded, and Billing v2 should not be presented as implemented, demo ready, pilot ready, production ready, or externally ready. The next step is manual review of the guardrails and then a domain-only Phase 1A implementation pass before any UI work.
 
 Verification: `npm run billing-v2:verify-engineering-readiness`.
+
+## Billing v2 Phase 1A Domain Boundary
+
+Billing v2 Phase 1A domain layer now exists for future implementation work. It is not demo-facing functionality. No Billing v2 UI, route, Pilot Mode behavior, persistence, auth, RLS, Field workflow, or Closeout workflow changed.
+
+Demo readiness is not expanded by Phase 1A. Continue to present Billing v2 as future user-facing work until a later accepted UI pass connects the domain layer to a visible workflow.
+
+Verification:
+
+```powershell
+npm run billing-v2:qa-domain
+npm run billing-v2:verify-domain
+```
+
+## Billing v2 Phase 1A Hardening Boundary
+
+Billing v2 Phase 1A domain hardening is complete and documented in `docs/billing-v2-phase-1a-domain-review.md` and `docs/billing-v2-phase-1a-domain-implementation-report.md`.
+
+The domain review is Accepted for Phase 1B UI, but Billing v2 is still not demo-facing functionality. UI is not implemented, routes are unchanged, and Pilot Mode is unchanged. Demo readiness is not expanded until a later accepted UI pass connects the domain layer to a visible workflow.
+
+## Billing v2 Interaction Design Reset Boundary
+
+Billing v2 Phase 1B UI attempt failed manual review. The rejected UI felt like forms and buttons instead of a guided business workflow.
+
+A guided interaction redesign package now exists, but no replacement UI implementation occurred in this pass. Demo readiness is not expanded by this reset. Billing v2 domain layer remains the accepted foundation, and future UI work must follow the guided workflow interaction design before manual review.
+
+Verification:
+
+```powershell
+npm run billing-v2:verify-interaction-design
+```

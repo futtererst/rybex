@@ -19,7 +19,11 @@ visual-qa-output/*
 .env.*.local
 node_modules/
 .next/
+.next-review-61430/
 package-output/
+.rybexos-local/
 
 # Generated visual QA output
 visual-qa-output/**
+
+.vercel/

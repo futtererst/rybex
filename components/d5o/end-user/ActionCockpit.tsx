@@ -43,7 +43,7 @@ export function ActionCockpit({ summary }: ActionCockpitProps) {
   const action = summary.primaryAction;
   const blocker = summary.criticalBlockers[0];
   const evidenceItems = summary.evidenceNeededNow.slice(0, 3);
-  const secondaryActions = summary.secondaryActions.slice(0, 2);
+  const otherCriticalActions = summary.pageId === "command-center" ? summary.secondaryActions.slice(0, 2) : [];
   const dispatchTaskFocus = (focusedAction: EndUserAction) => {
     if (pathFromHref(focusedAction.href) !== pathname) return;
 
@@ -110,24 +110,25 @@ export function ActionCockpit({ summary }: ActionCockpitProps) {
           </strong>
         </div>
         <div className="action-cockpit-row">
-          <span>Also do</span>
-          {secondaryActions.length > 0 ? (
-            <div className="action-cockpit-secondary">
-              {secondaryActions.map((secondaryAction) => (
-                <Link
-                  href={secondaryAction.href}
-                  key={secondaryAction.id}
-                  onClick={() => dispatchTaskFocus(secondaryAction)}
-                >
-                  {secondaryAction.ctaLabel}
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <strong>No other urgent actions</strong>
-          )}
+          <span>Why it matters</span>
+          <strong>{action.taskOutcome.expectedOutcome}</strong>
         </div>
       </div>
+
+      {otherCriticalActions.length > 0 ? (
+        <div className="action-cockpit-secondary" aria-label="Other critical blockers">
+          <span>Other critical blockers</span>
+          {otherCriticalActions.map((secondaryAction) => (
+            <Link
+              href={secondaryAction.href}
+              key={secondaryAction.id}
+              onClick={() => dispatchTaskFocus(secondaryAction)}
+            >
+              {secondaryAction.ctaLabel}
+            </Link>
+          ))}
+        </div>
+      ) : null}
 
       <div className="action-cockpit-footer">
         <span>{summary.primaryUserIntent}</span>

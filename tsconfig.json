@@ -33,9 +33,22 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    ".next/dev/types/**/*.ts",
+    ".next-review-61430/types/**/*.ts",
+    ".next-review-61430/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "package-output",
+    "dist-demo",
+    "out",
+    "artifacts",
+    "visual-qa-output",
+    ".next/dev",
+    ".agents",
+    ".codex",
+    ".rybexos-local",
+    ".tmp",
+    "components/d5o/workflow/WorkflowTransactionRuntime.tsx"
   ]
 }

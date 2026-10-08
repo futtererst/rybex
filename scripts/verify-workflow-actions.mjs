@@ -30,6 +30,8 @@ const applySource = source("lib/d5o/workflow/apply-transaction.ts");
 const cardSource = source("components/d5o/workflow/WorkflowActionCard.tsx");
 const panelSource = source("components/d5o/workflow/WorkflowTransactionPanel.tsx");
 const modalSource = source("components/d5o/workflow/WorkflowTransactionModal.tsx");
+const actionSource = source("app/actions/workflow-transactions.ts");
+const routeSource = source("app/api/workflow-transactions/route.ts");
 const legacyRuntimePath = resolve(root, "components/d5o/workflow/WorkflowTransactionRuntime.tsx");
 
 const expectedMappings = {
@@ -72,6 +74,22 @@ if (!panelSource.includes("/api/workflow-transactions")) {
 
 if (existsSync(legacyRuntimePath)) {
   failures.push("Legacy WorkflowTransactionRuntime script fallback should not be present.");
+}
+
+if (!transactionsSource.includes("isWorkflowTransactionType") || !transactionsSource.includes("getWorkflowTransactionDefinition")) {
+  failures.push("Workflow transaction definitions do not expose canonical runtime-authority validation.");
+}
+
+if (!actionSource.includes("runtime authority is missing or invalid") || !actionSource.includes("not configured for this workflow type")) {
+  failures.push("Workflow transaction server action does not fail closed for missing, invalid, or mismatched authority.");
+}
+
+if (!actionSource.includes("isProductionRuntime() && !databaseStoreEnabled")) {
+  failures.push("Workflow transaction server action does not fail closed when production database authority is unavailable.");
+}
+
+if (!routeSource.includes("commitWorkflowTransaction") || /request\.(?:runtime|store|adapter)/.test(routeSource)) {
+  failures.push("Workflow transaction route does not preserve server-owned runtime authority.");
 }
 
 if (!panelSource.includes("store.applyTransaction") || !panelSource.includes("store.markWorkflowActionResolved")) {

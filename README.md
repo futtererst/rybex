@@ -1,6 +1,14 @@
 # RybexOS
 
-RybexOS is a seed-backed demo platform for running subcontracted infrastructure
+## Authoritative Product Build Plan
+
+The authoritative product build plan is:
+
+- `docs/rybexos-master-build-plan.md`
+
+Older demo, pilot, readiness, implementation, visual QA, and route reports are supporting or historical documents. They do not override the master build plan. A route, component, seed record, local workflow, screenshot, or passing verification script does not by itself establish that a capability is implemented, demo-ready, or production-ready.
+
+RybexOS is a seed-backed prototype for running subcontracted infrastructure
 work through the Rybex D5O operating model. It is designed for Rybex
 Infrastructure Group and demonstrates how pursuit, contract baseline,
 mobilization, field execution, commercial control, billing, safety, quality,
@@ -158,6 +166,8 @@ database runtime, auth, or deployment behavior.
 
 ## Demo Route
 
+Historical demo docs remain in the repository for context. They do not mean the app is currently demo-ready, and they do not override `docs/rybexos-master-build-plan.md`.
+
 Start the executive demo at:
 
 - `/command-center`
@@ -305,16 +315,16 @@ Recommended next implementation:
 - Review and test the RLS/storage scaffold before enabling table policies.
 - Keep broad module record writes out of scope until workflow persistence is proven.
 
-## Controlled Pilot Readiness
+## Historical Controlled Pilot Readiness
 
-RybexOS now includes a production readiness gap review and controlled pilot
-launch package. The current status is:
+Historical controlled pilot documents exist, but current product authority is
+governed by `docs/rybexos-master-build-plan.md`. The current status is:
 
-- Demo ready: yes, with seed/local fallback and documented limitations.
-- Controlled pilot candidate: yes, for a limited internal pilot after human approval.
+- Demo ready: no.
+- Controlled pilot candidate: not currently authorized by the master build plan.
 - Production ready: no.
 
-Pilot readiness documents:
+Historical pilot readiness documents:
 
 - `docs/production-readiness-gap-review.md`
 - `docs/pilot-readiness-scorecard.md`
@@ -428,4 +438,58 @@ Verify the engineering-readiness package with:
 
 ```powershell
 npm run billing-v2:verify-engineering-readiness
+```
+
+## Billing v2 Phase 1A Domain Layer
+
+Billing v2 Phase 1A domain layer now exists as domain-only code. It adds the BillingBackupPackage model, deterministic demo state, state machine commands, guards, readiness logic, structured evidence references, commercial review task/decision logic, blocker-clearance rules, outcome record generation, historical record generation, and domain QA.
+
+No Billing v2 UI behavior changed. No routes, `app/billing/page.tsx`, Pilot Mode behavior, persistence, auth, RLS, Field workflow, or Closeout workflow changed.
+
+Run:
+
+```powershell
+npm run billing-v2:qa-domain
+npm run billing-v2:verify-domain
+```
+
+## Billing v2 Phase 1A Domain Review
+
+Billing v2 Phase 1A domain review and hardening are documented in:
+
+- `docs/billing-v2-phase-1a-domain-review.md`
+- `docs/billing-v2-phase-1a-domain-implementation-report.md`
+
+The domain review recommendation is Accepted for Phase 1B UI. Billing v2 remains domain-only at this point: UI is not implemented, routes are unchanged, `app/billing/page.tsx` is unchanged, Pilot Mode is unchanged, and no persistence/auth/RLS/Field/Closeout behavior changed.
+
+## Billing v2 Interaction Design Reset
+
+Billing v2 Phase 1B UI attempt failed manual review. The rejected UI felt like forms and buttons, was visually cluttered, and did not clearly guide the user through the business process.
+
+The interaction design reset package defines the replacement direction:
+
+- `docs/billing-v2-ui-failure-review.md`
+- `docs/billing-v2-guided-workflow-interaction-design.md`
+- `docs/billing-v2-step-by-step-storyboard.md`
+- `docs/billing-v2-replacement-ui-implementation-plan.md`
+
+No replacement UI implementation occurred in this pass. Billing v2 domain layer remains the accepted foundation.
+
+Run:
+
+```powershell
+npm run billing-v2:verify-interaction-design
+```
+
+## Billing v2 Guided UI Replacement
+
+Billing v2 guided workflow replacement implemented for the existing focused Billing route. The experience now uses a process rail, one active step workspace, and a readiness/context panel instead of the rejected stacked forms/buttons UI.
+
+Billing v2 remains local/demo only. No production upload, persistence, auth, RLS, Supabase schema, production pay app submission, external GC submission, Field refactor, or Closeout refactor was added. Field and Closeout not refactored. Manual acceptance still required.
+
+Run:
+
+```powershell
+npm run billing-v2:qa
+npm run billing-v2:verify-ui
 ```

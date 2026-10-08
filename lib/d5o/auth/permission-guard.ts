@@ -1,4 +1,4 @@
-import { getPermissionsForRole, hasPermission, type RybexPermission } from "../rbac";
+import { getPermissionsForRole, hasPermission, type CanonicalWorkspaceRole, type RybexPermission } from "../rbac";
 import type { UserRole } from "../types";
 import type { WorkflowTransactionType } from "../workflow/transactions";
 import type { OperatingWorkflowType } from "../workflow/types";
@@ -44,7 +44,7 @@ export async function requireAnyPermission(permissions: RybexPermission[]) {
 export function assertWorkflowTransactionPermission(
   transactionType: WorkflowTransactionType,
   workflowType: OperatingWorkflowType,
-  role: UserRole
+  role: UserRole | CanonicalWorkspaceRole
 ): WorkflowTransactionPermissionCheck {
   const check = checkWorkflowTransactionPermission(role, transactionType, workflowType);
 

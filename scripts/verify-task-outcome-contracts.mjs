@@ -93,8 +93,8 @@ for (const doc of [
   "docs/cta-outcome-remediation-backlog.md"
 ]) {
   const content = readRequired(doc);
-  if (content && !content.includes("Manual Founder Review Failures")) {
-    failures.push(`${doc} must include Manual Founder Review Failures.`);
+  if (content && !/Manual Founder Review Failures|Historical Manual Review Failures Resolved/.test(content)) {
+    failures.push(`${doc} must include manual review failure context or resolved historical manual review context.`);
   }
 }
 

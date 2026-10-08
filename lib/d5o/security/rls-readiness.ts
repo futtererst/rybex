@@ -3,6 +3,7 @@ import { getDataSourceMode } from "../data/data-source";
 import { getDatabaseReadinessStatus } from "../data/database-diagnostics";
 import { getEvidenceStoreMode } from "../evidence/evidence-store";
 import { getWorkflowTransactionStoreMode } from "../workflow/transaction-store";
+import { getRuntimeMode } from "./runtime-mode";
 
 export type SecurityReadinessStatus = "not_enabled" | "scaffolded" | "enabled" | "unknown";
 
@@ -11,8 +12,9 @@ export type RlsReadiness = {
   authMode: ReturnType<typeof getAuthMode>;
   dataSourceMode: ReturnType<typeof getDataSourceMode>;
   workflowTransactionStoreMode: ReturnType<typeof getWorkflowTransactionStoreMode>;
+  runtimeMode: ReturnType<typeof getRuntimeMode>;
   databaseRls: SecurityReadinessStatus;
-  rlsScaffoldStatus: "scaffolded";
+  rlsScaffoldStatus: "scaffolded" | "foundation_0a_enabled";
   helperFunctions: string[];
   scopedTables: string[];
   serviceRoleUsage: "server_only";
@@ -66,8 +68,9 @@ export function getRlsReadiness(): RlsReadiness {
     authMode: getAuthMode(),
     dataSourceMode: getDataSourceMode(),
     workflowTransactionStoreMode: getWorkflowTransactionStoreMode(),
-    databaseRls: "not_enabled",
-    rlsScaffoldStatus: "scaffolded",
+    runtimeMode: getRuntimeMode(),
+    databaseRls: "scaffolded",
+    rlsScaffoldStatus: "foundation_0a_enabled",
     helperFunctions,
     scopedTables,
     serviceRoleUsage: "server_only",
@@ -103,7 +106,7 @@ export function getSecurityLimitations() {
   return [
     "Demo auth remains the default and does not require Supabase login.",
     "Supabase Auth session resolution is not production-ready.",
-    "RLS helper functions are scaffolded but broad RLS is not enabled.",
+    "Foundation 0A identity/workspace RLS is defined in migration source; broad business-domain RLS is not enabled.",
     "Service role keys are used only from server-side actions/helpers.",
     "Workflow transaction writes and evidence uploads are narrow pilots, not broad production persistence.",
     "Storage policies require human review and database inspection before production use."

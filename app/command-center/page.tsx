@@ -1,162 +1,43 @@
 import Link from "next/link";
-import { D5OPhaseGate } from "@/components/d5o/D5OPhaseGate";
-import { D5OPhaseSummary } from "@/components/d5o/D5OPhaseSummary";
-import { OperatingActionItem } from "@/components/d5o/OperatingActionItem";
-import { ActionWorkspaceLayout, CollapsedDetails } from "@/components/d5o/end-user";
-import { EscalationQueue, NotificationPanel, NotificationSummaryStrip } from "@/components/d5o/notifications";
-import { PageHeader } from "@/components/d5o/PageHeader";
-import { ProgressiveDetails } from "@/components/d5o/ProgressiveDetails";
-import { ProjectHealthCard } from "@/components/d5o/ProjectHealthCard";
-import { StageGateSummary } from "@/components/d5o/stage-gates/StageGateSummary";
-import { DecisionQueue } from "@/components/d5o/workflow/DecisionQueue";
-import { NextBestAction } from "@/components/d5o/workflow/NextBestAction";
-import { WorkflowActionCard } from "@/components/d5o/workflow/WorkflowActionCard";
-import { WorkflowPhaseMap } from "@/components/d5o/workflow/WorkflowPhaseMap";
+import { CollapsedDetails } from "@/components/d5o/end-user";
+import { applyBillingV2CompletionToWorkspaceSummary } from "@/lib/d5o/billing-v2/app-state";
+import {
+  getBillingV2ActionState,
+  getBillingV2SeedDataOverlay
+} from "@/lib/d5o/billing-v2/store";
+import { applyFieldIssueEscalationToWorkspaceSummary } from "@/lib/d5o/field-issue-escalation/app-state";
+import {
+  getFieldIssueActionState,
+  getFieldIssueSeedDataOverlay
+} from "@/lib/d5o/field-issue-escalation/store";
+import { applyCloseoutFinalBillingToWorkspaceSummary } from "@/lib/d5o/closeout-final-billing/app-state";
+import {
+  applyCloseoutFinalBillingToSeedData,
+  getCloseoutFinalBillingActionState
+} from "@/lib/d5o/closeout-final-billing/store";
 import { evaluateBillingControl } from "@/lib/d5o/billing-control";
 import { evaluateChangeControl } from "@/lib/d5o/change-control";
-import { d5oPhases } from "@/lib/d5o/config";
-import { evaluateD4Gate } from "@/lib/d5o/d4-gate";
-import { evaluateD5Gate } from "@/lib/d5o/d5-gate";
-import { evaluateD3Gate } from "@/lib/d5o/d3-gate";
-import { demoUser } from "@/lib/d5o/demo-user";
-import { calculateGoNoGo } from "@/lib/d5o/go-no-go";
-import { moduleImplementationStatuses } from "@/lib/d5o/implementation-status";
-import { activePipelineStatuses, opportunityStatusMap } from "@/lib/d5o/opportunity-config";
 import { evaluateRfiSubmittalControl } from "@/lib/d5o/rfi-submittal-control";
-import { evaluateQualityControl } from "@/lib/d5o/quality-control";
-import { evaluateSafetyControl } from "@/lib/d5o/safety-control";
-import { evaluateOptimizeControl } from "@/lib/d5o/optimize-control";
 import {
   changeEvents,
   acceptanceRecords,
-  asBuiltRecords,
-  billingBackupItems,
-  closeoutItems,
   closeoutPackages,
   closeoutRequirements,
-  commercialExposureItems,
-  correctiveActions,
   dailyReports,
-  decisions,
-  getProjectById,
-  gcPerformanceProfiles,
-  improvementActions,
-  issues,
-  jhaRecords,
   lienWaivers,
-  mobilizationPlans,
-  operatingActions,
-  opportunities,
-  payApplications,
-  productionRateRecords,
-  projectPerformanceScorecards,
-  punchItems,
-  projects,
-  qualityDeficiencies,
-  qualityInspections,
-  qualityRecords,
-  riskLibraryItems,
   rfis,
-  risks,
-  safetyIncidents,
-  safetyObservations,
-  safetyPlans,
-  safetyRecords,
-  submittals,
-  testRecords,
-  warrantyRecords,
-  lessonsLearned,
-  vendorPerformanceProfiles,
-  toolboxTalks,
-  workPackages
+  submittals
 } from "@/lib/d5o/seed-data";
-import type { D5OPhaseId, RybexProject } from "@/lib/d5o/types";
-import { compactCurrency, currency, dateLabel } from "@/lib/d5o/presentation";
-import { deriveOperatingNotifications } from "@/lib/d5o/notifications";
+import { currency, dateLabel } from "@/lib/d5o/presentation";
 import { deriveOperatingWorkflows } from "@/lib/d5o/workflow";
 import { getEndUserWorkspaceSummary } from "@/lib/d5o/end-user/page-focus-config";
 
 const operatingDate = "2026-06-10";
 
-const phaseIds = d5oPhases.map((phase) => phase.id);
-const activeOpportunities = opportunities.filter((opportunity) =>
-  activePipelineStatuses.includes(opportunity.status)
-);
-const bidsDueSoon = activeOpportunities.filter(
-  (opportunity) => daysUntil(opportunity.bidDueDate) <= 7
-);
-const awaitingGoNoGo = activeOpportunities.filter(
-  (opportunity) => opportunity.status === "awaiting_go_no_go"
-);
-const highRiskOpportunities = activeOpportunities.filter((opportunity) =>
-  ["high", "severe"].includes(calculateGoNoGo(opportunity).riskLevel)
-);
-const atRiskProjects = projects.filter((project) =>
-  ["at_risk", "critical", "blocked", "watch"].includes(project.healthStatus)
-);
-const blockedMobilizations = mobilizationPlans.filter((plan) => {
-  const project = projects.find((candidate) => candidate.id === plan.projectId);
-  return !evaluateD3Gate(plan, project).readyBoolean;
-});
-const upcomingFieldStarts = mobilizationPlans
-  .filter((plan) => daysUntil(plan.plannedFieldStartDate) <= 14)
-  .sort((a, b) => a.plannedFieldStartDate.localeCompare(b.plannedFieldStartDate));
-const openChanges = changeEvents.filter((event) => !["billed", "closed"].includes(event.status));
+export const dynamic = "force-dynamic";
+
 const rfiSubmittalControl = evaluateRfiSubmittalControl({ rfis, submittals });
 const changeControl = evaluateChangeControl({ changeEvents, dailyReports });
-const billingControl = evaluateBillingControl({
-  payApplications,
-  backupItems: billingBackupItems,
-  lienWaivers,
-  commercialExposure: commercialExposureItems,
-  changeEvents
-});
-const safetyActions = correctiveActions.filter((action) =>
-  action.sourceType === "safety_observation" || action.sourceType === "safety_incident"
-);
-const safetyControl = evaluateSafetyControl({
-  safetyPlans,
-  jhaRecords,
-  toolboxTalks,
-  observations: safetyObservations,
-  incidents: safetyIncidents,
-  correctiveActions: safetyActions
-});
-const qualityActions = correctiveActions.filter((action) =>
-  action.sourceType === "quality_deficiency" || action.sourceType === "quality_inspection" || action.sourceType === "punch_item"
-);
-const qualityControl = evaluateQualityControl({
-  inspections: qualityInspections,
-  deficiencies: qualityDeficiencies,
-  tests: testRecords,
-  punchItems,
-  correctiveActions: qualityActions
-});
-const d5Readiness = closeoutPackages.map((closeoutPackage) => evaluateD5Gate({
-  closeoutPackage,
-  project: projects.find((project) => project.id === closeoutPackage.projectId),
-  requirements: closeoutRequirements,
-  acceptanceRecords,
-  dailyReports,
-  punchItems,
-  testRecords,
-  qualityDeficiencies,
-  correctiveActions,
-  rfis,
-  submittals,
-  changeEvents,
-  payApplications,
-  lienWaivers
-}));
-const optimizeControl = evaluateOptimizeControl({
-  scorecards: projectPerformanceScorecards,
-  lessons: lessonsLearned,
-  productionRates: productionRateRecords,
-  gcProfiles: gcPerformanceProfiles,
-  vendorProfiles: vendorPerformanceProfiles,
-  improvementActions,
-  riskLibrary: riskLibraryItems
-});
 const missingDailyReports = dailyReports.filter((report) =>
   ["missing", "late"].includes(report.reportStatus)
 );
@@ -169,18 +50,6 @@ const fieldExecutionSignals = dailyReports.filter(
     report.productionStatus === "blocked" ||
     report.productionStatus === "behind"
 );
-const d4ControlExceptions = projects.filter((project) => {
-  const projectReports = dailyReports.filter((report) => report.projectId === project.id);
-  const projectWorkPackages = workPackages.filter((workPackage) => workPackage.projectId === project.id);
-  const mobilizationPlan = mobilizationPlans.find((plan) => plan.projectId === project.id);
-
-  return projectReports.length > 0 && !evaluateD4Gate({
-    reports: projectReports,
-    workPackages: projectWorkPackages,
-    mobilizationPlan,
-    project
-  }).readyForCloseoutReviewBoolean;
-});
 const overdueRfIs = rfis.filter((rfi) => rfi.status === "overdue" || rfi.dueDate < operatingDate);
 const overdueSubmittals = submittals.filter(
   (submittal) =>
@@ -189,812 +58,524 @@ const overdueSubmittals = submittals.filter(
     submittal.status === "overdue" ||
     submittal.dueDate < operatingDate
 );
-const agedCloseout = closeoutItems
-  .filter((item) => item.status === "open" || item.status === "overdue")
-  .sort((a, b) => b.agingDays - a.agingDays);
-const overdueSafetyRecords = safetyRecords.filter((record) => record.status === "overdue");
-const overdueQualityRecords = qualityRecords.filter((record) => record.status === "overdue");
-const overdueOperationalItems =
-  overdueRfIs.length +
-  overdueSubmittals.length +
-  missingDailyReports.length +
-  overdueSafetyRecords.length +
-  overdueQualityRecords.length +
-  changeControl.noticeDeadlineRisks.length +
-  changeControl.missingBackupItems.length +
-  billingControl.missingBackupItems.length +
-  billingControl.lienWaiverIssues.length +
-  billingControl.agingPayApplications.length +
-  safetyControl.overdueActions.length +
-  safetyControl.incidentFollowUps.length +
-  qualityControl.failedInspectionItems.length +
-  qualityControl.missingEvidence.length +
-  qualityControl.punchCloseoutRisks.length +
-  d5Readiness.reduce((total, item) => total + item.acceptanceBlockers.length + item.finalBillingBlockers.length + item.retainageReleaseBlockers.length, 0) +
-  optimizeControl.overdueImprovementActions.length +
-  optimizeControl.rateUpdateRecommendations.length;
-const missingArtifacts = projects.flatMap((project) =>
-  project.gate.artifacts
-    .filter((artifact) => artifact.status === "missing")
-    .map((artifact) => ({ project, artifact }))
-);
-const workflowSummary = deriveOperatingWorkflows();
-const notificationSummary = deriveOperatingNotifications(demoUser.role);
-const leadershipOperatingActions = operatingActions.slice(0, 6);
-const topLeadershipWorkflow = workflowSummary.topLeadershipWorkflows[0];
 
-const projectCount = (project: RybexProject) => ({
-  openRiskCount: risks.filter(
-    (risk) => risk.projectId === project.id && risk.status !== "closed"
-  ).length,
-  openIssueCount: issues.filter(
-    (issue) => issue.projectId === project.id && issue.status !== "resolved"
-  ).length,
-  openRfiCount: rfis.filter(
-    (rfi) => rfi.projectId === project.id && !["closed", "answered"].includes(rfi.status)
-  ).length,
-  openChangeCount: changeEvents.filter(
-    (event) => event.projectId === project.id && event.status !== "approved"
-  ).length,
-  missingArtifactCount: project.gate.artifacts.filter(
-    (artifact) => artifact.status === "missing"
-  ).length
-});
-
-export default function CommandCenterPage() {
-  const pipelineValue = activeOpportunities.reduce(
-    (total, opportunity) => total + opportunity.estimatedValue,
-    0
+export default async function CommandCenterPage() {
+  const billingV2State = await getBillingV2ActionState();
+  const billingOverlay = await getBillingV2SeedDataOverlay();
+  const fieldIssueState = await getFieldIssueActionState();
+  const fieldIssueOverlay = await getFieldIssueSeedDataOverlay();
+  const closeoutFinalBillingState = await getCloseoutFinalBillingActionState();
+  const closeoutFinalBillingOverlay = applyCloseoutFinalBillingToSeedData(closeoutFinalBillingState.blocker, {
+    payApplications: billingOverlay.payApplications,
+    lienWaivers,
+    commercialExposureItems: billingOverlay.commercialExposureItems,
+    closeoutPackages,
+    closeoutRequirements,
+    acceptanceRecords
+  });
+  const billingControl = evaluateBillingControl({
+    payApplications: closeoutFinalBillingOverlay.payApplications,
+    backupItems: billingOverlay.billingBackupItems,
+    lienWaivers: closeoutFinalBillingOverlay.lienWaivers,
+    commercialExposure: closeoutFinalBillingOverlay.commercialExposureItems,
+    changeEvents
+  });
+  const workflowSummary = deriveOperatingWorkflows({
+    ...billingOverlay,
+    ...fieldIssueOverlay,
+    ...closeoutFinalBillingOverlay
+  });
+  const commandCenterActionSummary = applyCloseoutFinalBillingToWorkspaceSummary(
+    applyFieldIssueEscalationToWorkspaceSummary(
+      applyBillingV2CompletionToWorkspaceSummary(
+        getEndUserWorkspaceSummary("command-center"),
+        billingV2State.package
+      ),
+      fieldIssueState.issue
+    ),
+    closeoutFinalBillingState.blocker
   );
-  const openChangeValue = openChanges.reduce(
-    (total, change) => total + change.valueEstimate,
-    0
-  );
+  void workflowSummary;
+  void commandCenterActionSummary;
+  const triageItems = buildCommandCenterTriage({
+    billingV2State,
+    fieldIssueState,
+    closeoutFinalBillingState
+  });
+  const unresolvedTriageItems = triageItems.filter((item) => !item.isResolved);
+  const topPriority = unresolvedTriageItems[0];
+  const supportingBlockers = unresolvedTriageItems.filter((_, index) => index > 0 && index < 3);
+  const resolvedTriageItems = triageItems.filter((item) => item.isResolved);
+  const activeExposure = unresolvedTriageItems.reduce((total, item) => total + item.exposureValue, 0);
+  const blockerCopy =
+    unresolvedTriageItems.length === 1
+      ? "1 operating blocker requires action today"
+      : `${unresolvedTriageItems.length} operating blockers require action today`;
+  const supportSections = buildCommandCenterSupportingContext({
+    billingControl,
+    fieldIssueState,
+    closeoutFinalBillingState,
+    resolvedTriageItems,
+    unresolvedTriageItems
+  });
 
   return (
-    <div className="command-grid">
-      <PageHeader
-        context={`Reporting context: ${dateLabel(operatingDate)}`}
-        eyebrow="Rybex Infrastructure Group"
-        primaryAction={{ href: "#leadership-attention", label: "Review At-Risk Work", tone: "primary" }}
-        secondaryActions={[{ href: "/pipeline", label: "View Pipeline" }]}
-        subtitle="Daily D5O operating control for pursuits, mobilization, field execution, commercial protection, closeout, and lessons learned."
-        tags={[demoUser.title, "Demo data mode"]}
-        title="Command Center"
-      />
-
-      <ActionWorkspaceLayout summary={getEndUserWorkspaceSummary("command-center")} />
-
-      <section className="pipeline-guardrail" data-qa="pilot-mode-entry">
-        <strong>Pilot Mode:</strong>
-        <span>
-          Complete the three proven operating workflows in one guided path. <Link href="/pilot">Open Pilot Mode</Link>.
-        </span>
-      </section>
-
-      <CollapsedDetails
-        count={overdueOperationalItems + workflowSummary.allOperatingWorkflows.length}
-        title="Operating review details"
-        summary="Leadership alerts, phase health, module metrics, watch lists, and exception registers."
-      >
-      <section className="role-context-band" aria-label="Command Center role context">
-        <div>
-          <span>Built for</span>
-          <strong>CEO + operations leaders</strong>
-        </div>
-        <div>
-          <span>See first</span>
-          <strong>Decisions needed, cash at risk, blocked work, and gate health.</strong>
-        </div>
-        <div>
-          <span>Next move</span>
-          <strong>Assign the owner, clear the blocker, or drill into the module.</strong>
-        </div>
-      </section>
-
-      <NotificationSummaryStrip summary={notificationSummary} />
-
-      <EscalationQueue
-        notifications={notificationSummary.escalationQueue}
-        title="Critical escalations"
-      />
-
-      <NotificationPanel
-        limit={3}
-        notifications={notificationSummary.currentUserNotifications}
-        title={`${demoUser.title} alerts`}
-      />
-
-      {topLeadershipWorkflow ? (
-        <StageGateSummary
-          dueDate={topLeadershipWorkflow.dueDate}
-          evidenceNeeded={topLeadershipWorkflow.evidenceNeeded.required}
-          gateName="Leadership Operating Gate"
-          nextMovement={topLeadershipWorkflow.nextGateOrStatus.label}
-          owner={topLeadershipWorkflow.owner}
-          phase={topLeadershipWorkflow.d5oPhase}
-          primaryBlocker={topLeadershipWorkflow.resolutionState === "blocked" || topLeadershipWorkflow.resolutionState === "overdue" ? topLeadershipWorkflow.signal.title : undefined}
-          primaryCta={{ href: topLeadershipWorkflow.targetHref, label: "Open action" }}
-          readinessPercent={topLeadershipWorkflow.severity === "critical" ? 38 : topLeadershipWorkflow.severity === "high" ? 56 : 74}
-          requiredAction={topLeadershipWorkflow.requiredAction.title}
-          requiredDecision={topLeadershipWorkflow.requiredDecision.question}
-          status={topLeadershipWorkflow.resolutionState.replaceAll("_", " ")}
-        />
-      ) : null}
-
-      {topLeadershipWorkflow ? (
-        <NextBestAction
-          after={topLeadershipWorkflow.nextGateOrStatus.label}
-          ctaLabel="Go resolve"
-          href={topLeadershipWorkflow.targetHref}
-          title={topLeadershipWorkflow.requiredAction.title}
-          why={topLeadershipWorkflow.consequenceIfMissed}
-        />
-      ) : null}
-
-      <DecisionQueue
-        limit={5}
-        title="Leadership priorities"
-        workflows={workflowSummary.topLeadershipWorkflows}
-      />
-
-      {topLeadershipWorkflow ? (
-        <section className="panel">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Complete Action</p>
-              <h2>Act on the top workflow</h2>
-            </div>
-            <span className="muted">Open, confirm, and move the workflow forward.</span>
-          </div>
-          <WorkflowActionCard compact workflow={topLeadershipWorkflow} />
-        </section>
-      ) : null}
-
-      <ProgressiveDetails
-        count={workflowSummary.allOperatingWorkflows.length}
-        severity="info"
-        summary="Phase health and workflow volume by D5O stage."
-        title="Stage/gate health map"
-      >
-        <WorkflowPhaseMap summary={workflowSummary} />
-      </ProgressiveDetails>
-
-      <section className="metrics-grid" aria-label="Operating summary">
-        <div className="metric-card metric-info">
-          <span className="metric-label">Active Projects</span>
-          <strong>{projects.length}</strong>
-          <span>Projects across D5O</span>
-        </div>
-        <div className="metric-card metric-info">
-          <span className="metric-label">Pipeline</span>
-          <strong>{activeOpportunities.length}</strong>
-          <span>
-            {compactCurrency.format(pipelineValue)} | {awaitingGoNoGo.length} awaiting gate
-          </span>
-        </div>
-        <div className="metric-card metric-warning">
-          <span className="metric-label">Leadership Attention</span>
-          <strong>{atRiskProjects.length}</strong>
-          <span>Watch, at-risk, critical, or blocked projects</span>
-        </div>
-        <div className="metric-card metric-critical">
-          <span className="metric-label">Change Exposure</span>
-          <strong>{compactCurrency.format(openChangeValue + billingControl.cashAtRisk)}</strong>
-          <span>Open change exposure and billing cash at risk</span>
-        </div>
-        <div className="metric-card metric-critical">
-          <span className="metric-label">Overdue Controls</span>
-          <strong>{overdueOperationalItems + blockedMobilizations.length + fieldExecutionSignals.length}</strong>
-          <span>RFIs, reports, safety, quality, D3 blockers, or D4 field signals</span>
-        </div>
-        <div className="metric-card metric-warning">
-          <span className="metric-label">Closeout Aging</span>
-          <strong>{agedCloseout.length}</strong>
-          <span>Open or overdue closeout obligations</span>
-        </div>
-      </section>
-
-      <section className="pipeline-guardrail">
-        <strong>Enterprise readiness:</strong>
-        <span>
-          Demo data mode is active, {moduleImplementationStatuses.length} modules are represented, and the current role context is {demoUser.title}. <Link href="/admin">Review system readiness</Link>.
-        </span>
-      </section>
-
-      <section className="command-focus" aria-label="Current command focus">
-        <div>
-          <p className="eyebrow">Command Focus</p>
-          <h2>What needs operating attention now</h2>
-        </div>
-        <ul>
-          <li>
-            <strong>{blockedMobilizations.length}</strong>
-            <span>D3 mobilizations blocked before D4 field execution</span>
-          </li>
-          <li>
-            <strong>{bidsDueSoon.length}</strong>
-            <span>Bids due in the next 7 days requiring pursuit discipline</span>
-          </li>
-          <li>
-            <strong>{highRiskOpportunities.length}</strong>
-            <span>High-risk opportunities needing mitigation or no-bid decision</span>
-          </li>
-          <li>
-            <strong>{upcomingFieldStarts.length}</strong>
-            <span>Upcoming field starts in the next 14 days</span>
-          </li>
-          <li>
-            <strong>{fieldExecutionSignals.length}</strong>
-            <span>D4 reports with blockers, delays, change prompts, or production drift</span>
-          </li>
-        </ul>
-      </section>
-
-      <ProgressiveDetails
-        count={projects.length}
-        severity="info"
-        summary="Expanded D5O phase lanes for operating review."
-        title="Active projects by phase"
-      >
-      <section className="panel panel-flat">
-        <div className="section-heading">
+    <div className="command-grid command-center-page">
+      <section className="command-c-plus-shell" data-qa="command-center-visual-triage">
+      <div className="command-c-plus" data-qa="command-center-c-plus-action-queue">
+        <section className="command-c-plus-hero" data-qa="command-center-executive-framing">
           <div>
-            <p className="eyebrow">D5O Flow</p>
-            <h2>Active projects by operating phase</h2>
-          </div>
-          <span className="muted">Operating date: {dateLabel(operatingDate)}</span>
-        </div>
-        <div className="phase-lane-grid">
-          {phaseIds.map((phaseId) => (
-            <D5OPhaseSummary
-              key={phaseId}
-              phaseId={phaseId as D5OPhaseId}
-              projects={projects.filter((project) => project.d5oPhase === phaseId)}
-            />
-          ))}
-        </div>
-      </section>
-      </ProgressiveDetails>
-
-      <ProgressiveDetails
-        count={atRiskProjects.length}
-        defaultOpen
-        severity={atRiskProjects.length > 0 ? "warning" : "success"}
-        summary="Projects and gates requiring leadership attention."
-        title="Leadership watch list"
-      >
-      <div className="content-grid" id="leadership-attention">
-        <section className="panel">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Project Health</p>
-              <h2>Leadership watch list</h2>
-            </div>
-            <span className="muted">Health, exposure, and missing controls</span>
-          </div>
-
-          <div className="project-stack">
-            {atRiskProjects.map((project) => (
-              <ProjectHealthCard
-                key={project.id}
-                project={project}
-                {...projectCount(project)}
-              />
-            ))}
-          </div>
-        </section>
-
-        <aside className="gate-stack" aria-label="Gate readiness exceptions">
-          {atRiskProjects.slice(0, 3).map((project) => (
-            <D5OPhaseGate compact gate={project.gate} key={project.gate.id} />
-          ))}
-        </aside>
-      </div>
-      </ProgressiveDetails>
-
-      <ProgressiveDetails
-        count={leadershipOperatingActions.length}
-        defaultOpen
-        severity="warning"
-        summary="Highest business-impact actions only."
-        title="Operating actions"
-      >
-      <div className="content-grid">
-        <section className="panel" id="operating-actions">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Operating Actions</p>
-              <h2>Required actions by business impact</h2>
-            </div>
-            <span className="muted">Top {leadershipOperatingActions.length} of {operatingActions.length} open actions</span>
-          </div>
-          <div className="action-stack">
-            {leadershipOperatingActions.map((action) => (
-              <OperatingActionItem
-                action={action}
-                key={action.id}
-                project={getProjectById(action.projectId)}
-              />
-            ))}
-          </div>
-          {operatingActions.length > leadershipOperatingActions.length ? (
-            <p className="muted panel-note">
-              Remaining operating actions stay visible in their source modules so Command Center stays focused on leadership-level movement.
+            <p className="eyebrow">Command Center</p>
+            <h1>{blockerCopy} to protect cash, schedule, and closeout.</h1>
+            <p>
+              See the blockers that need action now, ranked by cash, schedule, and closeout impact. Start with the highest-impact action.
             </p>
-          ) : null}
+            {topPriority ? (
+              <p className="command-c-plus-lead">
+                First action: {topPriority.ctaLabel}. {topPriority.impactLabel}.
+              </p>
+            ) : null}
+          </div>
+          <dl className="command-c-plus-summary" aria-label="Operating queue summary">
+            <div>
+              <dt>Active blockers</dt>
+              <dd>{unresolvedTriageItems.length}</dd>
+            </div>
+            <div>
+              <dt>Exposure in view</dt>
+              <dd>{currency.format(activeExposure)}</dd>
+            </div>
+            <div>
+              <dt>Top priority</dt>
+              <dd>{topPriority?.ctaLabel ?? "No blocker open"}</dd>
+            </div>
+          </dl>
         </section>
 
-        <aside className="panel">
-          <p className="eyebrow">Gate Exceptions</p>
-          <h2>Missing artifacts</h2>
-          {missingArtifacts.length > 0 ? (
-            <ul className="compact-list">
-              {missingArtifacts.map(({ project, artifact }) => (
-                <li key={`${project.id}-${artifact.id}`}>
-                  <span className="artifact-state artifact-missing" />
-                  <span>
-                    <strong>{artifact.name}</strong>
-                    <small className="muted">
-                      {project.name} · owner {artifact.owner}
-                      {artifact.dueDate ? ` · due ${dateLabel(artifact.dueDate)}` : ""}
-                    </small>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="muted">All current phase gates have required artifacts in place.</p>
-          )}
-        </aside>
+        {topPriority ? (
+          <section className="command-action-queue" aria-label="Ranked operating action queue">
+            <div className="command-action-queue-labels" aria-hidden="true">
+              <span>Rank</span>
+              <span>Blocker</span>
+              <span>Impact</span>
+              <span>Next step</span>
+              <span>Owner / role</span>
+              <span>Action</span>
+            </div>
+            <article className="command-action-primary" data-qa="command-center-rank-1-action">
+              <div className="command-action-rank" aria-label="Rank 1">1</div>
+              <div className="command-action-main">
+                <p className="eyebrow">Highest impact action</p>
+                <h2>{topPriority.ctaLabel}</h2>
+                <p>{topPriority.consequence}</p>
+                <p className="command-mobile-priority-summary">
+                  {topPriority.impactLabel}. Next: {topPriority.nextStep}
+                </p>
+              </div>
+              <dl className="command-action-meta">
+                <div>
+                  <dt>Impact</dt>
+                  <dd>{topPriority.impactLabel}</dd>
+                </div>
+                <div>
+                  <dt>Next step</dt>
+                  <dd>{topPriority.nextStep}</dd>
+                </div>
+                <div>
+                  <dt>Owner / role</dt>
+                  <dd>{topPriority.ownerRole}</dd>
+                </div>
+              </dl>
+              <Link className="button button-primary command-action-primary-cta" href={topPriority.href}>
+                {topPriority.ctaLabel}
+              </Link>
+            </article>
+
+            {supportingBlockers.length > 0 ? (
+              <div className="command-action-supporting-list" data-qa="command-center-supporting-actions">
+                {supportingBlockers.map((item, index) => (
+                  <article className="command-action-supporting-row" data-qa="command-center-supporting-action" key={item.id}>
+                    <div className="command-action-rank command-action-rank-subordinate" aria-label={`Rank ${index + 2}`}>
+                      {index + 2}
+                    </div>
+                    <div className="command-action-row-title">
+                      <h3>{item.ctaLabel}</h3>
+                      <p>{item.consequence}</p>
+                    </div>
+                    <dl className="command-action-row-meta">
+                      <div>
+                        <dt>Impact</dt>
+                        <dd>{item.impactLabel}</dd>
+                      </div>
+                      <div>
+                        <dt>Next step</dt>
+                        <dd>{item.nextStep}</dd>
+                      </div>
+                      <div>
+                        <dt>Owner / role</dt>
+                        <dd>{item.ownerRole}</dd>
+                      </div>
+                    </dl>
+                    <Link className="button command-action-row-cta" href={item.href}>
+                      {item.ctaLabel}
+                    </Link>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </section>
+        ) : (
+          <section className="command-action-primary command-action-primary-resolved" data-qa="command-center-rank-1-action">
+            <div className="command-action-rank" aria-label="Resolved">0</div>
+            <div>
+              <p className="eyebrow">Action queue clear</p>
+            <h3>No operating blockers open</h3>
+              <p>The three core workbenches are clear. Review supporting operating context below.</p>
+            </div>
+          </section>
+        )}
       </div>
-      </ProgressiveDetails>
-
-      <ProgressiveDetails
-        count={overdueOperationalItems + blockedMobilizations.length + fieldExecutionSignals.length}
-        severity="critical"
-        summary="Supporting registers and exception lists. Open only when drilling into the operating review."
-        title="Detailed controls"
-      >
-      <section className="panel panel-flat">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Commercial and Delivery Controls</p>
-            <h2>Items that affect payment, schedule, or entitlement</h2>
-          </div>
-        </div>
-        <div className="operating-columns">
-          <ControlList
-            title="Bid pipeline"
-            items={opportunities.map((opportunity) => ({
-              id: opportunity.id,
-              title: opportunity.name,
-              meta: `${opportunity.gcClient} | ${opportunityStatusMap[opportunity.status].label} | ${currency.format(opportunity.estimatedValue)} | bid due ${dateLabel(opportunity.bidDueDate)}`,
-              detail: opportunity.nextAction
-            }))}
-          />
-          <ControlList
-            title="Overdue RFIs / submittals"
-            items={[
-              ...overdueRfIs.map((rfi) => ({
-                id: rfi.id,
-                title: rfi.title,
-                meta: `${rfi.projectName} · ${rfi.rfiNumber} · due ${dateLabel(rfi.dueDate)}`,
-                detail: rfi.businessImpact
-              })),
-              ...overdueSubmittals.map((submittal) => ({
-                id: submittal.id,
-                title: submittal.title,
-                meta: `${submittal.projectName} · ${submittal.submittalNumber} · due ${dateLabel(submittal.dueDate)}`,
-                detail: submittal.businessImpact
-              }))
-            ]}
-          />
-          <ControlList
-            title="Schedule-critical RFIs"
-            items={rfiSubmittalControl.scheduleCriticalItems.map((rfi) => ({
-              id: rfi.id,
-              title: `${rfi.rfiNumber}: ${rfi.title}`,
-              meta: `${rfi.projectName} · due ${dateLabel(rfi.dueDate)}`,
-              detail: rfi.nextAction
-            }))}
-          />
-          <ControlList
-            title="Submittals blocking work"
-            items={submittals
-              .filter((submittal) => submittal.linkedWorkPackageIds.length > 0 && !["approved", "approved_as_noted", "closed"].includes(submittal.status))
-              .map((submittal) => ({
-                id: submittal.id,
-                title: `${submittal.submittalNumber}: ${submittal.title}`,
-                meta: `${submittal.projectName} · required ${dateLabel(submittal.requiredDate)}`,
-                detail: submittal.businessImpact
-              }))}
-          />
-          <ControlList
-            title="Open change events"
-            items={openChanges.map((change) => ({
-              id: change.id,
-              title: change.title,
-              meta: `${change.projectName} · ${currency.format(change.valueEstimate)} · notice ${dateLabel(change.noticeDueDate)}`,
-              detail: change.businessImpact
-            }))}
-          />
-          <ControlList
-            title="Change notice / backup risk"
-            items={[...changeControl.noticeDeadlineRisks, ...changeControl.missingBackupItems].map((change) => ({
-              id: change.id,
-              title: `${change.changeNumber}: ${change.title}`,
-              meta: `${change.projectName} · notice ${dateLabel(change.noticeDeadline)} · backup ${change.backupStatus}`,
-              detail: change.requiredAction
-            }))}
-          />
-          <ControlList
-            title="Approved changes not billed"
-            items={[
-              ...changeEvents
-                .filter((change) => change.billingStatus === "approved_not_billed")
-                .map((change) => ({
-                  id: change.id,
-                  title: `${change.changeNumber}: ${change.title}`,
-                  meta: `${change.projectName} · ${currency.format(change.approvedAmount)} approved`,
-                  detail: change.requiredAction
-                })),
-              ...payApplications
-                .filter((payApp) => payApp.excludedApprovedChangeEventIds.length > 0)
-                .map((payApp) => ({
-                  id: payApp.id,
-                  title: `${payApp.payApplicationNumber}: approved change excluded`,
-                  meta: `${payApp.projectName} · ${payApp.excludedApprovedChangeEventIds.length} excluded change(s)`,
-                  detail: payApp.nextAction
-                }))
-            ]}
-          />
-          <ControlList
-            title="Billing cash at risk"
-            items={[
-              ...billingControl.agingPayApplications.map((payApp) => ({
-                id: payApp.id,
-                title: `${payApp.payApplicationNumber}: ${payApp.projectName}`,
-                meta: `Payment due ${dateLabel(payApp.paymentDueDate)} · requested ${currency.format(payApp.amountRequestedThisPeriod)}`,
-                detail: payApp.nextAction
-              })),
-              ...commercialExposureItems
-                .filter((item) => !["recovered", "written_off"].includes(item.status))
-                .map((item) => ({
-                  id: item.id,
-                  title: item.title,
-                  meta: `${currency.format(item.estimatedValue)} · due ${dateLabel(item.dueDate)}`,
-                  detail: item.requiredAction
-                }))
-            ]}
-          />
-          <ControlList
-            title="Billing backup / waivers"
-            items={[
-              ...billingControl.missingBackupItems.map((item) => ({
-                id: item.id,
-                title: item.title,
-                meta: `${item.owner} · due ${dateLabel(item.dueDate)}`,
-                detail: item.notes
-              })),
-              ...billingControl.lienWaiverIssues.map((waiver) => ({
-                id: waiver.id,
-                title: `${waiver.waiverType} waiver`,
-                meta: `${currency.format(waiver.amount)} · required ${dateLabel(waiver.requiredDate)}`,
-                detail: waiver.notes
-              }))
-            ]}
-          />
-          <ControlList
-            title="Rejected / disputed exposure"
-            items={changeEvents
-              .filter((change) => change.rejectedAmount + change.disputedAmount > 0)
-              .map((change) => ({
-                id: change.id,
-                title: `${change.changeNumber}: ${change.title}`,
-                meta: `${change.projectName} · ${currency.format(change.rejectedAmount + change.disputedAmount)} at risk`,
-                detail: change.requiredAction
-              }))}
-          />
-          <ControlList
-            title="Missing daily reports"
-            items={missingDailyReports.map((report) => ({
-              id: report.id,
-              title: `${getProjectById(report.projectId)?.name ?? "Unknown project"} daily report`,
-              meta: `${report.supervisor} · ${dateLabel(report.reportDate)} · ${report.workPackageName}`,
-              detail: report.blockers.map((blocker) => blocker.title).join(", ") || report.workPerformed
-            }))}
-          />
-          <ControlList
-            title="D4 field execution signals"
-            items={fieldExecutionSignals.map((report) => ({
-              id: report.id,
-              title: report.workPackageName,
-              meta: `${report.projectName} · ${report.productionStatus} · ${dateLabel(report.reportDate)}`,
-              detail:
-                report.changedConditions[0]?.description ||
-                report.blockers[0]?.businessImpact ||
-                report.delays[0]?.reason ||
-                report.nextDayPlan
-            }))}
-          />
-          <ControlList
-            title="Safety blockers / overdue actions"
-            items={[
-              ...safetyControl.overdueActions.map((action) => ({
-                id: action.id,
-                title: action.title,
-                meta: `${action.projectName} · ${action.owner} · due ${dateLabel(action.dueDate)}`,
-                detail: action.nextAction
-              })),
-              ...jhaRecords
-                .filter((record) => record.requiredBeforeWork && (!record.crewAcknowledged || ["blocked", "draft", "overdue"].includes(record.status)))
-                .map((record) => ({
-                  id: record.id,
-                  title: record.title,
-                  meta: `${record.projectName} · ${record.owner} · ${dateLabel(record.date)}`,
-                  detail: record.nextAction
-                }))
-            ]}
-          />
-          <ControlList
-            title="Incident / near-miss follow-up"
-            items={safetyControl.incidentFollowUps.map((incident) => ({
-              id: incident.id,
-              title: incident.description,
-              meta: `${incident.projectName} · ${incident.severity} · ${dateLabel(incident.date)}`,
-              detail: incident.nextAction
-            }))}
-          />
-          <ControlList
-            title="Quality deficiencies / failed inspections"
-            items={[
-              ...qualityControl.failedInspectionItems.map((inspection) => ({
-                id: inspection.id,
-                title: inspection.title,
-                meta: `${inspection.projectName} · ${inspection.inspector} · ${dateLabel(inspection.date)}`,
-                detail: inspection.nextAction
-              })),
-              ...qualityDeficiencies
-                .filter((deficiency) => !["closed", "verified"].includes(deficiency.status))
-                .slice(0, 6)
-                .map((deficiency) => ({
-                  id: deficiency.id,
-                  title: deficiency.title,
-                  meta: `${deficiency.projectName} · ${deficiency.assignedTo} · ${deficiency.status}`,
-                  detail: deficiency.nextAction
-                }))
-            ]}
-          />
-          <ControlList
-            title="Quality evidence gaps / punch risks"
-            items={[
-              ...qualityControl.missingEvidence.slice(0, 6).map((item) => ({
-                id: item,
-                title: item,
-                meta: "Required for D5 closeout evidence",
-                detail: "Capture or verify evidence while work remains visible."
-              })),
-              ...qualityControl.punchCloseoutRisks.slice(0, 6).map((item) => ({
-                id: item.id,
-                title: item.title,
-                meta: `${item.projectName} · due ${dateLabel(item.dueDate)}`,
-                detail: item.nextAction
-              }))
-            ]}
-          />
-          <ControlList
-            title="D5 closeout packages blocked"
-            items={d5Readiness
-              .filter((readiness) => readiness.closeoutReadinessScore < 80 || readiness.requiredActions.length > 0)
-              .map((readiness) => {
-                const closeoutPackage = closeoutPackages.find((item) =>
-                  item.nextAction === readiness.nextActions[0] ||
-                  item.readinessScore === readiness.closeoutReadinessScore
-                );
-                const matchedPackage = closeoutPackage ?? closeoutPackages.find((item) =>
-                  readiness.nextActions.includes(item.nextAction)
-                );
-
-                return {
-                  id: matchedPackage?.id ?? readiness.recommendedDecision,
-                  title: matchedPackage?.projectName ?? "Closeout package",
-                  meta: `${readiness.closeoutReadinessScore}% D5 readiness`,
-                  detail: readiness.requiredActions[0] ?? readiness.nextActions[0] ?? "Complete D5 package requirements."
-                };
-              })}
-          />
-          <ControlList
-            title="Missing as-builts / test records"
-            items={[
-              ...closeoutRequirements
-                .filter((item) => ["as_built", "redline", "test_record"].includes(item.category) && !["accepted", "waived", "archived"].includes(item.status))
-                .map((item) => ({
-                  id: item.id,
-                  title: item.title,
-                  meta: `${getProjectById(item.projectId)?.name ?? "Unknown project"} · due ${dateLabel(item.dueDate)}`,
-                  detail: item.nextAction
-                })),
-              ...asBuiltRecords
-                .filter((item) => !["accepted", "waived", "archived"].includes(item.status))
-                .map((item) => ({
-                  id: item.id,
-                  title: item.title,
-                  meta: `${getProjectById(item.projectId)?.name ?? "Unknown project"} · ${item.drawingReference}`,
-                  detail: item.nextAction
-                }))
-            ]}
-          />
-          <ControlList
-            title="Final billing / retainage blockers"
-            items={d5Readiness.flatMap((readiness, index) => {
-              const closeoutPackage = closeoutPackages[index];
-              return [...readiness.finalBillingBlockers, ...readiness.retainageReleaseBlockers].map((blocker) => ({
-                id: `${closeoutPackage.id}-${blocker}`,
-                title: closeoutPackage.projectName,
-                meta: `${closeoutPackage.packageNumber} · D5 commercial closure`,
-                detail: blocker
-              }));
-            })}
-          />
-          <ControlList
-            title="Acceptance / archive readiness"
-            items={[
-              ...acceptanceRecords
-                .filter((item) => ["submitted", "under_review", "accepted_with_exceptions", "rejected"].includes(item.status))
-                .map((item) => ({
-                  id: item.id,
-                  title: getProjectById(item.projectId)?.name ?? "Acceptance package",
-                  meta: `${item.reviewerOrganization} · ${item.status.replaceAll("_", " ")}`,
-                  detail: item.nextAction
-                })),
-              ...warrantyRecords
-                .filter((item) => ["missing", "not_started", "rejected", "blocked"].includes(item.status))
-                .map((item) => ({
-                  id: item.id,
-                  title: item.title,
-                  meta: `${getProjectById(item.projectId)?.name ?? "Unknown project"} · archive requirement`,
-                  detail: item.nextAction
-                }))
-            ]}
-          />
-          <ControlList
-            title="Optimize actions overdue"
-            items={optimizeControl.overdueImprovementActions.map((action) => ({
-              id: action.id,
-              title: action.title,
-              meta: `${action.owner} · due ${dateLabel(action.dueDate)}`,
-              detail: action.description
-            }))}
-          />
-          <ControlList
-            title="Production rates needing review"
-            items={optimizeControl.rateUpdateRecommendations.map((rate) => ({
-              id: rate.id,
-              title: rate.workType,
-              meta: `${rate.variancePercent}% variance · ${rate.confidenceLevel} confidence`,
-              detail: `Recommended estimating rate: ${rate.recommendedEstimatingRate} ${rate.unitOfMeasure}.`
-            }))}
-          />
-          <ControlList
-            title="GC / vendor performance warnings"
-            items={[
-              ...optimizeControl.gcPerformanceRisks.map((profile) => ({
-                id: profile.id,
-                title: profile.gcClient,
-                meta: `GC score ${profile.overallScore} · posture ${profile.recommendedPursuitPosture.replaceAll("_", " ")}`,
-                detail: profile.notes
-              })),
-              ...optimizeControl.vendorPerformanceRisks.map((profile) => ({
-                id: profile.id,
-                title: profile.vendorName,
-                meta: `Vendor score ${profile.overallScore} · posture ${profile.recommendedUsePosture.replaceAll("_", " ")}`,
-                detail: profile.notes
-              }))
-            ]}
-          />
-          <ControlList
-            title="Risk library update recommendations"
-            items={optimizeControl.riskLibraryUpdateRecommendations.slice(0, 8).map((risk) => ({
-              id: risk.id,
-              title: risk.title,
-              meta: `Update ${risk.affectedModules.join(", ")}`,
-              detail: risk.recommendedMitigation
-            }))}
-          />
-          <ControlList
-            title="D5 closeout readiness risk"
-            items={d4ControlExceptions.map((project) => {
-              const projectReports = dailyReports.filter((report) => report.projectId === project.id);
-              const projectWorkPackages = workPackages.filter((workPackage) => workPackage.projectId === project.id);
-              const mobilizationPlan = mobilizationPlans.find((plan) => plan.projectId === project.id);
-              const readiness = evaluateD4Gate({
-                reports: projectReports,
-                workPackages: projectWorkPackages,
-                mobilizationPlan,
-                project
-              });
-
-              return {
-                id: project.id,
-                title: project.name,
-                meta: `${readiness.controlScore}% D4 control score`,
-                detail: readiness.requiredActions[0] ?? "Complete D4 documentation before D5 closeout review."
-              };
-            })}
-          />
-          <ControlList
-            title="Closeout aging"
-            items={agedCloseout.map((item) => ({
-              id: item.id,
-              title: item.title,
-              meta: `${getProjectById(item.projectId)?.name ?? "Unknown project"} · ${item.agingDays} days aging`,
-              detail: item.businessImpact
-            }))}
-          />
-          <ControlList
-            title="Upcoming decisions"
-            items={decisions.map((decision) => ({
-              id: decision.id,
-              title: decision.title,
-              meta: `${getProjectById(decision.projectId)?.name ?? "Unknown project"} · ${decision.owner} · due ${dateLabel(decision.dueDate)}`,
-              detail: decision.requiredAction
-            }))}
-          />
-          <ControlList
-            title="D3 mobilization blockers"
-            items={blockedMobilizations.map((plan) => ({
-              id: plan.id,
-              title: plan.projectName,
-              meta: `${plan.mobilizationOwner} | field start ${dateLabel(plan.plannedFieldStartDate)}`,
-              detail: plan.nextAction
-            }))}
-          />
-        </div>
       </section>
-      </ProgressiveDetails>
-      </CollapsedDetails>
+
+      {supportSections.length > 0 ? (
+        <CollapsedDetails
+          title="Supporting context"
+          summary="Reference only. Recently resolved items, watch-list items, and background health signals. The ranked actions above are the current priorities."
+        >
+          <div className="command-supporting-context" data-qa="command-center-supporting-context">
+            {supportSections.map((section) => (
+              <section
+                className="command-supporting-context-section"
+                data-qa="command-center-supporting-context-section"
+                data-section={section.title}
+                key={section.title}
+              >
+                <h2>{section.title}</h2>
+                <ul className="command-supporting-context-list">
+                  {section.items.map((item) => (
+                    <li className="command-supporting-context-row" key={item.id}>
+                      <div>
+                        <strong>{item.label}</strong>
+                        <span>{item.detail}</span>
+                      </div>
+                      {item.href ? <Link href={item.href}>{item.linkLabel ?? "Open module"}</Link> : null}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        </CollapsedDetails>
+      ) : null}
     </div>
   );
 }
 
-function daysUntil(date: string) {
-  const now = new Date(`${operatingDate}T12:00:00`);
-  const target = new Date(`${date}T12:00:00`);
-
-  return Math.max(0, Math.ceil((target.getTime() - now.getTime()) / 86400000));
-}
-
-type ControlListProps = {
-  title: string;
-  items: {
-    id: string;
-    title: string;
-    meta: string;
-    detail: string;
-  }[];
+type CommandCenterTriageState = {
+  billingV2State: Awaited<ReturnType<typeof getBillingV2ActionState>>;
+  fieldIssueState: Awaited<ReturnType<typeof getFieldIssueActionState>>;
+  closeoutFinalBillingState: Awaited<ReturnType<typeof getCloseoutFinalBillingActionState>>;
 };
 
-function ControlList({ title, items }: ControlListProps) {
-  return (
-    <section className="control-list">
-      <h3>{title}</h3>
-      {items.length > 0 ? (
-        <ul className="compact-list">
-          {items.map((item, index) => (
-            <li key={`control-${title}-${item.id}-${item.title}-${index}`}>
-              <span className="artifact-state artifact-pending" />
-              <span>
-                <strong>{item.title}</strong>
-                <small className="muted">{item.meta}</small>
-                <p>{item.detail}</p>
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="muted">No exceptions in this control area.</p>
-      )}
-    </section>
-  );
+type CommandCenterSupportItem = {
+  id: string;
+  label: string;
+  detail: string;
+  href?: string;
+  linkLabel?: string;
+};
+
+type CommandCenterSupportSection = {
+  title: "Recently resolved" | "Watch list" | "Lower-priority alerts" | "Health signals";
+  items: CommandCenterSupportItem[];
+};
+
+type CommandCenterTriageItem = {
+  id: string;
+  title: string;
+  consequence: string;
+  impactLabel: string;
+  exposureValue: number;
+  statusLabel: string;
+  nextStep: string;
+  ownerRole: string;
+  destination: string;
+  href: string;
+  ctaLabel: string;
+  resolvedSummary: string;
+  isResolved: boolean;
+  priority: number;
+};
+
+type CommandCenterSupportState = {
+  billingControl: ReturnType<typeof evaluateBillingControl>;
+  fieldIssueState: Awaited<ReturnType<typeof getFieldIssueActionState>>;
+  closeoutFinalBillingState: Awaited<ReturnType<typeof getCloseoutFinalBillingActionState>>;
+  resolvedTriageItems: CommandCenterTriageItem[];
+  unresolvedTriageItems: CommandCenterTriageItem[];
+};
+function buildCommandCenterTriage({
+  billingV2State,
+  fieldIssueState,
+  closeoutFinalBillingState
+}: CommandCenterTriageState): CommandCenterTriageItem[] {
+  const billingPackage = billingV2State.package;
+  const fieldIssue = fieldIssueState.issue;
+  const closeoutBlocker = closeoutFinalBillingState.blocker;
+  const fieldScheduleImpact = fieldIssue.scheduleImpact ? "Schedule impact open" : "No schedule impact confirmed";
+  const fieldImpact = `${currency.format(fieldIssue.costExposure)} exposure · ${fieldScheduleImpact}`;
+
+  return [
+    {
+      id: billingPackage.id,
+      title: "Billing backup blocker",
+      consequence: "Cash cannot move cleanly through review until backup evidence and approval are complete.",
+      impactLabel: `${currency.format(billingPackage.blockedAmount)} cash at risk`,
+      exposureValue: billingPackage.state === "billing_blocker_cleared" ? 0 : billingPackage.blockedAmount,
+      statusLabel: billingStatusLabel(billingPackage.state),
+      nextStep: billingNextStep(billingV2State),
+      ownerRole: "Billing Lead",
+      destination: "Billing workbench",
+      href: "/billing",
+      ctaLabel: "Recover blocked billing",
+      resolvedSummary: "Cash blocker cleared and billing readiness updated.",
+      isResolved: billingPackage.state === "billing_blocker_cleared",
+      priority: 30
+    },
+    {
+      id: fieldIssue.id,
+      title: "Field issue escalation",
+      consequence: "The field condition needs the right RFI or change path before it affects schedule or margin.",
+      impactLabel: fieldImpact,
+      exposureValue: fieldIssue.state === "resolved" ? 0 : fieldIssue.costExposure,
+      statusLabel: fieldStatusLabel(fieldIssue.state),
+      nextStep: fieldNextStep(fieldIssueState),
+      ownerRole: "Project Manager",
+      destination: "Field Execution workbench",
+      href: "/field-execution",
+      ctaLabel: "Escalate field issue",
+      resolvedSummary: "Original field issue resolved and downstream record created.",
+      isResolved: fieldIssue.state === "resolved",
+      priority: 20
+    },
+    {
+      id: closeoutBlocker.id,
+      title: "Final billing release blocker",
+      consequence: "Final billing and retainage stay blocked until acceptance, evidence, and approval gaps are cleared.",
+      impactLabel: `${currency.format(closeoutBlocker.retainageExposureAmount)} final billing / retainage at risk`,
+      exposureValue: closeoutBlocker.state === "resolved" ? 0 : closeoutBlocker.retainageExposureAmount,
+      statusLabel: closeoutStatusLabel(closeoutBlocker.state),
+      nextStep: closeoutNextStep(closeoutFinalBillingState),
+      ownerRole: "Closeout Lead",
+      destination: "Closeout workbench",
+      href: "/closeout",
+      ctaLabel: "Release final billing",
+      resolvedSummary: "Final billing and retainage released, with Billing updated.",
+      isResolved: closeoutBlocker.state === "resolved",
+      priority: 10
+    }
+  ].sort((left, right) => {
+    if (left.isResolved !== right.isResolved) return left.isResolved ? 1 : -1;
+    if (left.priority !== right.priority) return right.priority - left.priority;
+    return right.exposureValue - left.exposureValue;
+  });
+}
+
+function buildCommandCenterSupportingContext({
+  billingControl,
+  fieldIssueState,
+  closeoutFinalBillingState,
+  resolvedTriageItems,
+  unresolvedTriageItems
+}: CommandCenterSupportState): CommandCenterSupportSection[] {
+  const sections: CommandCenterSupportSection[] = [];
+  const recentlyResolved = resolvedTriageItems.slice(0, 3).map((item) => ({
+    id: `resolved-${item.id}`,
+    label: resolvedSupportLabel(item),
+    detail: item.resolvedSummary,
+    href: item.href,
+    linkLabel: "View workbench"
+  }));
+
+  const watchList: CommandCenterSupportItem[] = [
+    ...rfiSubmittalControl.scheduleCriticalItems.slice(0, 1).map((rfi) => ({
+      id: `watch-rfi-${rfi.id}`,
+      label: `${rfi.rfiNumber}: response watch`,
+      detail: `${rfi.projectName} needs response by ${dateLabel(rfi.dueDate)} before crew sequence or entitlement is affected.`,
+      href: "/rfis-submittals",
+      linkLabel: "RFIs/Submittals"
+    })),
+    ...changeControl.noticeDeadlineRisks.slice(0, 1).map((change) => ({
+      id: `watch-change-${change.id}`,
+      label: `${change.changeNumber}: notice window`,
+      detail: `${change.projectName} needs notice/backup movement before entitlement risk increases.`,
+      href: "/changes",
+      linkLabel: "Changes"
+    })),
+    ...billingControl.agingPayApplications.slice(0, 1).map((payApplication) => ({
+      id: `watch-billing-${payApplication.id}`,
+      label: `${payApplication.payApplicationNumber}: pay application aging`,
+      detail: `${payApplication.projectName} should be escalated if payment is still open by ${dateLabel(payApplication.paymentDueDate)}.`,
+      href: "/billing",
+      linkLabel: "Billing"
+    }))
+  ].slice(0, 3);
+
+  const lowerPriorityAlerts: CommandCenterSupportItem[] = [
+    ...overdueRfIs.slice(0, 1).map((rfi) => ({
+      id: `alert-rfi-${rfi.id}`,
+      label: `${rfi.rfiNumber}: RFI response aging`,
+      detail: `${rfi.projectName} needs follow-up if no GC response by ${dateLabel(rfi.dueDate)}.`,
+      href: "/rfis-submittals",
+      linkLabel: "RFIs/Submittals"
+    })),
+    ...overdueSubmittals.slice(0, 1).map((submittal) => ({
+      id: `alert-submittal-${submittal.id}`,
+      label: `${submittal.submittalNumber}: submittal review aging`,
+      detail: `${submittal.projectName} needs follow-up before review delay affects field work.`,
+      href: "/rfis-submittals",
+      linkLabel: "RFIs/Submittals"
+    })),
+    ...missingDailyReports.slice(0, 1).map((report) => ({
+      id: `alert-report-${report.id}`,
+      label: "Daily report missing",
+      detail: `${report.workPackageName} needs field documentation before schedule or commercial facts get stale.`,
+      href: "/field-execution",
+      linkLabel: "Field Execution"
+    }))
+  ].slice(0, 3);
+
+  const healthSignalCandidates: Array<CommandCenterSupportItem | null> = [
+    unresolvedTriageItems.some((item) => item.href === "/billing")
+      ? {
+          id: "health-cash-exposure",
+          label: "Cash exposure remains the highest operating risk",
+          detail: `${currency.format(billingControl.cashAtRisk)} remains exposed through billing support and review gaps.`,
+          href: "/billing",
+          linkLabel: "Billing"
+        }
+      : null,
+    fieldIssueState.issue.state !== "resolved"
+      ? {
+          id: "health-field-entitlement",
+          label: "One field issue may affect schedule or entitlement",
+          detail: "The field issue needs evidence and the right RFI or change path before the record gets stale.",
+          href: "/field-execution",
+          linkLabel: "Field Execution"
+        }
+      : null,
+    closeoutFinalBillingState.blocker.state !== "resolved"
+      ? {
+          id: "health-closeout-release",
+          label: "One closeout item is blocking final billing release",
+          detail: `${currency.format(closeoutFinalBillingState.blocker.retainageExposureAmount)} remains tied to acceptance, evidence, and approval gaps.`,
+          href: "/closeout",
+          linkLabel: "Closeout"
+      }
+      : null
+  ];
+  const healthSignals = healthSignalCandidates
+    .filter((item): item is CommandCenterSupportItem => Boolean(item))
+    .slice(0, 3);
+
+  appendSupportSection(sections, "Recently resolved", recentlyResolved);
+  appendSupportSection(sections, "Watch list", watchList);
+  appendSupportSection(sections, "Lower-priority alerts", lowerPriorityAlerts);
+  appendSupportSection(sections, "Health signals", healthSignals);
+
+  return sections;
+}
+
+function appendSupportSection(
+  sections: CommandCenterSupportSection[],
+  title: CommandCenterSupportSection["title"],
+  items: CommandCenterSupportItem[]
+) {
+  const visibleItems = items.filter(Boolean).slice(0, 3);
+
+  if (visibleItems.length > 0) {
+    sections.push({ title, items: visibleItems });
+  }
+}
+
+function resolvedSupportLabel(item: CommandCenterTriageItem) {
+  if (item.href === "/billing") return "Billing blocker cleared";
+  if (item.href === "/field-execution") return "Field issue escalated";
+  if (item.href === "/closeout") return "Final billing released";
+  return item.ctaLabel;
+}
+
+function billingNextStep({ package: billingPackage, readiness }: CommandCenterTriageState["billingV2State"]) {
+  if (billingPackage.state === "billing_blocker_cleared") return "Cash blocker cleared.";
+  if (readiness.missingItems.length > 0) return "Add required backup evidence before review.";
+  if (billingPackage.state === "package_ready_for_review") return "Send the backup package for commercial review.";
+  if (billingPackage.state === "commercial_review_pending") return "Record the review decision.";
+  if (billingPackage.state === "commercial_review_approved") return "Clear the cash blocker.";
+  return "Start the backup package and confirm the billing details.";
+}
+
+function fieldNextStep({ issue, readiness }: CommandCenterTriageState["fieldIssueState"]) {
+  if (issue.state === "resolved") return "Original field issue resolved.";
+  if (!readiness.assessmentComplete) return "Assess schedule and commercial impact.";
+  if (!readiness.evidenceComplete) return "Add evidence reference from the field.";
+  if (!readiness.escalationPathSelected) return "Choose RFI or change event path.";
+  if (!readiness.downstreamRecordCreated) return `Create the ${issue.selectedEscalationPath === "change_event" ? "change event" : "RFI"}.`;
+  return "Resolve the original field issue.";
+}
+
+function closeoutNextStep({ blocker, readiness }: CommandCenterTriageState["closeoutFinalBillingState"]) {
+  if (blocker.state === "resolved") return "Final billing blocker cleared.";
+  if (!readiness.assessmentComplete) return "Assess acceptance and closeout requirements.";
+  if (!readiness.evidenceComplete) return "Add required closeout evidence.";
+  if (!readiness.readyForReview) return "Validate release readiness.";
+  if (blocker.state === "review_pending") return "Record the review decision.";
+  if (!readiness.approvedForRelease) return "Submit the release package for approval.";
+  return "Clear the final billing blocker.";
+}
+
+function billingStatusLabel(state: CommandCenterTriageState["billingV2State"]["package"]["state"]) {
+  const labels: Record<typeof state, string> = {
+    blocked: "Blocked",
+    backup_package_in_progress: "Backup in progress",
+    evidence_required: "Evidence needed",
+    package_ready_for_review: "Ready for review",
+    commercial_review_pending: "Review pending",
+    commercial_review_approved: "Approved",
+    commercial_review_changes_requested: "Changes requested",
+    commercial_review_rejected: "Rejected",
+    billing_blocker_cleared: "Recovered",
+    reopened: "Reopened"
+  };
+
+  return labels[state];
+}
+
+function fieldStatusLabel(state: CommandCenterTriageState["fieldIssueState"]["issue"]["state"]) {
+  const labels: Record<typeof state, string> = {
+    unresolved: "Needs escalation",
+    in_progress: "Escalation started",
+    assessed: "Impact assessed",
+    evidence_added: "Evidence added",
+    path_selected: "Path selected",
+    downstream_created: "Record created",
+    resolved: "Resolved"
+  };
+
+  return labels[state];
+}
+
+function closeoutStatusLabel(state: CommandCenterTriageState["closeoutFinalBillingState"]["blocker"]["state"]) {
+  const labels: Record<typeof state, string> = {
+    unresolved: "Blocked",
+    in_progress: "Started",
+    assessed: "Requirements assessed",
+    evidence_added: "Evidence added",
+    ready_for_review: "Ready for review",
+    review_pending: "Review pending",
+    approved: "Approved",
+    rejected: "Rejected",
+    resolved: "Released"
+  };
+
+  return labels[state];
 }

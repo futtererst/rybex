@@ -1,0 +1,45 @@
+{
+  "packKey": "d5o-prototype-lifecycle-rotork",
+  "packName": "Synthetic modernization and service lifecycle",
+  "version": "2.0.0",
+  "domain": "lifecycle_service",
+  "workType": {
+    "key": "modernization-service",
+    "label": "Modernization service",
+    "lifecycle": {
+      "gateKey": "modernization-lifecycle",
+      "initialState": "Assessment",
+      "completeState": "Closed",
+      "reopenAuthority": "owner"
+    }
+  },
+  "phase": { "key": "governed-modernization", "label": "Governed modernization" },
+  "gate": {
+    "key": "modernization-lifecycle",
+    "label": "Modernization and service controls",
+    "purpose": "Govern assessment, paid pilot, review, commercial readiness, rollout and lifecycle close on one Work Record.",
+    "entryRule": { "op": "all", "items": [] },
+    "exitRule": { "op": "all", "items": [] }
+  },
+  "roles": [
+    { "key": "assessment_lead", "label": "Assessment lead", "workspaceRoles": ["operations_leader"] },
+    { "key": "pilot_authority", "label": "Paid-pilot authority", "workspaceRoles": ["operations_leader"] },
+    { "key": "pilot_delivery", "label": "Pilot delivery supervisor", "workspaceRoles": ["field_supervisor"] },
+    { "key": "pilot_reviewer", "label": "Pilot outcome reviewer", "workspaceRoles": ["project_manager"] },
+    { "key": "commercial_verifier", "label": "Commercial condition verifier", "workspaceRoles": ["operations_leader"] },
+    { "key": "rollout_authority", "label": "Rollout decision authority", "workspaceRoles": ["operations_leader"] }
+  ],
+  "evidence": [
+    { "key": "pilot-proof", "label": "Paid-pilot outcome proof" },
+    { "key": "rollout-case", "label": "Rollout decision case" }
+  ],
+  "transitions": [
+    { "right": "complete-assessment", "label": "Complete assessment", "role": "assessment_lead", "outcome": "assessment-complete", "from": "Assessment", "to": "Paid pilot", "requirements": [{ "op": "fact_equals", "key": "assessment_complete", "value": true }] },
+    { "right": "authorize-pilot", "label": "Authorize paid pilot", "role": "pilot_authority", "outcome": "pilot-authorized", "from": "Paid pilot", "to": null, "requirements": [{ "op": "fact_equals", "key": "paid_pilot_terms", "value": true }] },
+    { "right": "record-pilot-complete", "label": "Record pilot completion", "role": "pilot_delivery", "outcome": "pilot-complete", "from": "Paid pilot", "to": "Pilot review", "requirements": [{ "op": "decision_recorded_prior", "right": "authorize-pilot", "outcome": "pilot-authorized" }, { "op": "fact_equals", "key": "pilot_complete", "value": true }, { "op": "evidence_valid", "key": "pilot-proof" }] },
+    { "right": "review-pilot", "label": "Review pilot outcome", "role": "pilot_reviewer", "outcome": "pilot-reviewed", "from": "Pilot review", "to": "Commercial readiness", "requirements": [{ "op": "decision_recorded_prior", "right": "record-pilot-complete", "outcome": "pilot-complete" }, { "op": "fact_equals", "key": "pilot_outcome_positive", "value": true }] },
+    { "right": "confirm-commercial", "label": "Confirm commercial readiness", "role": "commercial_verifier", "outcome": "commercial-confirmed", "from": "Commercial readiness", "to": "Rollout authorization", "requirements": [{ "op": "fact_equals", "key": "commercial_conditions", "value": true }] },
+    { "right": "authorize-rollout", "label": "Authorize rollout tranche", "role": "rollout_authority", "outcome": "rollout-authorized", "from": "Rollout authorization", "to": "Rollout tranche", "requirements": [{ "op": "decision_recorded_prior", "right": "review-pilot", "outcome": "pilot-reviewed" }, { "op": "decision_recorded_prior", "right": "confirm-commercial", "outcome": "commercial-confirmed" }, { "op": "evidence_valid", "key": "rollout-case" }], "distinctDecisionRights": ["review-pilot", "confirm-commercial"] },
+    { "right": "close-service", "label": "Close tranche and assign lifecycle ownership", "role": "rollout_authority", "outcome": "work-closed", "from": "Rollout tranche", "to": "Closed", "requirements": [{ "op": "fact_equals", "key": "tranche_complete", "value": true }] }
+  ]
+}

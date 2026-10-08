@@ -1,0 +1,314 @@
+{
+  "packKey": "rybex-d5o-pipeline-qualification",
+  "packName": "D5O Pipeline Qualification",
+  "domain": "data_center_infrastructure",
+  "version": "1.2.0",
+  "status": "released",
+  "description": "Controlled Rybex Data Center Infrastructure Template Pack compatibility slice for accepted P1-01A Pricing Review readiness, P1-01B.1 Pursuit Authorization, and CFG-RUNTIME-03 Bid Submission Approval Readiness.",
+  "mode": "startup_no_history",
+  "phase": {
+    "key": "pipeline-qualification",
+    "label": "Pipeline Qualification",
+    "sortOrder": 10
+  },
+  "gates": [
+    {
+      "key": "pricing-review",
+      "label": "Pricing Review",
+      "purpose": "Confirm the accepted qualification package is ready for pricing review.",
+      "sortOrder": 10
+    },
+    {
+      "key": "pursuit-authorization",
+      "label": "Pursuit Authorization",
+      "purpose": "Authorize or decline pursuit commitment after the Pricing Review package is submitted.",
+      "sortOrder": 20,
+      "entryRequirements": [
+        {
+          "key": "pricing-review-submitted",
+          "label": "Pricing Review package submitted",
+          "source": "opportunity.decision_readiness_status",
+          "requiredValue": "decision_approved"
+        }
+      ],
+      "crossEntityContributions": [
+        {
+          "key": "entity-contribution-owner-attestation",
+          "label": "Entity contribution owner attestation",
+          "ownerRoleKey": "entity_contribution_owner",
+          "required": true
+        }
+      ],
+      "profitabilityMetricKey": "expected_gross_margin_percent"
+    },
+    {
+      "key": "bid-submission-approval",
+      "label": "Bid Submission Approval",
+      "purpose": "Approve a prepared bid package as ready to send or hold it from submission.",
+      "sortOrder": 30,
+      "entryRequirements": [
+        {
+          "key": "pursuit-authorization-approved",
+          "label": "Pursuit Authorization approved",
+          "source": "opportunity.pursuit_authorization_status",
+          "requiredValue": "approved"
+        },
+        {
+          "key": "bid-package-ready-for-approval",
+          "label": "Bid package ready for approval",
+          "source": "opportunity.bid_submission_status",
+          "requiredValue": "ready_for_submission_approval"
+        }
+      ],
+      "commercialBasisRequirements": [
+        {
+          "key": "approved-estimate-version",
+          "label": "Approved estimate version",
+          "source": "opportunity.approved_estimate_version",
+          "required": true
+        },
+        {
+          "key": "bid-price",
+          "label": "Bid price",
+          "source": "opportunity.bid_submission_price",
+          "required": true
+        },
+        {
+          "key": "pricing-validity",
+          "label": "Pricing validity",
+          "source": "opportunity.bid_pricing_validity",
+          "required": true
+        },
+        {
+          "key": "schedule-commitment",
+          "label": "Schedule commitment",
+          "source": "opportunity.bid_schedule_commitment",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "roles": [
+    {
+      "key": "operations_leader",
+      "label": "Operations Leader",
+      "family": "configured",
+      "description": "Accountable decision owner for Pricing Review readiness and Pursuit Authorization."
+    },
+    {
+      "key": "entity_contribution_owner",
+      "label": "Entity Contribution Owner",
+      "family": "configured",
+      "description": "Accountable contributor for cross-entity readiness before pursuit commitment."
+    },
+    {
+      "key": "submission_approver",
+      "label": "Submission Approver",
+      "family": "configured",
+      "description": "Record-scoped approver accountable for approving a prepared bid package as ready to send or holding it from submission."
+    }
+  ],
+  "permissions": [
+    {
+      "key": "pricing_review.authorize",
+      "label": "Authorize Pricing Review",
+      "scope": "decision"
+    },
+    {
+      "key": "pursuit_authorization.record",
+      "label": "Record Pursuit Authorization",
+      "scope": "decision"
+    },
+    {
+      "key": "bid_submission_approval.record",
+      "label": "Record Bid Submission Approval",
+      "scope": "decision"
+    }
+  ],
+  "evidenceTypes": [
+    {
+      "key": "qualification_decision_support",
+      "label": "Decision support evidence",
+      "completionRule": {
+        "uploadStatus": "uploaded",
+        "scanStatus": "clean",
+        "verificationStatus": "accepted",
+        "checksumRequired": true
+      }
+    },
+    {
+      "key": "pursuit_authorization_basis",
+      "label": "Pursuit authorization basis",
+      "completionRule": {
+        "source": "pricing_review_submission",
+        "required": true
+      }
+    },
+    {
+      "key": "proposal_bid_package",
+      "label": "Proposal or bid package",
+      "completionRule": {
+        "uploadStatus": "uploaded",
+        "required": true
+      }
+    },
+    {
+      "key": "approved_estimate_version",
+      "label": "Approved estimate version",
+      "completionRule": {
+        "source": "opportunity.approved_estimate_version",
+        "required": true
+      }
+    },
+    {
+      "key": "commercial_terms",
+      "label": "Commercial terms and assumptions",
+      "completionRule": {
+        "uploadStatus": "uploaded",
+        "required": true
+      }
+    },
+    {
+      "key": "bid_instructions",
+      "label": "Customer bid instructions",
+      "completionRule": {
+        "uploadStatus": "uploaded",
+        "required": true
+      }
+    }
+  ],
+  "gateEvidenceRequirements": [
+    {
+      "gateKey": "pricing-review",
+      "evidenceTypeKey": "qualification_decision_support",
+      "requirementLevel": "required",
+      "blocking": true
+    },
+    {
+      "gateKey": "pursuit-authorization",
+      "evidenceTypeKey": "qualification_decision_support",
+      "requirementLevel": "required",
+      "blocking": true
+    },
+    {
+      "gateKey": "pursuit-authorization",
+      "evidenceTypeKey": "pursuit_authorization_basis",
+      "requirementLevel": "required",
+      "blocking": true
+    },
+    {
+      "gateKey": "bid-submission-approval",
+      "evidenceTypeKey": "proposal_bid_package",
+      "requirementLevel": "required",
+      "blocking": true
+    },
+    {
+      "gateKey": "bid-submission-approval",
+      "evidenceTypeKey": "approved_estimate_version",
+      "requirementLevel": "required",
+      "blocking": true
+    },
+    {
+      "gateKey": "bid-submission-approval",
+      "evidenceTypeKey": "commercial_terms",
+      "requirementLevel": "required",
+      "blocking": true
+    },
+    {
+      "gateKey": "bid-submission-approval",
+      "evidenceTypeKey": "bid_instructions",
+      "requirementLevel": "required",
+      "blocking": true
+    }
+  ],
+  "kpis": [
+    {
+      "key": "expected_gross_margin_percent",
+      "label": "Expected Gross Margin %",
+      "trendDirection": "higher_is_better",
+      "formula": {
+        "source": "accepted_p1_01b_1_commercial_basis",
+        "displayUnit": "percent"
+      }
+    }
+  ],
+  "decisionRights": [
+    {
+      "key": "pricing-review-decision-owner",
+      "label": "Pricing Review decision owner",
+      "roleKey": "operations_leader",
+      "permissionKey": "pricing_review.authorize",
+      "gateKey": "pricing-review",
+      "recordScope": {
+        "accountability": "decision_owner"
+      }
+    },
+    {
+      "key": "pursuit-authorization-decision-owner",
+      "label": "Pursuit Authorization decision owner",
+      "roleKey": "operations_leader",
+      "permissionKey": "pursuit_authorization.record",
+      "gateKey": "pursuit-authorization",
+      "recordScope": {
+        "accountability": "pursuit_authority"
+      }
+    },
+    {
+      "key": "bid-submission-approval-approver",
+      "label": "Bid Submission Approval approver",
+      "roleKey": "submission_approver",
+      "permissionKey": "bid_submission_approval.record",
+      "gateKey": "bid-submission-approval",
+      "recordScope": {
+        "accountability": "submission_approver"
+      }
+    }
+  ],
+  "decisionOutcomes": [
+    {
+      "gateKey": "pursuit-authorization",
+      "outcomeKey": "pursue",
+      "label": "Pursue",
+      "outcomeType": "approve",
+      "requiresJustification": false,
+      "requiresMitigation": false,
+      "mapsToAction": "approve_pursuit"
+    },
+    {
+      "gateKey": "pursuit-authorization",
+      "outcomeKey": "hold-pending-evidence",
+      "label": "Hold pending evidence",
+      "outcomeType": "hold",
+      "requiresJustification": true,
+      "requiresMitigation": true,
+      "mapsToAction": "hold_pending_evidence"
+    },
+    {
+      "gateKey": "pursuit-authorization",
+      "outcomeKey": "no-pursue",
+      "label": "No-Pursue",
+      "outcomeType": "stop",
+      "requiresJustification": true,
+      "requiresMitigation": false,
+      "mapsToAction": "decline_pursuit"
+    },
+    {
+      "gateKey": "bid-submission-approval",
+      "outcomeKey": "approve-for-submission",
+      "label": "Approve for submission",
+      "outcomeType": "approve",
+      "requiresJustification": false,
+      "requiresMitigation": false,
+      "mapsToAction": "approve_submission"
+    },
+    {
+      "gateKey": "bid-submission-approval",
+      "outcomeKey": "hold-submission-approval",
+      "label": "Hold submission approval",
+      "outcomeType": "hold",
+      "requiresJustification": true,
+      "requiresMitigation": false,
+      "mapsToAction": "hold_submission_approval"
+    }
+  ]
+}

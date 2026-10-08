@@ -15,8 +15,8 @@ export function ArchivePackagePanel({
     <section className="control-list">
       <h3>Archive package status</h3>
       <ul className="record-list">
-        {[...archiveItems, ...warranties].map((item, index) => (
-          <li key={`archive-${"vendorOrSupplier" in item ? "warranty" : "requirement"}-${item.id}-${index}`}>
+        {[...archiveItems, ...warranties].map((item) => (
+          <li key={item.id}>
             <div>
               <strong>{item.title}</strong>
               <span>{"vendorOrSupplier" in item ? item.vendorOrSupplier : "Archive requirement"}</span>

@@ -1,0 +1,13 @@
+.git
+.next
+.next-review-61430
+.rybexos-local
+node_modules
+artifacts
+docs
+visual-qa-output
+package-output
+.d5o-*.log
+*.tsbuildinfo
+.env*
+!.env.example
