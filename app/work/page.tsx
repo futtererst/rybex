@@ -29,6 +29,8 @@ export default async function WorkHomePage({ searchParams }: {
     if (result.error || !Array.isArray(result.data)) throw new Error("hosted_workspace_unavailable");
     const entries = result.data as Array<{ workspaceKey: string; workspaceName: string; role: string }>;
     const selected = (await searchParams)?.workspace;
+    if (!selected && entries.length === 1 && entries[0].role === "field_worker")
+      redirect(`/work/my-schedule?workspace=${encodeURIComponent(entries[0].workspaceKey)}`);
     if (!selected) return <main className={styles.entry}>
       <div className={styles.brand}>D5O <span>System of work</span></div>
       <section className={styles.intro}>
@@ -53,6 +55,8 @@ export default async function WorkHomePage({ searchParams }: {
     if (!permitted || selected !== "rybex" && selected !== "rotork")
       return <main className={styles.entry}><h1>Workspace unavailable</h1>
         <p>This account cannot open the requested D5O workspace.</p><Link href="/work">Choose a workspace</Link></main>;
+    if (permitted.role === "field_worker")
+      redirect(`/work/my-schedule?workspace=${encodeURIComponent(permitted.workspaceKey)}`);
     const workspace = selected as WorkspaceKey;
     return <D5OPlatform initialWorkspace={workspace} actorId={userData.user.id} actorRole={permitted.role}
       configurationInventory={hostedSyntheticInventory(workspace)}

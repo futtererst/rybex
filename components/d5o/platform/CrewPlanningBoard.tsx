@@ -5,7 +5,6 @@ import { assignmentAssessment, currentScheduleWeek, dateForSchedule, dateKeyForS
 import { ScheduleDemandQueue } from "./ScheduleDemandQueue";
 import { SchedulePublicationPanel } from "./SchedulePublicationPanel";
 import { AvailabilityEditor } from "./AvailabilityEditor";
-import { CrewAccessPanel } from "./CrewAccessPanel";
 import type { useSharedSchedule } from "./useSharedSchedule";
 
 const shortDate = (date: Date) => date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -26,7 +25,7 @@ function ScheduleIssueDetail({ candidate, work, assessment, onReviewWork }: {
   </section>;
 }
 
-export function CrewPlanningBoard({ workspaceKey, work, profiles, onOpen, onOpenDecision, shared, entryFocus = null, focusWorkId = null, canManageWorkerAccess = false }: { workspaceKey: WorkspaceKey; work: ScheduleWork[]; profiles: PersonProfile[]; onOpen: (item: ScheduleWork) => void; onOpenDecision: (item: ScheduleWork) => void; shared: ReturnType<typeof useSharedSchedule>; entryFocus?: "coverage" | "attendance" | null; focusWorkId?: string | null; canManageWorkerAccess?: boolean }) {
+export function CrewPlanningBoard({ workspaceKey, work, profiles, onOpen, onOpenDecision, shared, entryFocus = null, focusWorkId = null }: { workspaceKey: WorkspaceKey; work: ScheduleWork[]; profiles: PersonProfile[]; onOpen: (item: ScheduleWork) => void; onOpenDecision: (item: ScheduleWork) => void; shared: ReturnType<typeof useSharedSchedule>; entryFocus?: "coverage" | "attendance" | null; focusWorkId?: string | null }) {
   const assignments = shared.schedule?.assignments ?? [];
   const packageDemands = shared.schedule?.packageDemands ?? [];
   const anchor = shared.schedule?.anchorDate ?? "";
@@ -34,7 +33,6 @@ export function CrewPlanningBoard({ workspaceKey, work, profiles, onOpen, onOpen
   const visibleWeek = week ?? (anchor ? currentScheduleWeek(anchor) : 0);
   const dateFor = (offset: number, day: number) => anchor ? dateForSchedule(anchor, offset, day) : new Date();
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [accessOpen, setAccessOpen] = useState(false);
   const [showAllDemand, setShowAllDemand] = useState(false);
   const [detailsTab, setDetailsTab] = useState<"booking" | "publication" | "overview" | "editor" | "availability">("overview");
   const [returnTab, setReturnTab] = useState<"booking" | "publication" | "overview" | "editor">("overview");
@@ -242,8 +240,7 @@ export function CrewPlanningBoard({ workspaceKey, work, profiles, onOpen, onOpen
   if (!shared.schedule) return <section className="d5o-crew-concept d5o-schedule-workspace"><header className="d5o-crew-concept-head"><div><p>CREW SCHEDULE · {workspaceKey.toUpperCase()}</p><h1>Schedule crews and controlled work</h1><span>The shared crew plan must load before staffing advice or calendar dates can be shown.</span></div></header><div className="d5o-crew-load-state" role="status"><strong>{shared.error ? "Crew plan unavailable" : "Loading the shared crew plan…"}</strong><span>{shared.error || "Checking the current workspace bookings, dates, and publication."}</span>{shared.error ? <button onClick={() => shared.refresh().catch(() => undefined)}>Retry shared plan</button> : null}</div></section>;
 
   return <section className="d5o-crew-concept d5o-schedule-workspace">
-    <header className="d5o-crew-concept-head"><div><p>CREW SCHEDULE · {workspaceKey === "rybex" ? "TECHNICAL DELIVERY" : "MODERNIZATION SERVICE"}</p><h1>Crew schedule</h1><span>Choose qualified people with their workload and conflicts in view. Saving shares the booking with workers for a response.</span></div><div className="d5o-schedule-head-actions">{canManageWorkerAccess && workspaceKey === "rybex" ? <button type="button" aria-expanded={accessOpen} onClick={() => setAccessOpen((value) => !value)}>Worker access</button> : null}<button type="button" onClick={() => { setDetailsTab("overview"); setDetailsOpen(true); }}>Plan details</button><button type="button" disabled={!shared.canEdit} onClick={() => openAvailability("", 0)}>Record absence</button><button className="d5o-primary" disabled={!shared.canEdit} onClick={() => { setSelectedPackage(""); setSourceSlot(null); setSelectedDay(0); setSelectedShift("07:00–15:30"); setPeople([]); setCrewName(""); setShowAllPeople(false); setMessage(""); setDetailsTab("editor"); setDetailsOpen(true); }}>+ Schedule crew</button></div></header>
-    {canManageWorkerAccess && accessOpen ? <CrewAccessPanel onClose={() => setAccessOpen(false)} /> : null}
+    <header className="d5o-crew-concept-head"><div><p>CREW SCHEDULE · {workspaceKey === "rybex" ? "TECHNICAL DELIVERY" : "MODERNIZATION SERVICE"}</p><h1>Crew schedule</h1><span>Choose qualified people with their workload and conflicts in view. Saving shares the booking with workers for a response.</span></div><div className="d5o-schedule-head-actions"><button type="button" onClick={() => { setDetailsTab("overview"); setDetailsOpen(true); }}>Plan details</button><button type="button" disabled={!shared.canEdit} onClick={() => openAvailability("", 0)}>Record absence</button><button className="d5o-primary" disabled={!shared.canEdit} onClick={() => { setSelectedPackage(""); setSourceSlot(null); setSelectedDay(0); setSelectedShift("07:00–15:30"); setPeople([]); setCrewName(""); setShowAllPeople(false); setMessage(""); setDetailsTab("editor"); setDetailsOpen(true); }}>+ Schedule crew</button></div></header>
 
     {firstIssue ? <section className="d5o-schedule-action-strip" aria-label="Schedule actions"><button type="button" onClick={() => { setSelectedId(firstIssue.item.id); setDetailsTab("booking"); setDetailsOpen(true); }}><strong>{assessed.filter(({ assessment }) => assessment.issues.length > 0).length} booking{assessed.filter(({ assessment }) => assessment.issues.length > 0).length === 1 ? "" : "s"} need resolution</strong><span>Review people, skills, or shift conflicts →</span></button></section> : null}
 

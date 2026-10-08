@@ -6,7 +6,7 @@ import styles from "./CrewAccessPanel.module.css";
 type Binding = { person: string; email: string; active: boolean; userId: string };
 type Access = { bindings: Binding[]; people: string[] };
 
-export function CrewAccessPanel({ onClose }: { onClose: () => void }) {
+export function CrewAccessPanel() {
   const [access, setAccess] = useState<Access | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -39,11 +39,11 @@ export function CrewAccessPanel({ onClose }: { onClose: () => void }) {
     finally { setBusy(false); }
   }
 
-  return <section className={styles.panel} aria-label="Worker access">
-      <div className={styles.heading}><div><p>RYBEX · SYSTEM ADMINISTRATOR</p><h2>Connect workers to crew bookings</h2><span>Bind an existing confirmed sign-in account to one roster person. A booking still requires publication and worker response.</span></div><button type="button" onClick={onClose}>Close</button></div>
+  return <section className={styles.panel} aria-label="Worker accounts">
+      <div className={styles.heading}><div><p>WORKER ACCOUNTS · SYSTEM ADMINISTRATOR</p><h2>Assign worker access</h2><span>Give a confirmed sign-in account the field-worker role and connect it to its roster identity. Workers then sign in normally and see only their assigned work. Booking publication and worker response remain separate.</span></div></div>
       {message ? <p role="status" className={styles.message}>{message}</p> : null}
       {access ? <><div className={styles.list}>{access.bindings.map((binding) => <div key={binding.userId}><strong>{binding.person}</strong><span>{binding.email}</span><small>{binding.active ? "Active worker access" : "Inactive"}</small></div>)}{!access.bindings.length ? <p>No worker accounts are bound to this roster.</p> : null}</div>
-        <form className={styles.form} onSubmit={bind}><label>Crew person<select name="person" required defaultValue=""><option value="" disabled>Choose person</option>{access.people.filter((person) => !access.bindings.some((binding) => binding.person === person && binding.active)).map((person) => <option key={person}>{person}</option>)}</select></label><label>Confirmed sign-in email<input name="email" type="email" autoComplete="off" required placeholder="worker@example.com" /></label><button className="d5o-primary" disabled={busy || access.people.every((person) => access.bindings.some((binding) => binding.person === person && binding.active))}>Bind worker</button></form>
+        <form className={styles.form} onSubmit={bind}><label>Roster person<select name="person" required defaultValue=""><option value="" disabled>Choose person</option>{access.people.filter((person) => !access.bindings.some((binding) => binding.person === person && binding.active)).map((person) => <option key={person}>{person}</option>)}</select></label><label>Confirmed sign-in email<input name="email" type="email" autoComplete="off" required placeholder="worker@example.com" /></label><button className="d5o-primary" disabled={busy || access.people.every((person) => access.bindings.some((binding) => binding.person === person && binding.active))}>Grant field-worker access</button></form>
         <p className={styles.note}>Prototype roster identities are synthetic. This action grants only the field-worker membership and that person’s scoped work; it does not authorize releases, reviews or approvals.</p></> : loading ? <p role="status">Loading worker access…</p> : null}
     </section>;
 }
