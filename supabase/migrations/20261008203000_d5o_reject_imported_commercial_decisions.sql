@@ -4,7 +4,7 @@ create function d5o_hosted.guard_new_commercial_import_v1()
 returns trigger language plpgsql security definer set search_path = '' as $$
 declare new_record jsonb; old_record jsonb;
 begin
-  if current_setting('request.jwt.claim.role', true) = 'service_role'
+  if current_setting('role', true) = 'service_role'
     or new.state_key <> 'work' then return new; end if;
   for old_record in select value from pg_catalog.jsonb_array_elements(coalesce(old.state_json->'records', '[]'::jsonb)) loop
     select value into new_record from pg_catalog.jsonb_array_elements(coalesce(new.state_json->'records', '[]'::jsonb))

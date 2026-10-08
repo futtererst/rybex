@@ -34,7 +34,7 @@ declare old_record jsonb; new_record jsonb; old_package jsonb; new_package jsonb
   pair record;
 begin
   -- The service credential is restricted to server-owned command paths.
-  if current_setting('request.jwt.claim.role', true) = 'service_role' then return new; end if;
+  if current_setting('role', true) = 'service_role' then return new; end if;
   if tg_op = 'INSERT' then raise exception 'command_only_state' using errcode = '42501'; end if;
   if new.state_key <> 'work' then
     raise exception 'command_only_state' using errcode = '42501';
