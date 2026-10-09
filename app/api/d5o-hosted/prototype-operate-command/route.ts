@@ -6,7 +6,7 @@ import { PrototypeWorkError } from "@/lib/d5o/prototype-work/store-error";
 import type { WorkRecord } from "@/components/d5o/platform/work-types";
 import { hostedConfigurationInventory } from "@/lib/d5o/hosted/configuration-inventory";
 import { resolvePublishedPhaseConfiguration } from "@/components/d5o/platform/published-phase-configuration";
-import { createRybexSupabaseAdminClient } from "@/lib/d5o/auth/supabase-server";
+import { createRybexSupabaseAdminClient, createRybexSupabaseServerClient } from "@/lib/d5o/auth/supabase-server";
 
 export const dynamic = "force-dynamic";
 const reply = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -24,6 +24,44 @@ export async function POST(request: NextRequest) {
     const loaded = await context.read("work"), records = loaded.state?.records as WorkRecord[] | undefined;
     const index = records?.findIndex((item) => item.id === command.workId && item.workspace === workspace) ?? -1;
     if (!records || index < 0) return reply({ error: "work_unavailable" }, 404);
+    const selected = records[index];
+    if (process.env.D5O_ISOLATED_PILOT === "1" && selected.canonicalWorkId) {
+      if (!["receive-handoff", "add-asset", "accept-support", "activate", "add-agreement",
+        "approve-agreement", "open-request", "triage-request", "update-finance"].includes(command.action))
+        return reply({ error: "authoritative_command_unavailable", message: "This Operate action is not yet connected to the isolated pilot decision service." }, 409);
+      if (!Number.isInteger(command.expectedDeployRevision) || !Number.isInteger(command.expectedDecisionRevision))
+        return reply({ error: "invalid_decision_basis" }, 400);
+      const session = await createRybexSupabaseServerClient();
+      const call = session.rpc.bind(session) as unknown as (name: string, args: Record<string, unknown>) => Promise<{
+        data: unknown; error: { code?: string; message: string } | null
+      }>;
+      const { data, error } = await call("d5o_hosted_operate_command_v1", {
+        p_workspace_key: workspace,p_presentation_id: command.workId,p_action: command.action,
+        p_input: { note: command.note,workAcceptanceId: selected.deploy?.workAcceptance?.id,
+          workAcceptanceRevision: selected.deploy?.workAcceptance?.revision,
+          name: command.name,kind: command.kind,location: command.location,
+          externalId: command.externalId,owner: command.owner,documentation: command.documentation,
+          customerContact: command.customerContact,escalation: command.escalation,
+          intakeRoute: command.intakeRoute,warrantyDisposition: command.warrantyDisposition,
+          serviceDisposition: command.serviceDisposition,residualOwner: command.residualOwner,
+          assetId: command.assetId,effectiveFrom: command.effectiveFrom,
+          effectiveTo: command.effectiveTo,includes: command.includes,excludes: command.excludes,
+          serviceCategories: command.serviceCategories,laborCovered: command.laborCovered,
+          partsCovered: command.partsCovered,travelCovered: command.travelCovered,
+          responseHours: command.responseHours,calendar: command.calendar,source: command.source,
+          agreementId: command.id,title: command.title,description: command.description,
+          impact: command.impact,contact: command.contact,requestId: command.requestId,
+          serviceCategory: command.serviceCategory ?? command.kind,status: command.status },
+        p_command_id: command.commandId,p_expected_source_revision: command.expectedRevision,
+        p_expected_deploy_revision: command.expectedDeployRevision,
+        p_expected_operate_revision: command.expectedDecisionRevision
+      });
+      if (error) return reply({ error: error.message, message: error.message },
+        error.code === "42501" ? 403 : error.code === "23505" || error.code === "23514" ? 409 : 400);
+      const result = data as { state?: Record<string, unknown>; revision?: number } | null;
+      if (!result?.state || !Number.isInteger(result.revision)) return reply({ error: "invalid_response" }, 502);
+      return reply({ state: { ...result.state, revision: result.revision }, synthetic: false });
+    }
     const replay = records[index].operate?.events.find((item) => item.commandId === command.commandId);
     if (replay) {
       if (replay.actorId !== context.actor.id || replay.membershipId !== context.actor.membershipId || replay.fingerprint !== operateCommandFingerprint(command)) return reply({ error: "command_reuse_conflict" }, 409);

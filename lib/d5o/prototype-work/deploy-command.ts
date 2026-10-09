@@ -9,6 +9,7 @@ import { serviceExecutionBasisIssue } from "./service-execution-basis";
 export type DeployCommand = {
   action: "authorize-start" | "hold" | "resume" | "save-report" | "submit-report" | "review-report" | "review-completion" | "record-inspection" | "review-inspection" | "raise-prestart-concern" | "raise-issue" | "resolve-issue" | "attach-evidence" | "review-evidence" | "capture-customer-signoff" | "assemble-turnover" | "accept-client" | "accept-work" | "respond-operate" | "respond-operate-work";
   workId: string; packageId?: string; expectedRevision: number; commandId: string; note?: string;
+  expectedDesignRevision?: number; expectedScheduleRevision?: number; expectedDecisionRevision?: number;
   permitId?: string; reportId?: string; inspectionId?: string; issueId?: string; turnoverId?: string;
   bookingId?: string; publicationId?: string; date?: string; quantity?: number; unit?: string; laborHours?: number; material?: string; summary?: string; evidenceIds?: string[]; capturedAt?: string;
   decision?: "Reviewed" | "Returned" | "Verified" | "Accepted" | "Declined";

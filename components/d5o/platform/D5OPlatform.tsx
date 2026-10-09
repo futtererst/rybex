@@ -609,7 +609,12 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     }
     try {
       const endpoint = hostedPreview ? `/api/d5o-hosted/prototype-deploy-command?workspace=${encodeURIComponent(activeWorkspace)}` : "/api/work/deploy-command";
-      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...command, expectedRevision, commandId: crypto.randomUUID() }) });
+      const selected = work.find((item) => item.id === command.workId);
+      const controlled = isolatedPilot && selected?.canonicalWorkId;
+      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...command, expectedRevision, commandId: crypto.randomUUID(),
+        ...(controlled ? { expectedDesignRevision: (selected.design as { authorityRevision?: number } | undefined)?.authorityRevision ?? 0,
+          expectedScheduleRevision: sharedSchedule.schedule?.revision ?? 0,
+          expectedDecisionRevision: (selected.deploy as { authorityRevision?: number } | undefined)?.authorityRevision ?? 0 } : {}) }) });
       const payload = await response.json() as { state?: { revision: number; records: Work[] }; message?: string };
       if (!response.ok || !payload.state) { setNotice(payload.message ?? (response.status === 409 ? "The Deploy basis changed. Refresh and retry." : "Deploy action could not be saved.")); return false; }
       const next = payload.state.records.map(hydrate);
@@ -617,7 +622,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       sharedWorkRevisionRef.current = payload.state.revision;
       setSharedWorkRevision(payload.state.revision);
       setWork(next);
-      setNotice(`Deploy ${command.action.replaceAll("-", " ")} saved in shared synthetic revision ${payload.state.revision}.`);
+      setNotice(`Deploy ${command.action.replaceAll("-", " ")} saved${controlled ? " against the isolated pilot Work Record" : ` in shared synthetic revision ${payload.state.revision}`}.`);
       return true;
     } catch { setNotice("The Deploy service could not be reached. No field action was recorded."); return false; }
   }
@@ -632,7 +637,10 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     pendingOperateCommand.current = pending;
     try {
       const endpoint = hostedPreview ? `/api/d5o-hosted/prototype-operate-command?workspace=${encodeURIComponent(activeWorkspace)}` : "/api/work/operate-command";
-      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...command, expectedRevision: pending.expectedRevision, commandId: pending.commandId }) });
+      const selected = work.find((item) => item.id === command.workId);
+      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...command, expectedRevision: pending.expectedRevision, commandId: pending.commandId,
+        ...(isolatedPilot && selected?.canonicalWorkId ? { expectedDeployRevision: selected.deploy?.authorityRevision ?? 0,
+          expectedDecisionRevision: selected.operate?.authorityRevision ?? 0 } : {}) }) });
       const payload = await response.json() as { state?: { revision: number; records: Work[] }; message?: string };
       if (!response.ok || !payload.state) {
         if (response.status === 400 || response.status === 403 || response.status === 409 || response.status === 422)
@@ -643,7 +651,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       const next = payload.state.records.map(hydrate);
       lastSharedWork.current = JSON.stringify(next); sharedWorkRevisionRef.current = payload.state.revision;
       setSharedWorkRevision(payload.state.revision); setWork(next);
-      setNotice(`Operate ${command.action.replaceAll("-", " ")} saved in shared synthetic revision ${payload.state.revision}.`);
+      setNotice(`Operate ${command.action.replaceAll("-", " ")} saved${isolatedPilot && selected?.canonicalWorkId ? " against the isolated pilot Work Record" : ` in shared synthetic revision ${payload.state.revision}`}.`);
       return true;
     } catch { setNotice("The Operate service could not be reached. No action was recorded."); return false; }
   }

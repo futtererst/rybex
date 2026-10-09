@@ -26,7 +26,9 @@ export async function hostedWorkerContext(workspace: string) {
     actor: { id: userData.user.id, name: person, role: "field_worker", membershipId: identity.membershipId, person },
     person,
     async read(key: HostedStateKey): Promise<HostedStateResult> {
-      const result = await call("d5o_hosted_server_read_v1", { p_workspace_key: workspace, p_state_key: key });
+      const result = await call(process.env.D5O_ISOLATED_PILOT === "1" && (key === "work" || key === "schedule")
+        ? "d5o_hosted_server_connected_read_v1" : "d5o_hosted_server_read_v1",
+      { p_workspace_key: workspace, p_state_key: key });
       if (result.error || !result.data) throw new HostedStateError("state_unavailable", 503);
       return result.data as HostedStateResult;
     },

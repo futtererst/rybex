@@ -8,6 +8,7 @@ import type { SharedSchedule } from "@/components/d5o/platform/schedule-model";
 import { hostedConfigurationInventory } from "@/lib/d5o/hosted/configuration-inventory";
 import { resolvePublishedPhaseConfiguration } from "@/components/d5o/platform/published-phase-configuration";
 import { createRybexSupabaseAdminClient } from "@/lib/d5o/auth/supabase-server";
+import { createRybexSupabaseServerClient } from "@/lib/d5o/auth/supabase-server";
 import { createHash, randomUUID } from "node:crypto";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,62 @@ export async function POST(request: NextRequest) {
     if (!Array.isArray(records)) return reply({ error: "work_unavailable" }, 404);
     const index = records.findIndex((item) => item && typeof item === "object" && (item as WorkRecord).id === command.workId && (item as WorkRecord).workspace === workspace);
     if (index < 0) return reply({ error: "work_unavailable" }, 404);
+    const selected = records[index] as WorkRecord;
+    if (process.env.D5O_ISOLATED_PILOT === "1" && selected.canonicalWorkId) {
+      if (!command.packageId || !Number.isInteger(command.expectedDesignRevision)
+        || !Number.isInteger(command.expectedScheduleRevision)
+        || !Number.isInteger(command.expectedDecisionRevision))
+        return reply({ error: "invalid_decision_basis" }, 400);
+      const client = await createRybexSupabaseServerClient();
+      const call = client.rpc.bind(client) as unknown as (name: string, args: Record<string, unknown>) => Promise<{
+        data: unknown; error: { code?: string; message: string } | null
+      }>;
+      const startAction = ["authorize-start", "hold", "resume"].includes(command.action);
+      const factAction = ["save-report", "submit-report", "review-report", "record-inspection",
+        "review-inspection", "review-completion"].includes(command.action);
+      const evidenceAction = command.action === "review-evidence";
+      const acceptanceAction = ["assemble-turnover", "accept-client", "accept-work",
+        "respond-operate", "respond-operate-work"].includes(command.action);
+      if (!startAction && !factAction && !evidenceAction && !acceptanceAction)
+        return reply({ error: "authoritative_command_unavailable", message: "This action is not yet connected to the isolated pilot decision service." }, 409);
+      const common = {
+        p_workspace_key: workspace,p_presentation_id: command.workId,
+        p_package_id: command.packageId,p_action: command.action,
+        p_expected_source_revision: command.expectedRevision,
+        p_expected_design_revision: command.expectedDesignRevision,
+        p_expected_schedule_revision: command.expectedScheduleRevision,
+        p_expected_deploy_revision: command.expectedDecisionRevision
+      };
+      const { data, error } = await call(startAction ? "d5o_hosted_field_start_command_v1"
+        : evidenceAction ? "d5o_hosted_field_evidence_command_v1"
+          : acceptanceAction ? "d5o_hosted_acceptance_command_v1" : "d5o_hosted_field_fact_command_v1",
+      startAction ? { ...common, p_reason: command.note ?? "", p_command_id: command.commandId }
+        : { ...(acceptanceAction ? {
+          p_workspace_key: workspace, p_presentation_id: command.workId,
+          p_package_id: command.packageId, p_action: command.action,
+          p_expected_source_revision: command.expectedRevision,
+          p_expected_design_revision: command.expectedDesignRevision,
+          p_expected_deploy_revision: command.expectedDecisionRevision
+        } : common), p_input: factAction ? {
+          bookingId: command.bookingId, reportId: command.reportId, inspectionId: command.inspectionId,
+          quantity: command.quantity, unit: command.unit, laborHours: command.laborHours,
+          material: command.material, summary: command.summary, capturedAt: command.capturedAt,
+          requirementId: command.requirementId, requirement: command.requirement,
+          method: command.method, result: command.result, supersedesId: command.supersedesId,
+          decision: command.decision, note: command.note
+        } : acceptanceAction ? { turnoverId: command.turnoverId, operateOwner: command.operateOwner,
+          obligations: command.obligations, signerName: command.signerName,
+          signerOrganization: command.signerOrganization, signerRole: command.signerRole,
+          authorityBasis: command.authorityBasis, source: command.source,
+          conditions: command.conditions, decision: command.decision, note: command.note }
+          : { evidenceId: command.evidenceId, decision: command.decision, note: command.note },
+        p_command_id: command.commandId });
+      if (error) return reply({ error: error.message, message: error.message },
+        error.code === "42501" ? 403 : error.code === "23505" || error.code === "23514" ? 409 : 400);
+      const result = data as { state?: Record<string, unknown>; revision?: number } | null;
+      if (!result?.state || !Number.isInteger(result.revision)) return reply({ error: "invalid_response" }, 502);
+      return reply({ state: { ...result.state, revision: result.revision }, synthetic: false });
+    }
     const replay = (records[index] as WorkRecord).deploy?.events.find((event) => event.commandId === command.commandId);
     if (replay) {
       if (replay.actorId !== context.actor.id || replay.membershipId !== context.actor.membershipId || replay.fingerprint !== deployCommandFingerprint(command)) return reply({ error: "command_reuse_conflict" }, 409);
@@ -71,6 +128,8 @@ export async function PUT(request: NextRequest) {
     if (index < 0 || !records) return reply({ error: "work_unavailable" }, 404);
     if (expectedRevision !== loaded.revision) return reply({ error: "stale_state" }, 409);
     const work = records[index], config = resolvePublishedPhaseConfiguration(await hostedConfigurationInventory(workspace as WorkRecord["workspace"]), work.workspace, work.type, work);
+    if (process.env.D5O_ISOLATED_PILOT === "1" && work.canonicalWorkId)
+      return reply({ error: "worker_upload_required", message: "The assigned worker must upload this package evidence from My assigned work." }, 403);
     if (work.phaseConfigurationVersionId && !config) return reply({ error: "deploy_policy_unavailable" }, 409);
     const bytes = Buffer.from(await file.arrayBuffer()), id = randomUUID();
     uploadedPath = objectPath(workspace, workId, id);

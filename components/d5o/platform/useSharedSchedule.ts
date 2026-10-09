@@ -63,7 +63,7 @@ export function useSharedSchedule(workspace: WorkspaceKey, hostedPreview = false
     const payload = change.action === "save-assignments" ? { ...change, assignments: datedAssignments(change.assignments, state.anchorDate) }
       : change.action === "save-booking" ? { ...change, assignment: datedAssignments([change.assignment], state.anchorDate)[0] }
       : change.action === "save-availability" ? { ...change, availabilityBlocks: datedAvailability(change.availabilityBlocks, state.anchorDate) } : change;
-    const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...payload, expectedRevision: state.revision }) });
+    const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...payload, expectedRevision: state.revision, commandId: crypto.randomUUID() }) });
     const result = await response.json() as { schedule?: SharedSchedule; error?: string; message?: string; delivery?: { sent: number; failed: number; attempting: number; unavailable?: boolean }; deliveryWarning?: string };
     if (!response.ok || !result.schedule) {
       if (response.status === 409) await refresh();

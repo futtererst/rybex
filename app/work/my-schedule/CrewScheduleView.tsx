@@ -39,14 +39,16 @@ export function CrewScheduleView({ workspace, person, hosted = false }: { worksp
     if (!view || !pending) return;
     setBusy(true); setMessage("");
     try {
+      let commandId = crypto.randomUUID();
       const submit = async (expectedRevision: number) => {
         const response = await fetch(api, { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ expectedRevision, publicationId: pending.booking.publicationId,
-            assignmentId: pending.booking.assignmentId, response: pending.response }) });
+            assignmentId: pending.booking.assignmentId, response: pending.response, commandId }) });
         return { response, data: await response.json() as CrewView & { error?: string; message?: string } };
       };
       let { response, data } = await submit(view.revision);
       if (response.status === 409) {
+        commandId = crypto.randomUUID();
         const latest = await refresh();
         const booking = latest.bookings.find((item) => item.publicationId === pending.booking.publicationId && item.assignmentId === pending.booking.assignmentId);
         if (!booking) { setPending(null); throw new Error("This booking changed. Review the latest date, shift and crew before responding."); }
