@@ -1,5 +1,7 @@
 # D5O PR #2 release decision worksheet — 9 October 2026
 
+Current operator documents: [production recovery procedure](./d5o-production-recovery-procedure.md), [one-page owner decisions](./d5o-production-owner-decisions.md), and [cutover authorization request](./d5o-cutover-authorization-request.md). These are proposals, not approvals.
+
 **Decision: NO-GO for production cutover.** PR #2 remains draft. The tested application source is `a1a02945912967f09b6bad5c0e4f7df24f9f9870`; later candidate commits change release documentation, not the application. Production traffic, shared Supabase project `fcawktdjoxvahhgvkebx`, memberships and aliases were unchanged. The partially covered request remains Partially covered and its child remains started but incomplete.
 
 ## Two separate recovery rehearsals
