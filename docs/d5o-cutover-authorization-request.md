@@ -1,3 +1,5 @@
+**Superseded for release authorization:** This historical request describes the 60-file application candidate. Draft PR #2 now includes five additional migrations and application source `ed51b43a03c4072e56a03263a8da6fe4c15d2ac6`. The current candidate has 65 hosted files and 53 outstanding against the previously mapped shared baseline. The revised sequence has only been replayed locally; update the release artifact, owner decisions and shared read-only reconciliation before seeking separate cutover authorization. Production remains NO-GO.
+
 # D5O PR #2 coordinated cutover authorization request — prepared, not submitted
 
 **Decision today: NO-GO.** Draft PR [#2](https://github.com/futtererst/rybex/pull/2) remains unmerged. No production traffic, shared Supabase configuration/data, membership or alias has changed. This document is the concrete change request to present **after** the [owner worksheet](./d5o-production-owner-decisions.md) is answered and the [recovery procedure](./d5o-production-recovery-procedure.md) is approved. A separate explicit authorization is required before any production action.

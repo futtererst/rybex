@@ -21,7 +21,7 @@ The 12 already-recorded D5O/worker migrations have SQL definitions identical to 
 
 The worker-excluding policies `d5o_hosted_work_member_read` and `d5o_hosted_work_event_member_read` also match the live read-only inspection. Do not rewrite the eight applied history versions. A raw version-only `supabase db push` is unsafe until the release operator explicitly reconciles those mappings; it would treat their local versions as unapplied.
 
-## Outstanding files, in required order (48)
+## Outstanding files, in required order (53)
 
 1. `20261008183310_d5o_prototype_authoritative_writes.sql`
 2. `20261008203000_d5o_reject_imported_commercial_decisions.sql`
@@ -71,5 +71,10 @@ The worker-excluding policies `d5o_hosted_work_member_read` and `d5o_hosted_work
 46. `20261009124000_d5o_empty_package_draft_compatibility.sql`
 47. `20261009125000_d5o_pursuit_correction_after_source_change.sql`
 48. `20261009181045_d5o_post_acceptance_scope_integrity.sql`
+49. `20261009214103_d5o_connected_workforce.sql`
+50. `20261009220510_d5o_connected_field_changes.sql`
+51. `20261009221159_d5o_connected_job_finance.sql`
+52. `20261009232739_d5o_connected_design_field_change.sql`
+53. `20261009234405_d5o_current_release_field_start.sql`
 
-A clean disposable Supabase instance replayed the first 59 hosted candidate files in filename order after repairing one invalid encoding byte in `20261009112000_d5o_connected_partial_service_source.sql`. The new scope-integrity migration applies after that sequence, for 60 candidate files total. This establishes disposable candidate replay, not shared-project compatibility or authorization to apply migrations. The deployment cutover must compare names, normalized SQL, policy definitions and migration history again immediately before any shared write.
+A clean disposable Supabase instance replayed the first 59 hosted candidate files in filename order after repairing one invalid encoding byte in `20261009112000_d5o_connected_partial_service_source.sql`. The scope-integrity migration completed the earlier 60-file candidate. Five additional workforce, field-change and Finance migrations now make 65 hosted candidate files and 53 outstanding relative to the prior 12-file shared read-only mapping. A fresh disposable local database replayed the current candidate sequence; shared-project definitions and migration history must be rechecked at cutover. This establishes disposable candidate replay, not shared-project compatibility or authorization to apply migrations. The deployment cutover must compare names, normalized SQL, policy definitions and migration history again immediately before any shared write.
