@@ -7,6 +7,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import type { WorkRecord } from "./work-types";
 
 import { assessOperationalReadiness, coverageFor, operateState } from "./operate-model";
+import { currentWorkAcceptanceScope } from "./deploy-model";
 
 import type { OperateCommand } from "@/lib/d5o/prototype-work/operate-command";
 
@@ -46,6 +47,7 @@ export function OperateWorkspace({ work, allWork, policy, hosted, actorRole, ini
   const canReceive = actorRole === "admin" || actorRole === "operations_leader";
   const canFinance = actorRole === "admin" || actorRole === "billing_commercial_lead";
   const state = operateState(work), readiness = assessOperationalReadiness(work, activePolicy), source = work.deploy?.workAcceptance;
+  const acceptedScopeCurrent = !source || currentWorkAcceptanceScope(work);
 
   const submit = (action: OperateCommand["action"], fields: (data: FormData) => Record<string, unknown>) => async (event: FormEvent<HTMLFormElement>) => {
 
@@ -70,8 +72,9 @@ export function OperateWorkspace({ work, allWork, policy, hosted, actorRole, ini
   return <section className={style.workspace} aria-label="Operate workspace">
 
     <header className={style.hero}><div><small>OPERATE · SUPPORTED ASSETS AND SERVICE</small><h2>Keep accepted work working</h2><p>{work.customer} · {work.site}</p></div><div className={style.position}><span>SUPPORT POSITION</span><strong>{state.activation?.status ?? "Not activated"}</strong><small>{state.support?.owner ?? "Receiving owner not accepted"}</small></div></header>
+    {!acceptedScopeCurrent ? <p className={style.authority} role="alert">The recorded customer acceptance, Operations receipt and Finance decision remain in history for their original scope. They do not authorize closeout of the expanded package set. Govern additional scope on a separate Work Record.</p> : null}
 
-    <div className={style.metrics}><div><span>Supported assets</span><strong>{state.assets.length}</strong></div><div><span>Open requests</span><strong>{pending.length}</strong></div><div><span>Maintenance plans</span><strong>{state.maintenance.filter((item) => item.status === "Active").length}</strong></div><div><span>Financial closeout</span><strong>{state.finance.status}</strong></div></div>
+    <div className={style.metrics}><div><span>Supported assets</span><strong>{state.assets.length}</strong></div><div><span>Open requests</span><strong>{pending.length}</strong></div><div><span>Maintenance plans</span><strong>{state.maintenance.filter((item) => item.status === "Active").length}</strong></div><div><span>Financial closeout</span><strong>{acceptedScopeCurrent && state.finance.status === "Closed" ? "Closed" : state.finance.status === "Closed" ? "Closed · prior scope" : state.finance.status}</strong></div></div>
 
     <nav className={style.tabs} aria-label="Operate views">{tabs.map((item) => <button type="button" key={item} className={tab === item ? style.active : ""} onClick={() => setTab(item)}>{item}</button>)}</nav>
     {tab === "Handoff & activation" && !canReceive ? <p className={style.authority} role="status">An Operations leader or System Administrator must receive the support basis, accept ownership and activate support. Your current role can review the recorded position.</p> : null}

@@ -21,7 +21,7 @@ The 12 already-recorded D5O/worker migrations have SQL definitions identical to 
 
 The worker-excluding policies `d5o_hosted_work_member_read` and `d5o_hosted_work_event_member_read` also match the live read-only inspection. Do not rewrite the eight applied history versions. A raw version-only `supabase db push` is unsafe until the release operator explicitly reconciles those mappings; it would treat their local versions as unapplied.
 
-## Outstanding files, in required order (47)
+## Outstanding files, in required order (48)
 
 1. `20261008183310_d5o_prototype_authoritative_writes.sql`
 2. `20261008203000_d5o_reject_imported_commercial_decisions.sql`
@@ -70,6 +70,6 @@ The worker-excluding policies `d5o_hosted_work_member_read` and `d5o_hosted_work
 45. `20261009123000_d5o_customer_decision_evidence.sql`
 46. `20261009124000_d5o_empty_package_draft_compatibility.sql`
 47. `20261009125000_d5o_pursuit_correction_after_source_change.sql`
+48. `20261009181045_d5o_post_acceptance_scope_integrity.sql`
 
-A clean disposable Supabase instance replayed all 59 hosted candidate files in filename order after repairing one invalid encoding byte in `20261009112000_d5o_connected_partial_service_source.sql`. This establishes candidate replay, not shared-project compatibility or authorization to apply migrations. The deployment cutover must compare names, normalized SQL, policy definitions and migration history again immediately before any shared write.
-
+A clean disposable Supabase instance replayed the first 59 hosted candidate files in filename order after repairing one invalid encoding byte in `20261009112000_d5o_connected_partial_service_source.sql`. The new scope-integrity migration applies after that sequence, for 60 candidate files total. This establishes disposable candidate replay, not shared-project compatibility or authorization to apply migrations. The deployment cutover must compare names, normalized SQL, policy definitions and migration history again immediately before any shared write.

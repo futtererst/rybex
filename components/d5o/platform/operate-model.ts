@@ -1,4 +1,5 @@
 import type { WorkRecord } from "./work-types";
+import { currentWorkAcceptanceScope } from "./deploy-model";
 import { legacyOperateControlPolicy, type OperateControlPolicy } from "./operate-policy";
 import type { PricingEvaluation, PricingInput, PricingPolicy } from "./develop-pricing";
 
@@ -31,6 +32,7 @@ export function assessOperationalReadiness(work: WorkRecord, policy: OperateCont
   const state = operateState(work), findings: OperateFinding[] = [];
   const add = (key: string, severity: OperateFinding["severity"], fact: string, source: string, owner: string, nextAction: string) => findings.push({ key, severity, fact, source, owner, nextAction });
   const receipt = work.deploy?.workAcceptance;
+  if (state.source?.kind === "Accepted Deploy" && state.source.workAcceptanceId && !currentWorkAcceptanceScope(work)) add("accepted-scope", "blocker", "The historical whole-work acceptance does not cover the current package and release set.", "Exact Deploy acceptance", "Operations lead", "Keep the accepted scope visible and govern additional work on a separate Work Record.");
   if (!state.source || (state.source.kind === "Accepted Deploy" && state.source.workAcceptanceId && (!receipt || receipt.id !== state.source.workAcceptanceId || receipt.revision !== state.source.revision || receipt.receipt !== "Accepted")))
     add("source", "blocker", "No exact accepted Deploy receipt or authorized legacy onboarding basis is linked.", "Deploy turnover", "Operations leader", "Receive an exact turnover or document legacy provenance.");
   if (state.source?.kind === "Legacy onboarding" && !policy.allowLegacyOnboarding) add("legacy", "blocker", "This Work Type does not allow legacy support onboarding.", "Pinned Operate policy", "System administrator", "Use an approved source path or publish an applicable policy.");

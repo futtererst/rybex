@@ -24,6 +24,21 @@ export function currentAcceptedRelease(work: WorkRecord, packageId: string): Des
   return latest?.status === "Accepted" ? latest : null;
 }
 
+/** A retained receipt describes its original scope, not later package additions. */
+export function currentWorkAcceptanceScope(work: WorkRecord): boolean {
+  const acceptance = work.deploy?.workAcceptance;
+  const packages = work.packages ?? [];
+  if (!acceptance || !packages.length || acceptance.releaseIds.length !== packages.length ||
+    acceptance.turnoverIds.length !== packages.length ||
+    (work.design?.packages.length ?? 0) !== packages.length) return false;
+  const releases = packages.map((item) => currentAcceptedRelease(work, item.id));
+  if (releases.some((item, index) => !item || item.packageRevision !== work.design?.packages.find((detail) => detail.packageId === packages[index].id)?.revision ||
+    !acceptance.releaseIds.includes(item.id))) return false;
+  return acceptance.turnoverIds.every((id) => work.deploy?.turnovers.some((item) => item.id === id &&
+    item.status === "Client accepted" &&
+    item.releaseIds.some((releaseId) => acceptance.releaseIds.includes(releaseId))));
+}
+
 /** Completion is a reviewed scope fact, separate from a reviewed activity report. */
 export function assessPackageCompletion(work: WorkRecord, packageId: string) {
   const release = currentAcceptedRelease(work, packageId);

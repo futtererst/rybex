@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 import type { WorkRecord } from "./work-types";
 import type { SharedSchedule } from "./schedule-model";
-import { assessDeployReadiness, assessPackageCompletion, currentAcceptedRelease, currentReviewedCompletion, deployState } from "./deploy-model";
+import { assessDeployReadiness, assessPackageCompletion, currentAcceptedRelease, currentReviewedCompletion, currentWorkAcceptanceScope, deployState } from "./deploy-model";
 import type { DeployControlPolicy } from "./deploy-policy";
 import type { DeployCommand } from "@/lib/d5o/prototype-work/deploy-command";
 import { DesignDeployReceipt } from "./DesignWorkspace";
@@ -39,7 +39,7 @@ export function DeployWorkspace({ work, schedule, policy, actorId, onCommand, on
   const completion = assessPackageCompletion(work, selected);
   const reviewedCompletion = currentReviewedCompletion(work, selected);
   const wholeWorkReady = packages.length > 0 && packages.every((item) => { const current = currentAcceptedRelease(work, item.id); return current && state.turnovers.some((turnover) => turnover.status === "Client accepted" && turnover.releaseIds.includes(current.id)); }) && !state.issues.some((item) => item.status === "Open");
-  const wholeAcceptanceCurrent = !!state.workAcceptance && wholeWorkReady && packages.every((item) => { const current = currentAcceptedRelease(work, item.id); return current && state.workAcceptance?.releaseIds.includes(current.id); });
+  const wholeAcceptanceCurrent = currentWorkAcceptanceScope(work);
   const evidence = (state.evidence ?? []).filter((item) => item.packageId === selected);
   const permit = state.permits.filter((item) => item.packageId === selected).at(-1);
   const baselineHours = release?.crewDemandSnapshot?.estimatedPersonHours;
@@ -61,6 +61,7 @@ export function DeployWorkspace({ work, schedule, policy, actorId, onCommand, on
   };
   return <section className={style.workspace}>
     <header className={style.header}><div><p>DEPLOY · CONTROLLED DELIVERY</p><h2>Deliver and verify the released work</h2><span>{work.customer} · {work.site}</span></div><strong>{wholeAcceptanceCurrent ? "Client Accepted · whole Work Record" : state.workAcceptance ? "Acceptance basis changed · review required" : turnovers.some((item) => item.status === "Client accepted") ? "Scoped package acceptance recorded" : permit?.status === "Authorized" ? "Field start authorized" : "Field start not authorized"}</strong></header>
+    {state.workAcceptance && !wholeAcceptanceCurrent ? <p className={style.message} role="alert">Historical customer acceptance covers {state.workAcceptance.turnoverIds.length} package turnovers. The current package set differs; additional scope requires a separately governed Work Record. The signed evidence and Operate receipt remain in history.</p> : null}
     <div className={style.position}><span><b>Release</b>{release ? `${release.id.slice(0, 8)} · package revision ${release.packageRevision}` : "No accepted current release"}</span><span><b>Crew</b>{bookings.length ? `${bookings.length} published booking${bookings.length === 1 ? "" : "s"}` : "No published booking"}</span><span><b>Readiness</b>{readiness.recommendation}</span><span><b>Next action</b>{readiness.findings[0]?.nextAction ?? (permit?.status === "Authorized" ? "Record field work" : "Authorize start")}</span></div>
     <nav className={style.tabs} aria-label="Deploy work"><button onClick={() => setTab("Overview")} aria-current={tab === "Overview" ? "page" : undefined}>Overview</button><button onClick={() => setTab("Crew & readiness")} aria-current={tab === "Crew & readiness" ? "page" : undefined}>Crew & readiness</button><button onClick={() => { loadDraft(offlineKey); setTab("Field work"); }} aria-current={tab === "Field work" ? "page" : undefined}>Field work</button><button onClick={() => setTab("Inspections & issues")} aria-current={tab === "Inspections & issues" ? "page" : undefined}>Inspections & issues</button><button onClick={() => setTab("Acceptance & turnover")} aria-current={tab === "Acceptance & turnover" ? "page" : undefined}>Acceptance & turnover</button></nav>
     <div className={style.stack}>
