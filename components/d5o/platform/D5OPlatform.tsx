@@ -543,9 +543,13 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
             ? { commandId: crypto.randomUUID(), expectedDecisionRevision:
                 (selected.discovery?.estimate as { authorityRevision?: number } | undefined)?.authorityRevision ?? 0 }
             : hostedPreview && selected?.canonicalWorkId &&
-              ["save-proposal-revision", "submit-proposal", "approve-proposal", "return-proposal"].includes(command.action)
+              ["save-proposal-revision", "submit-proposal", "approve-proposal", "return-proposal", "record-customer-submission", "record-customer-response"].includes(command.action)
               ? { commandId: crypto.randomUUID(), expectedDecisionRevision:
                   (selected.discovery?.proposal as { authorityRevision?: number } | undefined)?.authorityRevision ?? 0 }
+            : hostedPreview && selected?.canonicalWorkId &&
+              ["submit-design-handoff", "accept-design-handoff", "return-design-handoff"].includes(command.action)
+              ? { commandId: crypto.randomUUID(), expectedDecisionRevision:
+                  (selected.discovery?.designHandoff as { authorityRevision?: number } | undefined)?.authorityRevision ?? 0 }
             : {})
       }) });
       const payload = await response.json() as { state?: { revision: number; records: Work[] }; message?: string; error?: string };
@@ -583,7 +587,10 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     }
     try {
       const endpoint = hostedPreview ? `/api/d5o-hosted/prototype-design-command?workspace=${encodeURIComponent(activeWorkspace)}` : "/api/work/design-command";
-      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...command, expectedRevision, commandId: crypto.randomUUID() }) });
+      const selected = work.find((item) => item.id === command.workId);
+      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...command, expectedRevision, commandId: crypto.randomUUID(),
+        ...(isolatedPilot && selected?.canonicalWorkId ? { expectedDecisionRevision:
+          (selected.design as { authorityRevision?: number } | undefined)?.authorityRevision ?? 0 } : {}) }) });
       const payload = await response.json() as { state?: { revision: number; records: Work[] }; message?: string; error?: string };
       if (!response.ok || !payload.state) { setNotice(payload.message ?? (response.status === 409 ? "The Design basis changed. Refresh and retry." : "Design action could not be saved.")); return false; }
       const next = payload.state.records.map(hydrate);
@@ -591,7 +598,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       sharedWorkRevisionRef.current = payload.state.revision;
       setSharedWorkRevision(payload.state.revision);
       setWork(next);
-      setNotice(`Design ${command.action.replaceAll("-", " ")} saved in shared synthetic revision ${payload.state.revision}.`);
+      setNotice(`Design ${command.action.replaceAll("-", " ")} saved${isolatedPilot && selected?.canonicalWorkId ? " against the isolated pilot Work Record" : ` in shared synthetic revision ${payload.state.revision}`}.`);
       return true;
     } catch { setNotice("The Design service could not be reached. No decision was recorded."); return false; }
   }
@@ -776,9 +783,22 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     try {
       if (!seededWorkIds[activeWorkspace].includes(item.id) && !sharedWork.catalog.records.some((record) => record.id === item.id))
         await sharedWork.mutate({ action: "register-record", record: { ...item, createdAt: "", createdBy: "" } });
-      const result = await sharedWork.mutate({ action: "create-package", workId: item.id, name, owner });
+      const result = await sharedWork.mutate({ action: "create-package", workId: item.id, name, owner,
+        ...(isolatedPilot && item.canonicalWorkId ? {
+          expectedWorkRevision: sharedWorkRevisionRef.current ?? undefined,
+          expectedHandoffRevision: item.discovery?.designHandoff?.revision,
+          expectedPackageCount: sharedWork.catalog.packages.filter((candidate) => candidate.workId === item.id).length
+        } : {}) });
       const entry = result.created as WorkPackage;
-      updateWork(item.id, (current) => ({ ...current, packages: [...(current.packages ?? []).filter((candidate) => candidate.id !== entry.id), entry], history: [`${stamp()} · Work package created: ${name}`, ...current.history] }));
+      if (isolatedPilot && result.workState) {
+        const next = result.workState.records.map(hydrate);
+        lastSharedWork.current = JSON.stringify(next);
+        sharedWorkRevisionRef.current = result.workState.revision;
+        setSharedWorkRevision(result.workState.revision);
+        setWork(next);
+      } else {
+        updateWork(item.id, (current) => ({ ...current, packages: [...(current.packages ?? []).filter((candidate) => candidate.id !== entry.id), entry], history: [`${stamp()} · Work package created: ${name}`, ...current.history] }));
+      }
       element.reset();
       setNotice("The Work Package is shared. Set its required dates and shifts below to place it in the crew queue.");
     } catch (error) { setNotice(error instanceof Error ? error.message : "Work Package could not be shared."); }
@@ -798,6 +818,11 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     const demand: PackageCrewDemand = { packageId, workId: item.id, qualification: String(form.get("qualification") ?? ""), minimumPeople: Number(form.get("minimumPeople")), estimatedPersonHours: Number(form.get("estimatedPersonHours")), priority: String(form.get("priority") ?? "Normal") as PackageCrewDemand["priority"], prerequisite: String(form.get("prerequisite") ?? "").trim(), crewSchedulable: true, requiredSlots };
     if (!requiredSlots.length || requiredSlots.some((slot) => !slot.date || !slot.shift)) { setNotice("Add at least one complete required date and shift."); return; }
     try {
+      if (isolatedPilot && item.canonicalWorkId) {
+        const saved = await executeDesignCommand({ action: "save-demand", workId: item.id, demand });
+        if (saved) await sharedSchedule.refresh();
+        return;
+      }
       await sharedSchedule.mutate({ action: "save-demand", demand });
       setNotice(`${target.name}: required crew dates and shifts saved in the shared plan. ${existing ? "Review affected bookings and save any needed correction to share it with the crew." : "The package can now enter the crew queue."}`);
     } catch (error) { setNotice(error instanceof Error ? error.message : "Work Package demand could not be saved."); }

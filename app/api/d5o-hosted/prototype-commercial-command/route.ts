@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
       || !actions.has(command.action) || !Number.isInteger(command.expectedRevision)
       || !Number.isInteger(command.packageRevision)
       || [command.note, command.dueDate, command.recipient, command.method,
-        command.responseStatus, command.receivedAt, command.nextAction, command.followUpDue]
+        command.responseStatus, command.receivedAt, command.sourceReference, command.nextAction, command.followUpDue]
         .some((value) => value !== undefined && typeof value !== "string")
       || command.handoffRevision !== undefined
         && (!Number.isInteger(command.handoffRevision) || command.handoffRevision < 1)
@@ -49,6 +49,60 @@ export async function POST(request: NextRequest) {
     if (index < 0) return reply({ error: "work_unavailable" }, 404);
     const current = records[index] as WorkRecord;
     if (current.workspace !== workspace) return reply({ error: "workspace_forbidden" }, 403);
+    if (process.env.D5O_ISOLATED_PILOT === "1" && current.canonicalWorkId &&
+      ["submit-design-handoff", "accept-design-handoff", "return-design-handoff"].includes(command.action)) {
+      if (!command.commandId || !Number.isInteger(command.expectedDecisionRevision) ||
+        Number(command.expectedDecisionRevision) < 0)
+        return reply({ error: "invalid_decision_revision" }, 400);
+      const client = await createRybexSupabaseServerClient();
+      const call = client.rpc.bind(client) as unknown as (name: string, args: Record<string, unknown>) => Promise<{
+        data: unknown; error: { code?: string; message: string } | null
+      }>;
+      const { data, error } = await call("d5o_hosted_design_handoff_command_v1", {
+        p_workspace_key: workspace, p_presentation_id: command.workId,
+        p_action: command.action, p_due_date: command.dueDate ?? null,
+        p_reason: command.note ?? null, p_command_id: command.commandId,
+        p_expected_source_revision: command.expectedRevision,
+        p_expected_decision_revision: command.expectedDecisionRevision,
+        p_offer_revision: command.packageRevision,
+        p_handoff_revision: command.handoffRevision ??
+          (current.discovery?.designHandoff?.revision ?? 0) + 1
+      });
+      if (error) return reply({ error: error.message, message: error.message },
+        error.code === "42501" ? 403 : error.code === "23505" || error.code === "23514" ? 409 :
+          error.code === "22023" ? 400 : 503);
+      const result = data as { revision?: number; state?: Record<string, unknown> } | null;
+      if (!result?.state || !Number.isInteger(result.revision)) return reply({ error: "invalid_response" }, 502);
+      return reply({ state: { ...result.state, revision: result.revision }, synthetic: false });
+    }
+    if (process.env.D5O_ISOLATED_PILOT === "1" && current.canonicalWorkId &&
+      ["record-customer-submission", "record-customer-response"].includes(command.action)) {
+      if (!command.commandId || !Number.isInteger(command.expectedDecisionRevision) ||
+        Number(command.expectedDecisionRevision) < 1)
+        return reply({ error: "invalid_decision_revision" }, 400);
+      const client = await createRybexSupabaseServerClient();
+      const call = client.rpc.bind(client) as unknown as (name: string, args: Record<string, unknown>) => Promise<{
+        data: unknown; error: { code?: string; message: string } | null
+      }>;
+      const { data, error } = await call("d5o_hosted_customer_decision_command_v1", {
+        p_workspace_key: workspace, p_presentation_id: command.workId,
+        p_action: command.action, p_offer_revision: command.packageRevision,
+        p_recipient: command.recipient ?? null, p_method: command.method ?? null,
+        p_due_date: command.dueDate ?? null, p_response_status: command.responseStatus ?? null,
+        p_received_at: command.receivedAt ?? null, p_details: command.note ?? null,
+        p_source_reference: command.sourceReference ?? null,
+        p_next_action: command.nextAction ?? null, p_follow_up_due: command.followUpDue ?? null,
+        p_command_id: command.commandId,
+        p_expected_source_revision: command.expectedRevision,
+        p_expected_decision_revision: command.expectedDecisionRevision
+      });
+      if (error) return reply({ error: error.message, message: error.message },
+        error.code === "42501" ? 403 : error.code === "23505" || error.code === "23514" ? 409 :
+          error.code === "22023" ? 400 : 503);
+      const result = data as { revision?: number; state?: Record<string, unknown> } | null;
+      if (!result?.state || !Number.isInteger(result.revision)) return reply({ error: "invalid_response" }, 502);
+      return reply({ state: { ...result.state, revision: result.revision }, synthetic: false });
+    }
     if (process.env.D5O_ISOLATED_PILOT === "1" && current.canonicalWorkId &&
       command.action === "save-proposal-revision") {
       if (!command.commandId || !Number.isInteger(command.expectedDecisionRevision) ||

@@ -6,7 +6,7 @@ import { HostedStateError, hostedPrototypeContext } from "@/lib/d5o/hosted/proto
 import { hostedConfigurationInventory } from "@/lib/d5o/hosted/configuration-inventory";
 import { publishedWorkTypePinIsValid } from "@/components/d5o/platform/published-phase-configuration";
 import { validLocalScheduleOrigin } from "@/lib/d5o/scheduling/request-origin";
-import { createRybexSupabaseAdminClient } from "@/lib/d5o/auth/supabase-server";
+import { createRybexSupabaseAdminClient, createRybexSupabaseServerClient } from "@/lib/d5o/auth/supabase-server";
 import { resolvePublishedPhaseConfiguration } from "@/components/d5o/platform/published-phase-configuration";
 
 export const dynamic = "force-dynamic";
@@ -99,6 +99,34 @@ export async function POST(request: NextRequest) {
       if (discovery?.pursuitControl && (discovery.outcome !== "Won"
         || discovery.designHandoff?.status !== "accepted"))
         return reply({ error: "design_handoff_required" }, 409);
+      if (process.env.D5O_ISOLATED_PILOT === "1" && candidate?.canonicalWorkId) {
+        if (!input.commandId || !Number.isInteger(input.expectedWorkRevision)
+          || !Number.isInteger(input.expectedHandoffRevision)
+          || !Number.isInteger(input.expectedPackageCount))
+          return reply({ error: "invalid_connected_package_command" }, 400);
+        const client = await createRybexSupabaseServerClient();
+        const call = client.rpc.bind(client) as unknown as (name: string, args: Record<string, unknown>) => Promise<{
+          data: unknown; error: { code?: string; message: string } | null
+        }>;
+        const { data, error } = await call("d5o_hosted_create_connected_package_v2", {
+          p_workspace_key: workspace, p_presentation_id: input.workId,
+          p_name: input.name, p_owner: input.owner, p_command_id: input.commandId,
+          p_expected_work_revision: input.expectedWorkRevision,
+          p_expected_catalog_revision: input.expectedRevision,
+          p_expected_handoff_revision: input.expectedHandoffRevision,
+          p_expected_package_count: input.expectedPackageCount
+        });
+        if (error) return reply({ error: error.message, message: error.message },
+          error.code === "42501" ? 403 : error.code === "23505" || error.code === "23514" ? 409 :
+            error.code === "22023" ? 400 : 503);
+        const created = data as { created?: Record<string, unknown>; workRevision?: number } | null;
+        const [savedCatalog, savedWork] = await Promise.all([context.read("catalog"), context.read("work")]);
+        if (!created?.created || !savedCatalog.state || !savedWork.state)
+          return reply({ error: "connected_result_unavailable" }, 502);
+        return reply({ catalog: { ...savedCatalog.state, revision: savedCatalog.revision },
+          created: created.created, workRevision: created.workRevision,
+          workState: { ...savedWork.state, revision: savedWork.revision }, synthetic: false }, 201);
+      }
     }
     const loaded = await context.read("catalog");
     const catalog = loaded.state

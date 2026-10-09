@@ -7,10 +7,11 @@ import { legacyDesignControlPolicy, type DesignControlPolicy } from "@/component
 import { serviceExecutionBasisIssue } from "./service-execution-basis";
 
 export type DesignCommand = {
-  action: "save-document" | "submit-document" | "approve-document" | "issue-document" | "save-package" | "request-review" | "decide-review" | "record-customer-approval" | "record-change" | "resolve-change" | "acknowledge-hold" | "release-package" | "release-set" | "respond-receipt" | "withdraw-release";
-  workId: string; expectedRevision: number; commandId: string; note?: string;
+  action: "save-document" | "submit-document" | "approve-document" | "issue-document" | "save-package" | "save-demand" | "request-review" | "decide-review" | "record-customer-approval" | "record-change" | "resolve-change" | "acknowledge-hold" | "release-package" | "release-set" | "respond-receipt" | "withdraw-release";
+  workId: string; expectedRevision: number; expectedDecisionRevision?: number; commandId: string; note?: string;
   document?: Partial<DesignDocument>; documentId?: string; documentRevision?: number;
   package?: Partial<DesignPackage>; packageId?: string; packageIds?: string[];
+  demand?: PackageCrewDemand;
   discipline?: DesignReview["discipline"]; assignee?: string; dueDate?: string;
   reviewId?: string; decision?: "Approved" | "Returned";
   releaseId?: string; response?: "Accepted" | "Returned"; receivingOwner?: string;

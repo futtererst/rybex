@@ -21,6 +21,7 @@ export type CommercialCommand = {
   method?: string;
   responseStatus?: "Clarification requested" | "Commercial negotiation" | "Decision deferred" | "Awarded" | "Not awarded";
   receivedAt?: string;
+  sourceReference?: string;
   nextAction?: string;
   followUpDue?: string;
   handoffRevision?: number;
