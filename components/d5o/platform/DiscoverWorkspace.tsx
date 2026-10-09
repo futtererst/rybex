@@ -14,6 +14,8 @@ import { DiscoverCRMWorkspace } from "./DiscoverCRMWorkspace";
 import { DevelopPlanning } from "./DevelopPlanning";
 import { PricingPolicyAdmin } from "./PricingPolicyAdmin";
 import { DevelopPipeline } from "./DevelopPipeline";
+import { FieldChangeControl } from "./FieldChangeControl";
+import { currentAcceptedRelease } from "./deploy-model";
 import { formatMinor } from "./develop-pricing";
 import { blankPursuit, type PursuitCommand } from "./pursuit-control";
 import type { CommercialCommand } from "@/lib/d5o/prototype-work/commercial-command";
@@ -442,6 +444,7 @@ export function DiscoverWorkspace({ mode = "discover", workspaceKey, workspaceNa
       <><Metric label="ESTIMATES IN REVIEW" value={String(pricingCount)} note="Exact revisions awaiting a decision" /><Metric label="AWAITING CUSTOMER" value={String(awaitingCustomerCount)} note="Submitted offers without a response" /><Metric label="ACTIVE SUBMITTED VALUE" value={submittedValueLabel} note="Exact customer snapshots; currencies separate" /></>
     </div>
     {isDevelop && onPolicyUpdated ? <PricingPolicyAdmin workspace={workspaceKey} hosted={hosted} onNotice={onNotice} onPolicyUpdated={async () => { await onPolicyUpdated(); setPolicyVersionSignal((value) => value + 1); }} /> : null}
+    {isDevelop && hosted && selected?.canonicalWorkId ? selected.packages?.filter((pkg) => currentAcceptedRelease(selected,pkg.id)).map((pkg) => <FieldChangeControl key={pkg.id} mode="commercial" workspace={selected.workspace} workId={selected.id} packageId={pkg.id} releaseId={currentAcceptedRelease(selected,pkg.id)?.id} reports={[]} evidence={[]} />) : null}
     {isDevelop ? <DevelopPipeline work={work} selectedId={selected?.id} onSelect={(id) => { const item = work.find((candidate) => candidate.id === id); if (item && item.discovery?.pursuitControl && item.definition?.status !== "Approved") onDefine(item); else { onSelect(id); setEstimateDirty(false); } }} /> : null}
     <div className={`${styles.layout} d5o-early-phase-layout`} style={isDevelop ? { gridTemplateColumns: "minmax(0, 1fr)" } : undefined}>
       {!isDevelop ? <section className={`${styles.register} d5o-early-phase-rail`} aria-label="Discover work register">

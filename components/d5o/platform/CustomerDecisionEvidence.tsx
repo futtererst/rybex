@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-export type CustomerEvidencePurpose = "package-acceptance" | "work-acceptance" | "service-authorization";
+export type CustomerEvidencePurpose = "package-acceptance" | "work-acceptance" | "service-authorization" | "field-change-authorization";
 
 export function CustomerDecisionEvidence({ workspace, workId, purpose, scopeId, evidenceId, onEvidence, disabled = false }: {
   workspace: string; workId: string; purpose: CustomerEvidencePurpose; scopeId: string;

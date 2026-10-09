@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import type { WorkRecord } from "@/components/d5o/platform/work-types";
-import { createRybexSupabaseAdminClient } from "@/lib/d5o/auth/supabase-server";
+import { createRybexSupabaseAdminClient, createRybexSupabaseServerClient } from "@/lib/d5o/auth/supabase-server";
 import { hostedPrototypeContext } from "@/lib/d5o/hosted/prototype-context";
 import { validLocalScheduleOrigin } from "@/lib/d5o/scheduling/request-origin";
 
@@ -10,7 +10,7 @@ const bucket = "d5o-deploy-evidence";
 const reply = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
 const pathFor = (workspace: string, workId: string, id: string) =>
   `${workspace}/${createHash("sha256").update(workId).digest("hex")}/customer-decisions/${id}`;
-type Purpose = "package-acceptance" | "work-acceptance" | "service-authorization";
+type Purpose = "package-acceptance" | "work-acceptance" | "service-authorization" | "field-change-authorization";
 
 function exactBasis(work: WorkRecord, purpose: Purpose, scopeId: string) {
   if (purpose === "package-acceptance") {
@@ -64,13 +64,25 @@ export async function POST(request: NextRequest) {
     const scopeId = String(form.get("scopeId") ?? "");
     if (!(file instanceof File) || file.type !== "application/pdf" || file.size < 1 ||
       file.size > 10_485_760 || !workId || !scopeId ||
-      !["package-acceptance", "work-acceptance", "service-authorization"].includes(purpose))
+      !["package-acceptance", "work-acceptance", "service-authorization", "field-change-authorization"].includes(purpose))
       return reply({ error: "signed_pdf_required" }, 400);
     const loaded = await target.context.read("work");
     const work = (loaded.state?.records as WorkRecord[] | undefined)?.find((item) =>
       item.id === workId && item.workspace === target.workspace && !!item.canonicalWorkId);
     if (!work) return reply({ error: "canonical_work_required" }, 404);
-    const exact = exactBasis(work, purpose, scopeId);
+    let exact: { scopeRevision: number; basis: Record<string, unknown> } | null = purpose === "field-change-authorization" ? null : exactBasis(work, purpose, scopeId);
+    if (purpose === "field-change-authorization") {
+      const session = await createRybexSupabaseServerClient();
+      const read = session.rpc.bind(session) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
+      const { data, error } = await read("d5o_hosted_field_change_read_v1", {
+        p_workspace_key: target.workspace, p_presentation_id: workId
+      });
+      const change = !error && data && typeof data === "object" ?
+        (data as { changes?: Array<{ id: string; packageId: string; revision: number; status: string; facts: Record<string, unknown> }> }).changes?.find((item) => item.id === scopeId) : undefined;
+      if (change?.status === "Internally approved") exact = { scopeRevision: change.revision,
+        basis: { packageId: change.packageId, proposal: change.facts.proposal,
+          internalReview: change.facts.internalReview } };
+    }
     if (!exact) return reply({ error: "current_decision_scope_required" }, 409);
     const id = randomUUID(), bytes = Buffer.from(await file.arrayBuffer());
     if (bytes.subarray(0, 5).toString("ascii") !== "%PDF-" || !bytes.subarray(-32).toString("ascii").includes("%%EOF"))
