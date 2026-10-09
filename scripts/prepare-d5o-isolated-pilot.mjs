@@ -8,7 +8,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const output = process.argv[2];
 assert(output && process.env.D5O_ISOLATED_PILOT === "1", "An isolated pilot output directory and flag are required.");
-assert.equal(process.env.NEXT_PUBLIC_SUPABASE_URL, "http://127.0.0.1:56321", "Refusing a non-isolated Supabase target.");
+assert(["http://127.0.0.1:56321", "http://127.0.0.1:56621"].includes(process.env.NEXT_PUBLIC_SUPABASE_URL), "Refusing a non-isolated Supabase target.");
 assert(process.env.SUPABASE_SECRET_KEY, "The isolated local service credential is required.");
 const credentialsPath = path.join(output, "pilot-credentials.json");
 const sqlPath = path.join(output, "pilot-seed.sql");

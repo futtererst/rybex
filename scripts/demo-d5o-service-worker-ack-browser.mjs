@@ -4,7 +4,10 @@ import { chromium } from "playwright";
 if (process.env.D5O_ISOLATED_PILOT !== "1" || !process.env.D5O_PILOT_CREDENTIALS_FILE)
   throw new Error("disposable_pilot_only");
 const users = JSON.parse(readFileSync(process.env.D5O_PILOT_CREDENTIALS_FILE, "utf8")).users;
-const worker = users.find((item) => item.key === "serviceWorker");
+const partial = process.env.D5O_SERVICE_VARIANT === "partial";
+if (process.env.D5O_SERVICE_VARIANT && !partial) throw new Error("unsupported_service_variant");
+const crewName = partial ? "Synthetic partial monitoring crew" : "Synthetic controls service crew";
+const worker = users.find((item) => item.key === (partial ? "southWorker" : "serviceWorker"));
 const origin = "http://127.0.0.1:61641";
 const target = `${origin}/work/my-schedule`;
 const browser = await chromium.launch({ headless: true });
@@ -17,7 +20,7 @@ try {
   await page.getByRole("button", { name: "Continue to your work" }).click();
   try { await page.getByRole("heading", { name: "My schedule and assigned work" }).waitFor({ timeout: 8000 }); }
   catch (error) { console.log(JSON.stringify({ url: page.url(), text: (await page.locator("body").innerText()).slice(0, 1200) })); throw error; }
-  const booking = page.locator('article:has-text("Synthetic controls service crew")');
+  const booking = page.locator("article").filter({ hasText: crewName });
   await booking.waitFor({ timeout: 30000 });
   if (await booking.getByRole("button", { name: "Accept booking" }).count()) {
     await booking.getByRole("button", { name: "Accept booking" }).click();
@@ -26,6 +29,6 @@ try {
   }
   await page.reload();
   await booking.getByText("Accepted by you").waitFor({ timeout: 30000 });
-  console.log(JSON.stringify({ status: "worker_acknowledged_service_booking", person: "Jordan Lee" }));
+  console.log(JSON.stringify({ status: "worker_acknowledged_service_booking", person: partial ? "Samira Khan" : "Jordan Lee" }));
   await context.close();
 } finally { await browser.close(); }

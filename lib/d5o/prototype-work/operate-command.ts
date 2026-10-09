@@ -15,7 +15,7 @@ export type OperateCommand = { action: "receive-handoff" | "onboard-legacy" | "a
   effectiveFrom?: string; effectiveTo?: string; includes?: string; excludes?: string; responseHours?: number; restorationHours?: number; resolutionHours?: number; calendar?: "Business hours" | "Continuous"; timezone?: string; source?: string; pauseReason?: string;
   title?: string; description?: string; impact?: "Standard" | "High" | "Critical"; contact?: string; owner?: string; dueDate?: string;
   frequencyDays?: number; mode?: "Fixed date" | "Completion relative"; skill?: string; expectedHours?: number; requiredEvidence?: string;
-  pricingInput?: PricingInput; estimateRevision?: number; customerParty?: string; resolution?: string; reviewSource?: string; resolutionMethod?: "Field" | "Remote"; rationale?: string; status?: string; actionOwner?: string };
+  pricingInput?: PricingInput; estimateRevision?: number; customerParty?: string; customerOrganization?: string; customerRole?: string; authorityBasis?: string; outcome?: "Authorized" | "Declined"; conditions?: string; exclusions?: string; evidenceId?: string; resolution?: string; reviewSource?: string; resolutionMethod?: "Field" | "Remote"; rationale?: string; status?: string; actionOwner?: string };
 const manager = new Set(["admin", "operations_leader", "project_manager"]);
 const operations = new Set(["admin", "operations_leader"]);
 const text = (value: unknown, max = 500) => typeof value === "string" ? value.trim().slice(0, max) : "";

@@ -16,7 +16,7 @@ export type DeployCommand = {
   requirementId?: string; requirement?: string; method?: string; result?: "Pass" | "Fail"; supersedesId?: string;
   title?: string; impact?: string; owner?: string; resolution?: string;
   signerName?: string; signerOrganization?: string; signerRole?: string; authorityBasis?: string; source?: string; signatureEvidenceId?: string; conditions?: string;
-  evidenceId?: string; purpose?: string; caption?: string;
+  evidenceId?: string; purpose?: string; caption?: string; exclusions?: string;
   operateOwner?: string; obligations?: string;
 };
 const manager = new Set(["admin", "operations_leader", "project_manager", "field_supervisor"]);

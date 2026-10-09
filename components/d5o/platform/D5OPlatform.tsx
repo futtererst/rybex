@@ -317,7 +317,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
           ? JSON.stringify({ workspace: activeWorkspace, key: "work", expectedRevision: sharedWorkRevisionRef.current,
               state: { schemaVersion: 1, workspace: activeWorkspace, revision: (sharedWorkRevisionRef.current ?? 0) + 1, records: persistedWork } })
           : JSON.stringify({ expectedRevision: sharedWorkRevisionRef.current, records: persistedWork }) });
-        const payload = await response.json() as { state?: { revision: number }; error?: string; message?: string };
+        const payload = await response.json() as { state?: { revision: number; records?: Work[] }; error?: string; message?: string };
         if (!response.ok || !payload.state) {
           pendingReviewQueue.current = null;
           if (response.status === 409 && payload.error === "stale_state") setNotice("This Work Record changed in another browser. Your current edits are preserved here; refresh to load the latest shared workspace state.");
@@ -326,7 +326,14 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
           else setNotice(`The Work Record draft was not saved: ${payload.message ?? payload.error ?? `HTTP ${response.status}`}.`);
           return;
         }
-        lastSharedWork.current = serialized;
+        // The database projects governed next actions and other decision facts
+        // over the draft. Keep the client on that exact returned projection so
+        // a subsequent ordinary edit does not resend stale controlled fields.
+        const projected = payload.state.records?.map(hydrate);
+        lastSharedWork.current = projected ? JSON.stringify(projected) : serialized;
+        if (projected) setWork((current) => JSON.stringify(isolatedPilot
+          ? current.filter((record) => !!record.canonicalWorkId) : current) === serialized
+          ? projected : current);
         sharedWorkRevisionRef.current = payload.state.revision;
         setSharedWorkRevision(payload.state.revision);
         if (pendingDiscoverSave.current) { setNotice(`Discover Work Record ${pendingDiscoverSave.current} saved to shared revision ${payload.state.revision}.`); pendingDiscoverSave.current = null; }
@@ -477,7 +484,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
   async function executePursuitCommand(workId: string, command: PursuitCommand): Promise<boolean> {
     if (!isolatedPilot || !work.find((item) => item.id === workId)?.canonicalWorkId) return false;
     const expectedRevision = sharedWorkRevisionRef.current;
-    if (expectedRevision === null || JSON.stringify(work) !== lastSharedWork.current) {
+    if (expectedRevision === null || JSON.stringify(work.filter((record) => !!record.canonicalWorkId)) !== lastSharedWork.current) {
       setNotice("Wait for the opportunity draft to finish saving before recording a pursuit action."); return false;
     }
     if (command.kind === "request-spend" || command.kind === "decide-spend") {
@@ -758,7 +765,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     const next = hydrate({ ...record, id: created.id, canonicalWorkId: created.canonicalWorkId, stage: created.stage,
       status: created.status, progress: created.progress,
       phaseConfigurationVersionId: created.phaseConfigurationVersionId });
-    pendingDiscoverSave.current = created.id;
+    if (!isolatedPilot) pendingDiscoverSave.current = created.id;
     setWork((all) => [next, ...all.filter((item) => item.id !== created.id)]);
     setSelectedId(created.id);
     return created.id;

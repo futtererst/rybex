@@ -25,4 +25,13 @@ request.currentCycleJobIds = ["job-1"];
 request.coverage = "Covered";
 assert.match(issue(work, records), /Coverage changed/);
 assert.match(issue(work, [{ ...parent, workspace: "rotork" }, work]), /support is not active/);
+const revisedRequest = { ...request, reopenedAt: undefined, currentCycleJobIds: ["job-1"], coverage: "Partially covered", assetId: "asset-1", serviceCategory: "Monitoring", agreementId: "agreement-1",
+  serviceEstimate: { status: "Approved", revision: 2, requestCycleAt: request.reportedAt },
+  serviceAuthorization: { estimateRevision: 2, source: "evidence:revised-document" } };
+const revisedParent = { ...parent, operate: { ...parent.operate, requests: [revisedRequest], agreements: [{ id: "agreement-1", revision: 1, status: "Active" }] } };
+const revisedWork = { ...work, canonicalWorkId: "canonical-1", serviceSource: { ...work.serviceSource, coverage: "Partially covered", pricing: { estimateRevision: 1, customerAuthorizationSource: "historical-document" } },
+  serviceExecutionBasis: { status: "accepted", brief: { source: { requestId: "request-1", requestCycleAt: request.reportedAt, assetId: "asset-1", request: { serviceCategory: "Monitoring" }, agreement: { id: "agreement-1", revision: 1 }, pricing: { estimateRevision: "2", customerAuthorizationSource: "evidence:revised-document" } } } } };
+assert.equal(issue(revisedWork, [revisedParent, revisedWork]), null);
+revisedRequest.serviceAuthorization.source = "evidence:newer-document";
+assert.match(issue(revisedWork, [revisedParent, revisedWork]), /exact approved pricing/);
 console.log("Service execution source, pricing, cycle, coverage and tenant checks passed.");

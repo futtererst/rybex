@@ -4,13 +4,16 @@ import { chromium } from "playwright";
 if (process.env.D5O_ISOLATED_PILOT !== "1" || !process.env.D5O_PILOT_CREDENTIALS_FILE)
   throw new Error("disposable_pilot_only");
 const users = JSON.parse(readFileSync(process.env.D5O_PILOT_CREDENTIALS_FILE, "utf8")).users;
+const partial = process.env.D5O_SERVICE_VARIANT === "partial";
+if (process.env.D5O_SERVICE_VARIANT && !partial) throw new Error("unsupported_service_variant");
 const actor = (key) => {
   const user = users.find((item) => item.key === key);
   if (!user) throw new Error(`pilot_actor_missing:${key}`);
   return user;
 };
 const origin = "http://127.0.0.1:61641";
-const child = "rybex-d910a2a58a9c46038fb459436e1839c3";
+const child = partial ? "rybex-a11c09e603a248359205ec84f0af4ae8" : "rybex-d910a2a58a9c46038fb459436e1839c3";
+const documentTitle = partial ? "Monitoring route diagnostic and continuity test method" : "Covered monitoring inspection method and alarm test";
 const target = `${origin}/work?workspace=rybex&view=record&section=Design&record=${child}`;
 const date = (offset) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
 const browser = await chromium.launch({ headless: true });
@@ -29,7 +32,7 @@ try {
   const pm = await signIn("pm");
   const page = pm.page;
   await page.getByRole("button", { name: "Documents", exact: true }).click();
-  const document = page.locator('article:has-text("Covered monitoring inspection method and alarm test")');
+  const document = page.locator("article").filter({ hasText: documentTitle });
   if (await document.getByRole("button", { name: "Submit review" }).count()) {
     await document.getByRole("button", { name: "Submit review" }).click();
     await document.getByRole("button", { name: "Approve revision" }).waitFor({ timeout: 30000 });
@@ -44,6 +47,7 @@ try {
     await demand.getByRole("button", { name: "Make schedulable" }).click();
     await page.getByText("Schedulable").waitFor({ timeout: 30000 });
   }
+  await page.reload();
   await page.getByRole("button", { name: "Reviews", exact: true }).click();
   const requestForm = page.locator('form:has(button:has-text("Request exact-revision review"))');
   for (const discipline of ["Engineering", "Delivery", "Safety", "Quality"]) {
@@ -63,7 +67,7 @@ try {
 
   const ops = await signIn("operations");
   await ops.page.getByRole("button", { name: "Documents", exact: true }).click();
-  const opsDocument = ops.page.locator('article:has-text("Covered monitoring inspection method and alarm test")');
+  const opsDocument = ops.page.locator("article").filter({ hasText: documentTitle });
   if (await opsDocument.getByRole("button", { name: "Approve revision" }).count()) {
     await opsDocument.getByLabel("Document review rationale").fill("Reviewed the covered method and alarm test against the accepted service scope.");
     await opsDocument.getByRole("button", { name: "Approve revision" }).click();
@@ -81,7 +85,7 @@ try {
 
   const issuing = await signIn("pm");
   await issuing.page.getByRole("button", { name: "Documents", exact: true }).click();
-  const issuedDocument = issuing.page.locator('article:has-text("Covered monitoring inspection method and alarm test")');
+  const issuedDocument = issuing.page.locator("article").filter({ hasText: documentTitle });
   if (await issuedDocument.getByRole("button", { name: "Issue for use" }).count()) {
     await issuedDocument.getByRole("button", { name: "Issue for use" }).click();
     await issuedDocument.getByRole("button", { name: "Use in package" }).waitFor({ timeout: 30000 });

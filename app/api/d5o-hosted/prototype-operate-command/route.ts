@@ -38,7 +38,11 @@ export async function POST(request: NextRequest) {
           p_workspace_key: workspace,p_parent_presentation_id: command.workId,
           p_request_id: command.requestId,p_action: command.action,
           p_input: { pricingInput: command.pricingInput,estimateRevision: command.estimateRevision,
-            note: command.note,source: command.source,customerParty: command.customerParty },
+            note: command.note,source: command.source,customerParty: command.customerParty,
+            customerOrganization: command.customerOrganization,
+            customerRole: command.customerRole,authorityBasis: command.authorityBasis,
+            outcome: command.outcome,conditions: command.conditions,
+            exclusions: command.exclusions,evidenceId: command.evidenceId },
           p_command_id: command.commandId,p_expected_work_revision: command.expectedRevision,
           p_expected_operate_revision: command.expectedDecisionRevision
         });

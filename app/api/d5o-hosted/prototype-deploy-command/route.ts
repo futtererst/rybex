@@ -79,7 +79,9 @@ export async function POST(request: NextRequest) {
           obligations: command.obligations, signerName: command.signerName,
           signerOrganization: command.signerOrganization, signerRole: command.signerRole,
           authorityBasis: command.authorityBasis, source: command.source,
-          conditions: command.conditions, decision: command.decision, note: command.note }
+          evidenceId: command.evidenceId,
+          conditions: command.conditions, exclusions: command.exclusions,
+          decision: command.decision, note: command.note }
           : { evidenceId: command.evidenceId, decision: command.decision, note: command.note },
         p_command_id: command.commandId });
       if (error) return reply({ error: error.message, message: error.message },

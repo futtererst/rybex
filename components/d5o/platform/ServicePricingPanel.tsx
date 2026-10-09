@@ -5,6 +5,7 @@ import { evaluatePricing, formatMinor, type PricingCategory, type PricingInput, 
 import type { ServiceRequest } from "./operate-model";
 import type { WorkRecord } from "./work-types";
 import type { OperateCommand } from "@/lib/d5o/prototype-work/operate-command";
+import { CustomerDecisionEvidence } from "./CustomerDecisionEvidence";
 import style from "./OperateWorkspace.module.css";
 
 type PolicyResponse = { policies: PricingPolicy[]; active?: { id: string; version: number } };
@@ -17,6 +18,7 @@ export function ServicePricingPanel({ work, request, hosted, busy, onCommand }: 
   const [lines, setLines] = useState<PricingLine[]>(() => request.serviceEstimate?.input.lines ?? []);
   const [riskBasis, setRiskBasis] = useState(request.serviceEstimate?.input.riskBasis ?? "");
   const [discount, setDiscount] = useState(request.serviceEstimate?.input.discountPercent ?? 0);
+  const [authorizationEvidenceId, setAuthorizationEvidenceId] = useState("");
   const endpoint = hosted ? `/api/d5o-hosted/prototype-state?workspace=${encodeURIComponent(work.workspace)}&key=work&pricing=1` : "/api/work/prototype-state?pricing=1";
   useEffect(() => { let active = true; void fetch(endpoint, { cache: "no-store" }).then((response) => response.json()).then((body: PolicyResponse) => { if (active && Array.isArray(body.policies)) setPolicyState(body); }).catch(() => undefined); return () => { active = false; }; }, [endpoint]);
   const policy = policyState?.policies.find((item) => item.id === policyState.active?.id && item.version === policyState.active.version && item.status === "published");
@@ -34,7 +36,12 @@ export function ServicePricingPanel({ work, request, hosted, busy, onCommand }: 
   }
   async function record(event: FormEvent<HTMLFormElement>, action: "approve-service-pricing" | "return-service-pricing" | "record-service-authorization") {
     event.preventDefault(); const form = event.currentTarget, data = new FormData(form);
-    const saved = await onCommand({ action, requestId: request.id, estimateRevision: estimate?.revision, note: field(data, "note"), source: field(data, "source"), customerParty: field(data, "customerParty") });
+    const saved = await onCommand({ action, requestId: request.id, estimateRevision: estimate?.revision,
+      note: field(data, "note"), source: authorizationEvidenceId ? `evidence:${authorizationEvidenceId}` : field(data, "source"),
+      evidenceId: authorizationEvidenceId, customerParty: field(data, "customerParty"),
+      customerOrganization: field(data, "customerOrganization"), customerRole: field(data, "customerRole"),
+      authorityBasis: field(data, "authorityBasis"), outcome: "Authorized",
+      conditions: field(data, "conditions"), exclusions: field(data, "exclusions") });
     if (saved) form.reset();
   }
 
@@ -56,6 +63,6 @@ export function ServicePricingPanel({ work, request, hosted, busy, onCommand }: 
     </> : null}
     {estimate?.status === "Draft" && currentCycle ? <button type="button" disabled={busy || !!estimate.evaluation.issues.length} onClick={() => void onCommand({ action: "submit-service-pricing", requestId: request.id, estimateRevision: estimate.revision })}>Submit exact revision for pricing review</button> : null}
     {estimate?.status === "Pricing review" && currentCycle ? <><form className={style.form} onSubmit={(event) => void record(event, "approve-service-pricing")}><label>Independent pricing approval basis<input name="note" required /></label><button disabled={busy}>Approve priced service</button></form><form className={style.form} onSubmit={(event) => void record(event, "return-service-pricing")}><label>Required correction<input name="note" required /></label><button disabled={busy}>Return for correction</button></form></> : null}
-    {estimate?.status === "Approved" && currentCycle && !authorizationCurrent ? <form className={style.form} onSubmit={(event) => void record(event, "record-service-authorization")}><label>External customer authority / party<input name="customerParty" required /></label><label>Customer approval source / document<input name="source" required /></label><label>Internal recording rationale<input name="note" required /></label><button disabled={busy}>Record exact customer authorization</button></form> : null}
+    {estimate?.status === "Approved" && currentCycle && !authorizationCurrent ? <form className={style.form} onSubmit={(event) => void record(event, "record-service-authorization")}><label>External customer authority / party<input name="customerParty" required /></label>{work.canonicalWorkId && hosted ? <CustomerDecisionEvidence workspace={work.workspace} workId={work.id} purpose="service-authorization" scopeId={request.id} evidenceId={authorizationEvidenceId} onEvidence={setAuthorizationEvidenceId} /> : <label>Customer approval source / document<input name="source" required /></label>}<label>Customer organization<input name="customerOrganization" required /></label><label>Representative role<input name="customerRole" required /></label><label>Stated authority<input name="authorityBasis" required /></label><label>Conditions<input name="conditions" /></label><label>Exclusions<input name="exclusions" /></label><label>Internal recording rationale<input name="note" required /></label><button disabled={busy || (!!work.canonicalWorkId && !authorizationEvidenceId)}>Record exact customer authorization</button></form> : null}
   </details>;
 }

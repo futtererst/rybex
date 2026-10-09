@@ -29,9 +29,12 @@ export function serviceExecutionBasisIssue(work: WorkRecord, records: WorkRecord
       return "The request, asset, or coverage terms changed after service-basis acceptance; review a new revision.";
   }
   if (["Chargeable", "Partially covered"].includes(request.coverage)) {
-    const estimate = request.serviceEstimate, authorization = request.serviceAuthorization, pricing = source.pricing;
+    const estimate = request.serviceEstimate, authorization = request.serviceAuthorization;
+    // Canonical visits may be reassessed after a new priced customer decision.
+    // Their accepted basis, not the immutable child-creation snapshot, governs Design.
+    const pricing = work.canonicalWorkId ? work.serviceExecutionBasis?.brief.source.pricing : source.pricing;
     if (!pricing || estimate?.status !== "Approved" || estimate.requestCycleAt !== cycle || authorization?.estimateRevision !== estimate.revision ||
-      pricing.estimateRevision !== estimate.revision || pricing.customerAuthorizationSource !== authorization.source)
+      String(pricing.estimateRevision) !== String(estimate.revision) || pricing.customerAuthorizationSource !== authorization.source)
       return "The current request requires exact approved pricing and customer authorization before release.";
   }
   return null;

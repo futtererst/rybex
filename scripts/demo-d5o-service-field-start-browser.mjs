@@ -4,9 +4,11 @@ import { chromium } from "playwright";
 if (process.env.D5O_ISOLATED_PILOT !== "1" || !process.env.D5O_PILOT_CREDENTIALS_FILE)
   throw new Error("disposable_pilot_only");
 const users = JSON.parse(readFileSync(process.env.D5O_PILOT_CREDENTIALS_FILE, "utf8")).users;
+const partial = process.env.D5O_SERVICE_VARIANT === "partial";
+if (process.env.D5O_SERVICE_VARIANT && !partial) throw new Error("unsupported_service_variant");
 const supervisor = users.find((item) => item.key === "supervisor");
 const origin = "http://127.0.0.1:61641";
-const child = "rybex-d910a2a58a9c46038fb459436e1839c3";
+const child = partial ? "rybex-a11c09e603a248359205ec84f0af4ae8" : "rybex-d910a2a58a9c46038fb459436e1839c3";
 const target = `${origin}/work?workspace=rybex&view=record&section=Deploy&record=${child}`;
 const browser = await chromium.launch({ headless: true });
 try {
