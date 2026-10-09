@@ -23,6 +23,9 @@ try {
       () => document.body.innerText.includes("Synthetic") && document.body.innerText.includes("Operate"),
       null, { timeout: 30000 });
     const body = await page.locator("body").innerText();
+    if (key !== "worker" && process.env.D5O_SOURCE_SHA
+      && !body.includes(`Build ${process.env.D5O_SOURCE_SHA.slice(0, 12)}`))
+      throw new Error("browser_source_identity_mismatch");
     if (key === "worker") {
       if (!body.includes("MY CREW SCHEDULE") || body.includes("System administrator")
         || body.includes("Work Record to confirm with scheduler"))
