@@ -26,6 +26,49 @@ export async function POST(request: NextRequest) {
     if (!records || index < 0) return reply({ error: "work_unavailable" }, 404);
     const selected = records[index];
     if (process.env.D5O_ISOLATED_PILOT === "1" && selected.canonicalWorkId) {
+      if (command.action === "accept-asset") {
+        if (!command.assetId || !command.source || !command.note
+          || !Number.isInteger(command.expectedDecisionRevision))
+          return reply({ error: "invalid_asset_acceptance" }, 400);
+        const session = await createRybexSupabaseServerClient();
+        const call = session.rpc.bind(session) as unknown as (name: string, args: Record<string, unknown>) => Promise<{
+          data: unknown; error: { code?: string; message: string } | null
+        }>;
+        const { data, error } = await call("d5o_hosted_accept_supported_asset_v1", {
+          p_workspace_key: workspace,p_parent_presentation_id: command.workId,
+          p_asset_id: command.assetId,p_documentation_source: command.source,
+          p_reason: command.note,p_command_id: command.commandId,
+          p_expected_source_revision: command.expectedRevision,
+          p_expected_operate_revision: command.expectedDecisionRevision
+        });
+        if (error) return reply({ error: error.message, message: error.message },
+          error.code === "42501" ? 403 : error.code === "23505" || error.code === "23514" ? 409 : 400);
+        const result = data as { state?: Record<string, unknown>; revision?: number } | null;
+        if (!result?.state || !Number.isInteger(result.revision)) return reply({ error: "invalid_response" }, 502);
+        return reply({ state: { ...result.state, revision: result.revision }, synthetic: false });
+      }
+      if (command.action === "create-job") {
+        if (!command.requestId || !command.dueDate || !Number.isInteger(command.expectedDecisionRevision))
+          return reply({ error: "invalid_service_job_basis" }, 400);
+        const catalog = await context.read("catalog");
+        const session = await createRybexSupabaseServerClient();
+        const call = session.rpc.bind(session) as unknown as (name: string, args: Record<string, unknown>) => Promise<{
+          data: unknown; error: { code?: string; message: string } | null
+        }>;
+        const { data, error } = await call("d5o_hosted_service_job_command_v1", {
+          p_workspace_key: workspace,p_parent_presentation_id: command.workId,
+          p_request_id: command.requestId,p_due_date: command.dueDate,
+          p_owner: command.owner ?? context.actor.name,p_command_id: command.commandId,
+          p_expected_work_revision: command.expectedRevision,
+          p_expected_catalog_revision: catalog.revision,
+          p_expected_operate_revision: command.expectedDecisionRevision
+        });
+        if (error) return reply({ error: error.message, message: error.message },
+          error.code === "42501" ? 403 : error.code === "23505" || error.code === "23514" ? 409 : 400);
+        const saved = await context.read("work");
+        return reply({ state: { ...saved.state, revision: saved.revision },
+          relatedIdentity: data, synthetic: false });
+      }
       if (!["receive-handoff", "add-asset", "accept-support", "activate", "add-agreement",
         "approve-agreement", "open-request", "triage-request", "update-finance"].includes(command.action))
         return reply({ error: "authoritative_command_unavailable", message: "This Operate action is not yet connected to the isolated pilot decision service." }, 409);

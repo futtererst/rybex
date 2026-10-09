@@ -61,12 +61,15 @@ export function DesignWorkspace({ work, packages, packageDemands, allWork, confi
   const selected = packages.find((item) => item.id === selectedId) ?? packages[0];
   const detail = state.packages.find((item) => item.packageId === selected?.id);
   const assessment = selected ? assessDesignPackage(work, selected.id, undefined, packageDemands.find((item) => item.workId === work.id && item.packageId === selected.id) ?? null, policy) : null;
-  const serviceIssue = serviceExecutionBasisIssue(work, allWork);
+  const serviceIssue = serviceExecutionBasisIssue(work, allWork)
+    ?? (work.canonicalWorkId && work.serviceSource
+      ? "This service visit needs an independently accepted execution basis before Design package preparation."
+      : null);
   const releaseSetIds = packages.map((item) => item.id);
   const releaseSetReady = !policy.allowPartialRelease && releaseSetIds.length > 0 && !state.releases.some((item) => ["Awaiting receipt", "Accepted"].includes(item.status)) && releaseSetIds.every((id) => assessDesignPackage(work, id, undefined, packageDemands.find((item) => item.workId === work.id && item.packageId === id) ?? null, policy, new Set(releaseSetIds)).recommendation === "Ready for release");
   const forecast = selected ? [...(state.forecasts ?? [])].reverse().find((item) => item.packageId === selected.id) : undefined;
   const handoff = work.discovery?.designHandoff;
-  const received = !work.discovery?.pursuitControl || (work.discovery.outcome === "Won" && handoff?.status === "accepted" && handoff.brief.definitionRevision === work.definition?.revision && handoff.brief.configurationVersionId === work.phaseConfigurationVersionId);
+  const received = !serviceIssue && (!work.discovery?.pursuitControl || (work.discovery.outcome === "Won" && handoff?.status === "accepted" && handoff.brief.definitionRevision === work.definition?.revision && handoff.brief.configurationVersionId === work.phaseConfigurationVersionId));
   async function send(command: Omit<DesignCommand, "workId" | "expectedRevision" | "commandId">) {
     setBusy(true); try { return await onCommand(command); } finally { setBusy(false); }
   }
