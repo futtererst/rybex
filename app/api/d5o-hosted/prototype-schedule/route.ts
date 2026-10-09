@@ -23,7 +23,8 @@ export async function GET(request: NextRequest) {
     const schedule = loaded.state
       ? { ...loaded.state, revision: loaded.revision }
       : initialHostedSchedule(workspace as WorkspaceKey);
-    return reply({ schedule, canEdit: context.canEdit, delivery, synthetic: true });
+    return reply({ schedule, canEdit: context.canEdit, delivery,
+      requiresPublication: process.env.D5O_ISOLATED_PILOT === "1", synthetic: true });
   } catch (error) {
     if (error instanceof HostedStateError) return reply({ error: error.code }, error.status);
     return reply({ error: "schedule_unavailable" }, 503);
@@ -62,7 +63,11 @@ export async function POST(request: NextRequest) {
       const result = data as { state?: Record<string, unknown>; revision?: number } | null;
       if (!result?.state || !Number.isInteger(result.revision)) return reply({ error: "invalid_response" }, 502);
       return reply({ schedule: { ...result.state, revision: result.revision }, delivery,
-        deliveryWarning: "The booking is shared in-app. External notification is not configured for this hosted pilot.", synthetic: false });
+        requiresPublication: true,
+        deliveryWarning: input.action === "publish"
+          ? "The published booking is available in-app. External notification is not configured for this hosted pilot."
+          : "Booking saved as a draft. Publish this week before workers can see it. External notification is not configured.",
+        synthetic: false });
     }
     if (input.action === "save-demand") {
       const workState = await context.read("work");

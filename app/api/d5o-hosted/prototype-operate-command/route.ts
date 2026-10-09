@@ -26,6 +26,56 @@ export async function POST(request: NextRequest) {
     if (!records || index < 0) return reply({ error: "work_unavailable" }, 404);
     const selected = records[index];
     if (process.env.D5O_ISOLATED_PILOT === "1" && selected.canonicalWorkId) {
+      if (["save-service-estimate", "submit-service-pricing", "approve-service-pricing",
+        "return-service-pricing", "record-service-authorization"].includes(command.action)) {
+        if (!command.requestId || !Number.isInteger(command.expectedDecisionRevision))
+          return reply({ error: "service_pricing_basis_missing" }, 400);
+        const session = await createRybexSupabaseServerClient();
+        const call = session.rpc.bind(session) as unknown as (name: string, args: Record<string, unknown>) => Promise<{
+          data: unknown; error: { code?: string; message: string } | null
+        }>;
+        const { data, error } = await call("d5o_hosted_service_pricing_command_v1", {
+          p_workspace_key: workspace,p_parent_presentation_id: command.workId,
+          p_request_id: command.requestId,p_action: command.action,
+          p_input: { pricingInput: command.pricingInput,estimateRevision: command.estimateRevision,
+            note: command.note,source: command.source,customerParty: command.customerParty },
+          p_command_id: command.commandId,p_expected_work_revision: command.expectedRevision,
+          p_expected_operate_revision: command.expectedDecisionRevision
+        });
+        if (error) return reply({ error: error.message, message: error.message },
+          error.code === "42501" ? 403 : error.code === "23505" || error.code === "23514" ? 409 : 400);
+        const result = data as { state?: Record<string, unknown>; revision?: number } | null;
+        if (!result?.state || !Number.isInteger(result.revision)) return reply({ error: "invalid_response" }, 502);
+        return reply({ state: { ...result.state, revision: result.revision }, synthetic: false });
+      }
+      if (["link-execution", "complete-job", "resolve-request", "close-request"].includes(command.action)) {
+        const jobs = selected.operate?.jobs ?? [];
+        const request = selected.operate?.requests.find((item) => item.id === command.requestId);
+        const job = command.action === "link-execution" || command.action === "complete-job"
+          ? jobs.find((item) => item.id === command.id)
+          : jobs.find((item) => item.id === request?.currentCycleJobIds?.[0] && item.requestId === request?.id);
+        const child = records.find((item) => item.id === job?.workId && item.serviceSource?.parentWorkId === selected.id);
+        if (!job || !child?.canonicalWorkId || !Number.isInteger(command.expectedDecisionRevision)
+          || !Number.isInteger(command.expectedServiceDeployRevision))
+          return reply({ error: "service_execution_basis_missing" }, 409);
+        const session = await createRybexSupabaseServerClient();
+        const call = session.rpc.bind(session) as unknown as (name: string, args: Record<string, unknown>) => Promise<{
+          data: unknown; error: { code?: string; message: string } | null
+        }>;
+        const { data, error } = await call("d5o_hosted_service_return_command_v1", {
+          p_workspace_key: workspace,p_parent_presentation_id: command.workId,p_action: command.action,
+          p_input: { jobId: job.id,requestId: request?.id ?? job.requestId,
+            note: command.note,resolution: command.resolution },
+          p_command_id: command.commandId,p_expected_work_revision: command.expectedRevision,
+          p_expected_operate_revision: command.expectedDecisionRevision,
+          p_expected_child_deploy_revision: command.expectedServiceDeployRevision
+        });
+        if (error) return reply({ error: error.message, message: error.message },
+          error.code === "42501" ? 403 : error.code === "23505" || error.code === "23514" ? 409 : 400);
+        const result = data as { state?: Record<string, unknown>; revision?: number } | null;
+        if (!result?.state || !Number.isInteger(result.revision)) return reply({ error: "invalid_response" }, 502);
+        return reply({ state: { ...result.state, revision: result.revision }, synthetic: false });
+      }
       if (command.action === "accept-asset") {
         if (!command.assetId || !command.source || !command.note
           || !Number.isInteger(command.expectedDecisionRevision))

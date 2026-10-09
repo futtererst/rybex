@@ -16,6 +16,18 @@ export function serviceExecutionBasisIssue(work: WorkRecord, records: WorkRecord
   if (!["Triaged", "In progress"].includes(request.status) || !["Covered", "Partially covered", "Chargeable"].includes(request.coverage))
     return "The current service request lacks an active coverage disposition.";
   if (source.coverage !== request.coverage) return "Coverage changed after the service job was created; review its basis.";
+  if (work.canonicalWorkId) {
+    const basis = work.serviceExecutionBasis;
+    if (!basis || basis.status !== "accepted")
+      return "Operations must accept the exact service execution basis before Design starts.";
+    const accepted = basis.brief.source;
+    if (accepted.requestId !== request.id || accepted.requestCycleAt !== cycle
+      || accepted.assetId !== request.assetId
+      || accepted.request.serviceCategory !== request.serviceCategory
+      || !parent.operate.agreements.some((agreement) => agreement.id === accepted.agreement.id
+        && agreement.revision === accepted.agreement.revision && agreement.status === "Active"))
+      return "The request, asset, or coverage terms changed after service-basis acceptance; review a new revision.";
+  }
   if (["Chargeable", "Partially covered"].includes(request.coverage)) {
     const estimate = request.serviceEstimate, authorization = request.serviceAuthorization, pricing = source.pricing;
     if (!pricing || estimate?.status !== "Approved" || estimate.requestCycleAt !== cycle || authorization?.estimateRevision !== estimate.revision ||

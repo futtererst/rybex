@@ -100,6 +100,9 @@ export async function POST(request: NextRequest) {
         || discovery.designHandoff?.status !== "accepted"))
         return reply({ error: "design_handoff_required" }, 409);
       if (process.env.D5O_ISOLATED_PILOT === "1" && candidate?.canonicalWorkId) {
+        const isService = !!candidate.serviceSource;
+        if (isService && (candidate.serviceExecutionBasis as { status?: string } | undefined)?.status !== "accepted")
+          return reply({ error: "accepted_service_basis_required" }, 409);
         if (!input.commandId || !Number.isInteger(input.expectedWorkRevision)
           || !Number.isInteger(input.expectedHandoffRevision)
           || !Number.isInteger(input.expectedPackageCount))
@@ -108,12 +111,14 @@ export async function POST(request: NextRequest) {
         const call = client.rpc.bind(client) as unknown as (name: string, args: Record<string, unknown>) => Promise<{
           data: unknown; error: { code?: string; message: string } | null
         }>;
-        const { data, error } = await call("d5o_hosted_create_connected_package_v2", {
+        const { data, error } = await call(isService
+          ? "d5o_hosted_create_service_package_v1" : "d5o_hosted_create_connected_package_v2", {
           p_workspace_key: workspace, p_presentation_id: input.workId,
           p_name: input.name, p_owner: input.owner, p_command_id: input.commandId,
           p_expected_work_revision: input.expectedWorkRevision,
           p_expected_catalog_revision: input.expectedRevision,
-          p_expected_handoff_revision: input.expectedHandoffRevision,
+          ...(isService ? { p_expected_basis_revision: input.expectedHandoffRevision }
+            : { p_expected_handoff_revision: input.expectedHandoffRevision }),
           p_expected_package_count: input.expectedPackageCount
         });
         if (error) return reply({ error: error.message, message: error.message },

@@ -8,7 +8,7 @@ import { currentAcceptedRelease, currentReviewedCompletion } from "@/components/
 
 export type OperateCommand = { action: "receive-handoff" | "onboard-legacy" | "add-asset" | "accept-asset" | "accept-support" | "transfer-support" | "activate" | "resume" | "suspend" | "deactivate" | "add-agreement" | "approve-agreement" | "open-request" | "triage-request" | "decide-coverage" | "record-chargeable-disposition" | "save-service-estimate" | "submit-service-pricing" | "approve-service-pricing" | "return-service-pricing" | "record-service-authorization" | "link-service-pricing" | "record-response" | "record-restoration" | "pause-sla" | "resume-sla" | "create-job" | "link-execution" | "complete-job" | "resolve-request" | "close-request" | "reopen-request" | "add-maintenance" | "generate-maintenance" | "defer-maintenance" | "add-review" | "open-lifecycle" | "update-finance" | "add-lesson";
   workId: string; expectedRevision: number; commandId: string; note?: string; id?: string; assetId?: string; requestId?: string; planId?: string; sourceWorkId?: string; turnoverId?: string;
-  expectedDeployRevision?: number; expectedDecisionRevision?: number;
+  expectedDeployRevision?: number; expectedDecisionRevision?: number; expectedServiceDeployRevision?: number;
   serviceCategory?: string; serviceCategories?: string[]; laborCovered?: boolean; partsCovered?: boolean; travelCovered?: boolean;
   name?: string; kind?: string; location?: string; externalId?: string; manufacturer?: string; model?: string; serial?: string; documentation?: string;
   customerContact?: string; escalation?: string; intakeRoute?: string; warrantyDisposition?: string; serviceDisposition?: string; residualOwner?: string;

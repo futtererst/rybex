@@ -39,6 +39,26 @@ const { error: bindingError } = await admin.rpc("d5o_hosted_bind_worker_v1", {
   p_worker_email: second.email, p_person: "Avery Reed"
 });
 if (bindingError) throw new Error(`second_worker_binding_failed:${bindingError.code}`);
+let serviceWorker = credentials.users.find((item) => item.key === "serviceWorker");
+if (!serviceWorker) {
+  const email = "d5o-pilot-service-worker@example.test";
+  const password = randomBytes(24).toString("base64url");
+  const { data, error } = await admin.auth.admin.createUser({ email, password,
+    email_confirm: true, user_metadata: { display_name: "Jordan Lee" } });
+  if (error || !data.user) throw new Error(`service_worker_creation_failed:${error?.message}`);
+  serviceWorker = { key: "serviceWorker", role: "field_worker", name: "Jordan Lee",
+    email, password, userId: data.user.id };
+  credentials.users.push(serviceWorker);
+  const temporary = `${file}.service-crew.tmp`;
+  writeFileSync(temporary, `${JSON.stringify(credentials, null, 2)}\n`, { flag: "wx" });
+  renameSync(temporary, file);
+}
+const { error: serviceBindingError } = await admin.rpc("d5o_hosted_bind_worker_v1", {
+  p_workspace_key: "rybex", p_admin_user_id: adminIdentity.userId,
+  p_admin_membership_id: actor.membershipId,
+  p_worker_email: serviceWorker.email, p_person: "Jordan Lee"
+});
+if (serviceBindingError) throw new Error(`service_worker_binding_failed:${serviceBindingError.code}`);
 for (const person of ["Nate Walker", "Avery Reed"]) {
   const { error } = await session.rpc("d5o_hosted_crew_profile_command_v1", {
     p_workspace_key: "rybex", p_person: person,
@@ -48,5 +68,12 @@ for (const person of ["Nate Walker", "Avery Reed"]) {
   });
   if (error) throw new Error(`crew_profile_failed:${person}:${error.code}:${error.message}`);
 }
+const { error: serviceProfileError } = await session.rpc("d5o_hosted_crew_profile_command_v1", {
+  p_workspace_key: "rybex", p_person: "Jordan Lee",
+  p_qualifications: ["Network cabling", "Controls service"],
+  p_weekly_capacity_hours: 40,
+  p_command_id: "connected-pilot-controls-profile-jordan-lee-v1"
+});
+if (serviceProfileError) throw new Error(`service_profile_failed:${serviceProfileError.code}`);
 console.log(JSON.stringify({ status: "two_bound_qualified_pilot_workers",
-  people: ["Nate Walker", "Avery Reed"], credentialsStoredOutsideRepo: true }));
+  people: ["Nate Walker", "Avery Reed", "Jordan Lee"], credentialsStoredOutsideRepo: true }));

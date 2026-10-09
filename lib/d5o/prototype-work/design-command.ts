@@ -7,8 +7,9 @@ import { legacyDesignControlPolicy, type DesignControlPolicy } from "@/component
 import { serviceExecutionBasisIssue } from "./service-execution-basis";
 
 export type DesignCommand = {
-  action: "save-document" | "submit-document" | "approve-document" | "issue-document" | "save-package" | "save-demand" | "request-review" | "decide-review" | "record-customer-approval" | "record-change" | "resolve-change" | "acknowledge-hold" | "release-package" | "release-set" | "respond-receipt" | "withdraw-release";
+  action: "save-document" | "submit-document" | "approve-document" | "issue-document" | "save-package" | "save-demand" | "request-review" | "decide-review" | "record-customer-approval" | "record-change" | "resolve-change" | "acknowledge-hold" | "release-package" | "release-set" | "respond-receipt" | "withdraw-release" | "save-service-basis" | "revise-service-basis" | "submit-service-basis" | "accept-service-basis" | "return-service-basis";
   workId: string; expectedRevision: number; expectedDecisionRevision?: number; commandId: string; note?: string;
+  expectedOperateRevision?: number; serviceBasis?: { scope: string; coveredScope?: string; uncoveredScope?: string; exclusions: string; completionCriteria: string; verification: string; coverageRationale: string; safety: string; access: string; resources: string; serviceCategory: string };
   document?: Partial<DesignDocument>; documentId?: string; documentRevision?: number;
   package?: Partial<DesignPackage>; packageId?: string; packageIds?: string[];
   demand?: PackageCrewDemand;

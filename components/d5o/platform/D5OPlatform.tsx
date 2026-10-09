@@ -72,6 +72,7 @@ type Work = {
   deploy?: WorkRecord["deploy"];
   operate?: WorkRecord["operate"];
   serviceSource?: WorkRecord["serviceSource"];
+  serviceExecutionBasis?: WorkRecord["serviceExecutionBasis"];
   phaseConfigurationVersionId?: string;
   phaseRegisters?: Record<string, Array<Record<string, string>>>;
   prototypeDecisionRights?: string[];
@@ -588,9 +589,14 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     try {
       const endpoint = hostedPreview ? `/api/d5o-hosted/prototype-design-command?workspace=${encodeURIComponent(activeWorkspace)}` : "/api/work/design-command";
       const selected = work.find((item) => item.id === command.workId);
+      const serviceBasisAction = command.action.endsWith("service-basis");
+      const serviceParent = selected?.serviceSource
+        ? work.find((item) => item.id === selected.serviceSource?.parentWorkId) : undefined;
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...command, expectedRevision, commandId: crypto.randomUUID(),
         ...(isolatedPilot && selected?.canonicalWorkId ? { expectedDecisionRevision:
-          (selected.design as { authorityRevision?: number } | undefined)?.authorityRevision ?? 0 } : {}) }) });
+          serviceBasisAction ? selected.serviceExecutionBasis?.authorityRevision ?? 0
+            : (selected.design as { authorityRevision?: number } | undefined)?.authorityRevision ?? 0,
+          ...(serviceBasisAction ? { expectedOperateRevision: serviceParent?.operate?.authorityRevision ?? -1 } : {}) } : {}) }) });
       const payload = await response.json() as { state?: { revision: number; records: Work[] }; message?: string; error?: string };
       if (!response.ok || !payload.state) { setNotice(payload.message ?? (response.status === 409 ? "The Design basis changed. Refresh and retry." : "Design action could not be saved.")); return false; }
       const next = payload.state.records.map(hydrate);
@@ -638,9 +644,13 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     try {
       const endpoint = hostedPreview ? `/api/d5o-hosted/prototype-operate-command?workspace=${encodeURIComponent(activeWorkspace)}` : "/api/work/operate-command";
       const selected = work.find((item) => item.id === command.workId);
+      const serviceJob = selected?.operate?.jobs.find((item) => item.id === command.id)
+        ?? selected?.operate?.jobs.find((item) => item.id === selected.operate?.requests.find((request) => request.id === command.requestId)?.currentCycleJobIds?.[0]);
+      const serviceWork = serviceJob ? work.find((item) => item.id === serviceJob.workId) : undefined;
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...command, expectedRevision: pending.expectedRevision, commandId: pending.commandId,
         ...(isolatedPilot && selected?.canonicalWorkId ? { expectedDeployRevision: selected.deploy?.authorityRevision ?? 0,
-          expectedDecisionRevision: selected.operate?.authorityRevision ?? 0 } : {}) }) });
+          expectedDecisionRevision: selected.operate?.authorityRevision ?? 0,
+          expectedServiceDeployRevision: serviceWork?.deploy?.authorityRevision ?? 0 } : {}) }) });
       const payload = await response.json() as { state?: { revision: number; records: Work[] }; message?: string };
       if (!response.ok || !payload.state) {
         if (response.status === 400 || response.status === 403 || response.status === 409 || response.status === 422)
@@ -782,6 +792,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
   async function addPackage(item: Work, event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (item.discovery?.pursuitControl && (item.discovery.outcome !== "Won" || item.discovery.designHandoff?.status !== "accepted")) { setNotice("A Design receiver must accept the awarded scope and offer before package planning begins."); return; }
+    if (item.canonicalWorkId && item.serviceSource && item.serviceExecutionBasis?.status !== "accepted") { setNotice("Operations must accept the current service execution basis before package planning begins."); return; }
     const element = event.currentTarget;
     const form = new FormData(element);
     const name = String(form.get("package") ?? "").trim();
@@ -794,7 +805,8 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       const result = await sharedWork.mutate({ action: "create-package", workId: item.id, name, owner,
         ...(isolatedPilot && item.canonicalWorkId ? {
           expectedWorkRevision: sharedWorkRevisionRef.current ?? undefined,
-          expectedHandoffRevision: item.discovery?.designHandoff?.revision,
+          expectedHandoffRevision: item.serviceSource
+            ? item.serviceExecutionBasis?.revision : item.discovery?.designHandoff?.revision,
           expectedPackageCount: sharedWork.catalog.packages.filter((candidate) => candidate.workId === item.id).length
         } : {}) });
       const entry = result.created as WorkPackage;
@@ -1131,7 +1143,7 @@ function WorkRecord({ actorId, actorRole, work, allWork, configurationInventory,
     <section className="d5o-record-body">
       {activeTab === "Develop" ? <div className="d5o-detail-stack">{phasePanel("develop", "Plan")}<Panel title="Definition baseline" lead="Develop the approach against the customer outcome and scope carried by this Work Record."><Facts work={work} />{work.definition ? <div className="d5o-definition-snapshot"><span><b>STATUS</b>{work.definition.status}</span><span><b>REVISION</b>{work.definition.revision}</span><span><b>CUSTOMER OUTCOME</b>{work.definition.outcome || "Not defined"}</span><span><b>ACCEPTANCE BASIS</b>{work.definition.acceptance || "Not defined"}</span></div> : null}<button className="d5o-outline" type="button" onClick={onOpenDefinition}>Open Define baseline →</button></Panel><PhaseResourceBridge phase="Develop" demandCount={phaseDemandCount} assignmentCount={phaseAssignmentCount} onPeople={onOpenPeople} onCrew={onOpenCrew} /></div> : null}
       {activeTab === "Develop" && work.discovery?.designHandoff?.status === "submitted" ? <Panel title="Design handoff awaiting a receiver" lead={`Revision ${work.discovery.designHandoff.revision} carries the awarded offer and approved Define basis to Design.`}><p>A different authorized workspace actor must accept or return the exact revision. Package planning stays held.</p><button className="d5o-primary" type="button" onClick={onOpenDevelop}>Open receiving decision in Develop →</button></Panel> : null}
-      {activeTab === "Design" ? <DesignWorkspace key={work.id} work={work} allWork={allWork} configurationInventory={configurationInventory} onSelectWork={onSelectDesignWork} packages={packages} packageDemands={packageDemands} policy={phaseConfig?.designControls} onCommand={onDesignCommand} onHandoff={onDesignHandoff} onCreatePackage={onPackage} demand={<PackageDemandList work={work} demands={packageDemands} canEdit={canEditDemand} onSave={onPackageDemand} />} resources={<PhaseResourceBridge phase="Design" demandCount={phaseDemandCount} assignmentCount={phaseAssignmentCount} onPeople={onOpenPeople} onCrew={onOpenCrew} />} /> : null}
+      {activeTab === "Design" ? <DesignWorkspace key={work.id} work={work} allWork={allWork} configurationInventory={configurationInventory} onSelectWork={onSelectDesignWork} actorRole={actorRole} packages={packages} packageDemands={packageDemands} policy={phaseConfig?.designControls} onCommand={onDesignCommand} onHandoff={onDesignHandoff} onCreatePackage={onPackage} demand={<PackageDemandList work={work} demands={packageDemands} canEdit={canEditDemand} onSave={onPackageDemand} />} resources={<PhaseResourceBridge phase="Design" demandCount={phaseDemandCount} assignmentCount={phaseAssignmentCount} onPeople={onOpenPeople} onCrew={onOpenCrew} />} /> : null}
       {activeTab === "Overview" ? phaseConfig?.decisionGuards?.length && work.phaseConfigurationVersionId ? <ConfiguredDecisionOverview work={work} config={phaseConfig} blockers={unmet} onTab={setTab} /> : <Overview work={work} blockers={unmet} onTab={setTab} /> : null}
       {activeTab === "Lifecycle" ? <Lifecycle work={work} phaseConfig={phaseConfig} onTab={setTab} /> : null}
       {activeTab === "Readiness" ? <div className="d5o-detail-stack">{!blockedTransition ? <Panel title="Requirements satisfied" lead="The current gate requirements are satisfied. Review the decision and its authority before moving work forward."><Checklist items={["Current requirements are satisfied for the next prototype action."]} good /></Panel> : null}<Panel title="Action commitment" lead="Set when the next action is due and its impact. This orders the Work hub; it does not clear a requirement."><form className="d5o-inline-form d5o-action-priority-form" key={`${work.id}-${work.nextAction}`} onSubmit={onActionPriority}><label>Due date<input name="nextActionDue" type="date" defaultValue={work.nextActionDue ?? ""} /></label><label>Impact<select name="nextActionImpact" defaultValue={work.nextActionImpact ?? ""}><option value="">Not set</option><option value="Critical">Critical</option><option value="High">High</option><option value="Standard">Standard</option></select></label><button className="d5o-primary" type="submit">Save action priority</button></form></Panel></div> : null}

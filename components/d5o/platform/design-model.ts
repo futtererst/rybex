@@ -37,6 +37,7 @@ export type DesignReview = {
 export type DesignRelease = {
   id: string; packageId: string; packageRevision: number; documentRefs: string[];
   releaseGroupId?: string;
+  sourceKind?: "commercial" | "service"; sourceId?: string; sourceDigest?: string;
   sourceHandoffRevision: number | null; definitionRevision: number | null;
   configurationVersionId: string; assessment: DesignReadiness;
   issuedAt: string; issuedByActorId: string; issuedByMembershipId: string;
@@ -46,7 +47,7 @@ export type DesignRelease = {
   holdReason?: string; holdAt?: string; holdByActorId?: string; holdAcknowledgedAt?: string; holdAcknowledgedByActorId?: string;
   snapshot: DesignPackage;
   documentSnapshots: DesignDocument[];
-  sourceSnapshot: DesignHandoffBrief | null;
+  sourceSnapshot: DesignHandoffBrief | NonNullable<WorkRecord["serviceExecutionBasis"]>["brief"] | null;
   crewDemandSnapshot: PackageCrewDemand | null;
 };
 export type DesignEvent = { at: string; actorId: string; membershipId: string; action: string; note: string; packageId?: string; revision?: number };
@@ -67,6 +68,9 @@ const addCalendarDays = (value: string, days: number) => {
   return parsed.toISOString().slice(0, 10);
 };
 export function designRequirementRefs(work: WorkRecord): Array<{ id: string; label: string; source: string }> {
+  if (work.serviceSource && work.serviceExecutionBasis?.status === "accepted")
+    return [{ id: "service-scope", label: work.serviceExecutionBasis.brief.scope,
+      source: `Accepted service execution basis revision ${work.serviceExecutionBasis.revision}` }];
   const structured = work.definition?.scopeControl?.requirements ?? [];
   if (structured.length) return structured.map((item) => ({ id: item.id, label: item.need, source: item.source }));
   if (work.definition?.status === "Approved" && work.definition.acceptance?.trim())
@@ -96,13 +100,14 @@ export function assessDesignPackage(work: WorkRecord, packageId: string, at = ne
   const add = (key: string, area: string, severity: DesignFinding["severity"], message: string, nextAction: string) => findings.push({ key, area, severity, message, nextAction });
   if (!detail) return { evaluatedAt: at, packageId, packageRevision: 0, policyVersion: work.phaseConfigurationVersionId ?? "legacy-unpinned", recommendation: "Hold for information", findings: [{ key: "package_detail", area: "Package", severity: "unknown", message: "Package design detail has not been recorded.", nextAction: "Complete the package design." }] };
   if (work.discovery?.pursuitControl && (work.discovery.outcome !== "Won" || work.discovery.designHandoff?.status !== "accepted")) add("handoff", "Received basis", "blocker", "The exact awarded Develop handoff has not been accepted by Design.", "Complete the customer award and accept the exact handoff.");
+  if (work.serviceSource && work.serviceExecutionBasis?.status !== "accepted") add("service_basis", "Received basis", "blocker", "The exact service execution basis has not been independently accepted.", "Submit the covered scope and obtain Operations receipt.");
   if (work.discovery?.designHandoff?.status === "accepted" && work.definition?.revision !== work.discovery.designHandoff.brief.definitionRevision) add("stale_source", "Received basis", "blocker", "The current Define revision differs from the accepted Design source.", "Route the changed scope through Define and Develop handoff.");
   if (work.discovery?.designHandoff?.status === "accepted" && work.phaseConfigurationVersionId !== work.discovery.designHandoff.brief.configurationVersionId) add("stale_policy", "Received basis", "blocker", "The current configuration pin differs from the accepted Design source.", "Restore the pinned source or complete a governed new handoff.");
   if (!work.phaseConfigurationVersionId) add("policy", "Configuration", "unknown", "No exact phase configuration is pinned to this Work Record.", "Restore the required published configuration.");
   if (!detail.scope || !detail.location || !detail.systems) add("scope", "Package", "unknown", "Scope, location, or affected systems are incomplete.", "Complete the executable package boundary.");
-  if (!detail.requirementIds.length) add("requirements", "Traceability", "unknown", "No approved requirement is linked.", "Link the package to the Define requirement IDs.");
+  if (!detail.requirementIds.length) add("requirements", "Traceability", "unknown", "No approved requirement is linked.", "Link the package to the received requirement or service-scope ID.");
   const requirements = new Set(designRequirementRefs(work).map((item) => item.id));
-  if (detail.requirementIds.some((id) => !requirements.has(id))) add("requirement_reference", "Traceability", "blocker", "A linked requirement is not in the received Define baseline.", "Correct the requirement reference or route a scope change.");
+  if (detail.requirementIds.some((id) => !requirements.has(id))) add("requirement_reference", "Traceability", "blocker", "A linked requirement is not in the received source baseline.", "Correct the requirement reference or route a scope change.");
   if (!detail.verification || !detail.proof || !detail.acceptingAuthority) add("verification", "Quality", "unknown", "Measurable verification, required proof, or accepting authority is missing.", "Complete the package verification plan.");
   if (!detail.completionBasis || (detail.completionBasis.kind === "Measured" && (!(detail.completionBasis.plannedQuantity > 0) || !detail.completionBasis.unit.trim())) ||
     (detail.completionBasis.kind === "Qualitative" && !detail.completionBasis.criterion.trim()))
