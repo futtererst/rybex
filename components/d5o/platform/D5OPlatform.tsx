@@ -26,6 +26,7 @@ import { seededWorkIds, type CatalogWorkRecord, type SharedWorkCatalog } from ".
 import { downloadPrototypeSnapshot } from "./prototype-state-export";
 import { lifecycleProfiles, requirementLabel, roleLabel, transitionsAt } from "./lifecycle-profiles";
 import { DiscoverWorkspace } from "./DiscoverWorkspace";
+import type { PursuitCommand } from "./pursuit-control";
 import type { CommercialCommand } from "@/lib/d5o/prototype-work/commercial-command";
 import type { DefineCommand } from "@/lib/d5o/prototype-work/define-command";
 import type { DesignCommand } from "@/lib/d5o/prototype-work/design-command";
@@ -66,6 +67,7 @@ type Work = {
   packages?: WorkPackage[]; evidence?: EvidenceItem[]; issues?: ControlledIssue[]; lifecycle?: LifecycleAction[]; commercial?: { condition: string; amount: string; confidence: string };
   discovery?: DiscoveryRecord;
   definition?: DefinitionRecord;
+  develop?: WorkRecord["develop"];
   design?: DesignState;
   deploy?: WorkRecord["deploy"];
   operate?: WorkRecord["operate"];
@@ -471,6 +473,38 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     go("record");
   }
   function updateWork(id: string, transform: (item: Work) => Work) { setWork((all) => all.map((item) => item.id === id ? transform(hydrate(item)) : item)); }
+  async function executePursuitCommand(workId: string, command: PursuitCommand): Promise<boolean> {
+    if (!isolatedPilot || !work.find((item) => item.id === workId)?.canonicalWorkId) return false;
+    const expectedRevision = sharedWorkRevisionRef.current;
+    if (expectedRevision === null || JSON.stringify(work) !== lastSharedWork.current) {
+      setNotice("Wait for the opportunity draft to finish saving before recording a pursuit action."); return false;
+    }
+    if (command.kind === "request-spend" || command.kind === "decide-spend") {
+      setNotice("Pursuit spend is a separate decision and is not yet connected to this pilot authority path."); return false;
+    }
+    const intent = command.kind === "save" ? { ...command.fields, ...command.workFields }
+      : command.kind === "decide" || command.kind === "respond-handoff"
+        ? { outcome: command.outcome, reason: command.reason }
+        : command.kind === "submit-handoff" ? { receiver: command.receiver, brief: command.brief } : {};
+    try {
+      const response = await fetch(`/api/d5o-hosted/prototype-pursuit-command?workspace=${encodeURIComponent(activeWorkspace)}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workId, action: command.kind === "save" ? "save-intake" : command.kind,
+          intent, commandId: crypto.randomUUID(), expectedRevision,
+          expectedDecisionRevision: work.find((item) => item.id === workId)?.discovery?.pursuitControl?.revision ?? 0 })
+      });
+      const payload = await response.json() as { state?: { revision: number; records: Work[] }; message?: string; error?: string };
+      if (!response.ok || !payload.state) {
+        setNotice(payload.message ?? payload.error ?? "The pursuit action was not recorded."); return false;
+      }
+      const next = payload.state.records.map(hydrate);
+      lastSharedWork.current = JSON.stringify(next);
+      sharedWorkRevisionRef.current = payload.state.revision;
+      setSharedWorkRevision(payload.state.revision); setWork(next);
+      setNotice(`Pursuit ${command.kind.replaceAll("-", " ")} recorded by your authenticated role.`);
+      return true;
+    } catch { setNotice("The pursuit service could not be reached. No decision was recorded."); return false; }
+  }
   async function executeDefineCommand(command: Omit<DefineCommand, "expectedRevision" | "commandId">): Promise<boolean> {
     const expectedRevision = sharedWorkRevisionRef.current;
     if (expectedRevision === null || JSON.stringify(work) !== lastSharedWork.current) {
@@ -478,13 +512,14 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     }
     try {
       const endpoint = hostedPreview ? `/api/d5o-hosted/prototype-define-command?workspace=${encodeURIComponent(activeWorkspace)}` : "/api/work/define-command";
-      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...command, expectedRevision, commandId: crypto.randomUUID() }) });
+      const decisionRevision = work.find((item) => item.id === command.workId)?.definition?.authorityRevision ?? 0;
+      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...command, expectedRevision, expectedDecisionRevision: decisionRevision, commandId: crypto.randomUUID() }) });
       const payload = await response.json() as { state?: { revision: number; records: Work[] }; message?: string; error?: string };
       if (!response.ok || !payload.state) { setNotice(payload.message ?? (response.status === 409 ? "The Define basis changed. Refresh and retry." : "The Define decision was not saved.")); return false; }
       const next = payload.state.records.map(hydrate);
       lastSharedWork.current = JSON.stringify(next); sharedWorkRevisionRef.current = payload.state.revision;
       setSharedWorkRevision(payload.state.revision); setWork(next);
-      setNotice(`Define ${command.action.replaceAll("-", " ")} saved in shared synthetic revision ${payload.state.revision}.`);
+      setNotice(`Define ${command.action.replaceAll("-", " ")} saved against Work revision ${payload.state.revision}.`);
       return true;
     } catch { setNotice("The Define service could not be reached. No decision was recorded."); return false; }
   }
@@ -498,7 +533,13 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       const endpoint = hostedPreview
         ? `/api/d5o-hosted/prototype-commercial-command?workspace=${encodeURIComponent(activeWorkspace)}`
         : "/api/work/commercial-command";
-      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...command, expectedRevision }) });
+      const selected = work.find((item) => item.id === command.workId);
+      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+        ...command, expectedRevision,
+        ...(hostedPreview && command.action.endsWith("solution") && selected?.canonicalWorkId
+          ? { commandId: crypto.randomUUID(), expectedDecisionRevision: selected.develop?.authorityRevision ?? 0 }
+          : {})
+      }) });
       const payload = await response.json() as { state?: { revision: number; records: Work[] }; message?: string; error?: string };
       if (!response.ok || !payload.state) {
         setNotice(response.status === 409 && payload.error === "stale_state" ? "This Work Record changed in another browser. Refresh before recording a decision." : payload.message ?? "The commercial command was not saved. Review the current basis and retry.");
@@ -515,7 +556,9 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
         setScreen("my-work");
         setMobileMenuOpen(false);
       }
-      setNotice(`${command.action.replaceAll("-", " ")} recorded in shared synthetic revision ${payload.state.revision}. The role queue does not represent delegated business authority.`);
+      setNotice(hostedPreview && selected?.canonicalWorkId && command.action.endsWith("solution")
+        ? `${command.action.replaceAll("-", " ")} saved against the isolated pilot's authenticated solution review. The policy and roles are test fixtures.`
+        : `${command.action.replaceAll("-", " ")} recorded in shared synthetic revision ${payload.state.revision}. The role queue does not represent delegated business authority.`);
       return true;
     } catch {
       setNotice("The commercial command could not reach the service. No decision was recorded.");
@@ -842,7 +885,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       <section className="d5o-full-content"><div className="d5o-app-topbar"><div><span>WORKSPACE</span><strong>{palette.name}</strong><i style={{ background: palette.color }} /></div><div><span>ACTIVE VIEW</span><strong>{screen === "record" ? `${selected?.title ?? "Work Record"} / ${tab}` : ({ discover: "Discover", define: "Define", develop: "Develop", operate: "Operate", home: "Work hub", "my-work": "My work", portfolio: "Portfolio", decisions: "Decision queue", crew: "Crew schedule", people: "People & capacity", execution: "Execution register", handoff: "Handoff register", library: "Evidence library", insights: "Operating insight", operating: "Operating model", configuration: "Workspace configuration", start: "Start work" } as Record<Exclude<Screen, "record">, string>)[screen]}</strong></div><div className="d5o-top-actions">{hostedPreview ? <Link href="/work">Switch workspace</Link> : null}<AccountMenu hostedPreview={hostedPreview} workspace={activeWorkspace} snapshotReady={workLoaded && preferencesLoaded} onExportSnapshot={() => { void exportSnapshot(); }} /><button onClick={() => go("start")}>+ Start work</button></div></div>
       {notice ? <div className="d5o-platform-notice" role="status">{notice}<button onClick={() => setNotice("")}>×</button></div> : null}
       <div className="d5o-surface-host">
-      {screen === "discover" ? <DiscoverWorkspace workspaceKey={activeWorkspace} workspaceName={palette.name} configurationInventory={configurationInventory} work={visibleWork as WorkRecord[]} commercialProfiles={commercialProfiles} actor={currentUserLabel} canEdit={canEditWork && sharedWorkRevision !== null} focusRecordId={selected?.id} reviewFocus={discoverEntry} onPhase={openJourneyPhase} onControl={(item, control) => { setSelectedId(item.id); setTab(control); go("record"); }} onBack={() => go("home")} onSelect={setSelectedId} onOpen={(item) => openRecord(item as Work)} onDefine={(item) => openWorkspacePhase("define", item as Work)} onPricingQueued={() => { pendingReviewQueue.current = "pricing"; setNotice("Saving the pricing review before opening its role queue."); }} onProposalQueued={() => { pendingReviewQueue.current = "proposal"; setNotice("Saving the proposal review before opening its role queue."); }} onCommercialCommand={executeCommercialCommand} onUpdate={(id, transform) => { pendingDiscoverSave.current = id; updateWork(id, (current) => transform(current as WorkRecord) as Work); }} onCreate={createDiscoverWork} onNotice={setNotice} /> : null}
+      {screen === "discover" ? <DiscoverWorkspace workspaceKey={activeWorkspace} workspaceName={palette.name} configurationInventory={configurationInventory} work={visibleWork as WorkRecord[]} commercialProfiles={commercialProfiles} actor={currentUserLabel} actorRole={actorRole} canEdit={canEditWork && sharedWorkRevision !== null} focusRecordId={selected?.id} reviewFocus={discoverEntry} onPhase={openJourneyPhase} onControl={(item, control) => { setSelectedId(item.id); setTab(control); go("record"); }} onBack={() => go("home")} onSelect={setSelectedId} onOpen={(item) => openRecord(item as Work)} onDefine={(item) => openWorkspacePhase("define", item as Work)} onPricingQueued={() => { pendingReviewQueue.current = "pricing"; setNotice("Saving the pricing review before opening its role queue."); }} onProposalQueued={() => { pendingReviewQueue.current = "proposal"; setNotice("Saving the proposal review before opening its role queue."); }} onCommercialCommand={executeCommercialCommand} onPursuitCommand={isolatedPilot ? executePursuitCommand : undefined} onUpdate={(id, transform) => { pendingDiscoverSave.current = id; updateWork(id, (current) => transform(current as WorkRecord) as Work); }} onCreate={createDiscoverWork} onNotice={setNotice} /> : null}
       {screen === "define" ? <DefineWorkspace workspaceKey={activeWorkspace} workspaceName={palette.name} configurationInventory={configurationInventory} work={visibleWork as WorkRecord[]} focusRecordId={selected?.id} reviewFocus={defineReviewEntry} actorLabel={currentUserLabel} onReviewQueued={() => { pendingReviewQueue.current = "definition"; setNotice("Saving the definition review before opening its role queue."); }} onCommand={executeDefineCommand} onPhase={openJourneyPhase} onControl={(item, control) => { setSelectedId(item.id); setTab(control); go("record"); }} onBack={() => openWorkspacePhase("discover")} onSelect={setSelectedId} onOpen={(item) => openRecord(item as Work)} onUpdate={(id, transform) => updateWork(id, (current) => transform(current as WorkRecord) as Work)} onNotice={setNotice} /> : null}
       {screen === "develop" ? <DiscoverWorkspace
         mode="develop" workspaceKey={activeWorkspace} workspaceName={palette.name} hosted={hostedPreview}

@@ -9,6 +9,8 @@ import { PrototypeWorkError } from "./store-error";
 export type CommercialCommand = {
   workId: string;
   expectedRevision: number;
+  commandId?: string;
+  expectedDecisionRevision?: number;
   packageRevision: number;
   action: "save-detailed-estimate" | "submit-solution" | "approve-solution" | "return-solution" | "submit-pricing" | "approve-margin-exception" | "approve-pricing" | "return-pricing" | "submit-proposal" | "approve-proposal" | "return-proposal" | "record-customer-submission" | "record-customer-response" | "start-negotiated-revision" | "submit-design-handoff" | "accept-design-handoff" | "return-design-handoff";
   pricingInput?: PricingInput;

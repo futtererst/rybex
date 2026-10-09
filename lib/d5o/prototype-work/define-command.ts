@@ -10,6 +10,7 @@ export type DefineCommand = {
   action: "submit" | "approve-review" | "return-review" | "submit-handoff" |
     "accept-handoff" | "return-handoff" | "new-revision";
   workId: string; expectedRevision: number; commandId: string;
+  expectedDecisionRevision?: number;
   role?: "commercial" | "delivery"; reason?: string;
 };
 export type DefineActor = { id: string; membershipId: string; name: string; role: string };

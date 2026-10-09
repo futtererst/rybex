@@ -28,7 +28,7 @@ const reply = (body: unknown, status = 200) => NextResponse.json(body, {
 });
 
 function errorReply(error: RpcError | null) {
-  if (error?.code === "42501") return reply({ error: "workspace_forbidden" }, 403);
+  if (error?.code === "42501") return reply({ error: "workspace_forbidden", ...(process.env.D5O_ISOLATED_PILOT === "1" ? { message: error.message } : {}) }, 403);
   if (error?.code === "23505") return reply({ error: "stale_state" }, 409);
   if (error?.code === "22023" || error?.code === "23514") return reply({ error: "invalid_state" }, 422);
   return reply({ error: "state_unavailable" }, 503);
@@ -85,6 +85,23 @@ export async function POST(request: NextRequest) {
       if (!["rybex", "rotork"].includes(workspace)) return reply({ error: "invalid_target" }, 400);
       const command = JSON.parse(text) as PricingPolicyCommand;
       if (!command || !["save-draft", "publish", "activate"].includes(command.action) || !Number.isInteger(command.expectedRevision)) return reply({ error: "invalid_command" }, 400);
+      if (process.env.D5O_ISOLATED_PILOT === "1") {
+        const scopedClient = await createRybexSupabaseServerClient();
+        const call = scopedClient.rpc.bind(scopedClient) as unknown as
+          (name: string, args: Record<string, unknown>) => Promise<RpcResult>;
+        const { data, error } = await call("d5o_hosted_pricing_policy_command_v1", {
+          p_workspace_key: workspace,p_action: command.action,
+          p_policy: command.action === "save-draft" ? command.policy : null,
+          p_policy_id: command.policyId,p_policy_version: command.policyVersion,
+          p_command_id: command.commandId,p_expected_work_revision: command.expectedRevision
+        });
+        if (error) return errorReply(error);
+        const result = data as PrototypeResult | null;
+        if (!result?.state || !Number.isInteger(result.revision)) return reply({ error: "invalid_response" }, 502);
+        return reply({ revision: result.revision, policies: result.state.pricingPolicies,
+          active: result.state.activePricingPolicy,history: result.state.pricingPolicyHistory,
+          synthetic: false });
+      }
       const context = await hostedPrototypeContext(workspace);
       if (context.actor.role !== "admin") return reply({ error: "pricing_config_forbidden" }, 403);
       const loaded = await context.read("work");
