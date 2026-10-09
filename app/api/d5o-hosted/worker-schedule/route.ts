@@ -1,3 +1,4 @@
+import { authoritativeD5OCommandsReady } from "@/lib/d5o/auth/hosted-target";
 import { NextRequest, NextResponse } from "next/server";
 import { hostedWorkerContext } from "@/lib/d5o/hosted/worker-context";
 import { HostedStateError } from "@/lib/d5o/hosted/prototype-context";
@@ -25,7 +26,7 @@ function view(state: SharedSchedule, person: string, records: WorkRecord[] = [])
 }
 export async function GET() {
   try {
-    if (process.env.D5O_ISOLATED_PILOT === "1") {
+    if (authoritativeD5OCommandsReady()) {
       const client = await createRybexSupabaseServerClient();
       const call = client.rpc.bind(client) as unknown as (name: string, args: Record<string, unknown>) => Promise<{
         data: unknown; error: { code?: string; message: string } | null
@@ -52,7 +53,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   if (!validLocalScheduleOrigin(request.headers)) return reply({ error: "invalid_origin" }, 403);
   try {
-    if (process.env.D5O_ISOLATED_PILOT === "1") {
+    if (authoritativeD5OCommandsReady()) {
       const input = await request.json() as CrewResponseMutation & { commandId?: string };
       if (!input.commandId || !Number.isInteger(input.expectedRevision)) return reply({ error: "command_identity_required" }, 400);
       const client = await createRybexSupabaseServerClient();

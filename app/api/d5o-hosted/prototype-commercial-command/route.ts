@@ -1,3 +1,4 @@
+import { authoritativeD5OCommandsReady } from "@/lib/d5o/auth/hosted-target";
 import { NextRequest, NextResponse } from "next/server";
 import type { WorkspaceKey } from "@/components/d5o/platform/work-types";
 import type { WorkRecord } from "@/components/d5o/platform/work-types";
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
     if (index < 0) return reply({ error: "work_unavailable" }, 404);
     const current = records[index] as WorkRecord;
     if (current.workspace !== workspace) return reply({ error: "workspace_forbidden" }, 403);
-    if (process.env.D5O_ISOLATED_PILOT === "1" && current.canonicalWorkId &&
+    if (authoritativeD5OCommandsReady() && current.canonicalWorkId &&
       ["submit-design-handoff", "accept-design-handoff", "return-design-handoff"].includes(command.action)) {
       if (!command.commandId || !Number.isInteger(command.expectedDecisionRevision) ||
         Number(command.expectedDecisionRevision) < 0)
@@ -75,7 +76,7 @@ export async function POST(request: NextRequest) {
       if (!result?.state || !Number.isInteger(result.revision)) return reply({ error: "invalid_response" }, 502);
       return reply({ state: { ...result.state, revision: result.revision }, synthetic: false });
     }
-    if (process.env.D5O_ISOLATED_PILOT === "1" && current.canonicalWorkId &&
+    if (authoritativeD5OCommandsReady() && current.canonicalWorkId &&
       ["record-customer-submission", "record-customer-response"].includes(command.action)) {
       if (!command.commandId || !Number.isInteger(command.expectedDecisionRevision) ||
         Number(command.expectedDecisionRevision) < 1)
@@ -103,7 +104,7 @@ export async function POST(request: NextRequest) {
       if (!result?.state || !Number.isInteger(result.revision)) return reply({ error: "invalid_response" }, 502);
       return reply({ state: { ...result.state, revision: result.revision }, synthetic: false });
     }
-    if (process.env.D5O_ISOLATED_PILOT === "1" && current.canonicalWorkId &&
+    if (authoritativeD5OCommandsReady() && current.canonicalWorkId &&
       command.action === "save-proposal-revision") {
       if (!command.commandId || !Number.isInteger(command.expectedDecisionRevision) ||
         Number(command.expectedDecisionRevision) < 1)
@@ -126,7 +127,7 @@ export async function POST(request: NextRequest) {
       if (!result?.state || !Number.isInteger(result.revision)) return reply({ error: "invalid_response" }, 502);
       return reply({ state: { ...result.state, revision: result.revision }, synthetic: false });
     }
-    if (process.env.D5O_ISOLATED_PILOT === "1" && current.canonicalWorkId &&
+    if (authoritativeD5OCommandsReady() && current.canonicalWorkId &&
       ["submit-proposal", "approve-proposal", "return-proposal"].includes(command.action)) {
       if (!command.commandId || !Number.isInteger(command.expectedDecisionRevision) ||
         Number(command.expectedDecisionRevision) < 0)
@@ -150,7 +151,7 @@ export async function POST(request: NextRequest) {
       if (!result?.state || !Number.isInteger(result.revision)) return reply({ error: "invalid_response" }, 502);
       return reply({ state: { ...result.state, revision: result.revision }, synthetic: false });
     }
-    if (process.env.D5O_ISOLATED_PILOT === "1" && current.canonicalWorkId &&
+    if (authoritativeD5OCommandsReady() && current.canonicalWorkId &&
       ["save-detailed-estimate", "submit-pricing", "approve-pricing", "return-pricing"].includes(command.action)) {
       if (!command.commandId || !Number.isInteger(command.expectedDecisionRevision) ||
         Number(command.expectedDecisionRevision) < 0)
@@ -175,7 +176,7 @@ export async function POST(request: NextRequest) {
       if (!result?.state || !Number.isInteger(result.revision)) return reply({ error: "invalid_response" }, 502);
       return reply({ state: { ...result.state, revision: result.revision }, synthetic: false });
     }
-    if (process.env.D5O_ISOLATED_PILOT === "1" && current.canonicalWorkId &&
+    if (authoritativeD5OCommandsReady() && current.canonicalWorkId &&
       ["submit-solution", "approve-solution", "return-solution"].includes(command.action)) {
       if (!command.commandId || !Number.isInteger(command.expectedDecisionRevision) ||
         Number(command.expectedDecisionRevision) < 0)
@@ -199,6 +200,7 @@ export async function POST(request: NextRequest) {
       if (!result?.state || !Number.isInteger(result.revision)) return reply({ error: "invalid_response" }, 502);
       return reply({ state: { ...result.state, revision: result.revision }, synthetic: false });
     }
+    if (current.canonicalWorkId) return reply({ error: "authoritative_command_unavailable" }, 409);
     const next = applyCommercialCommand(current, command,
       { id: context.actor.id, name: context.actor.name,
         membershipId: context.actor.membershipId, role: context.actor.role },

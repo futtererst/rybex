@@ -1,3 +1,4 @@
+import { authoritativeD5OCommandsReady } from "@/lib/d5o/auth/hosted-target";
 import { NextRequest, NextResponse } from "next/server";
 import { HostedStateError, hostedPrototypeContext } from "@/lib/d5o/hosted/prototype-context";
 import { validLocalScheduleOrigin } from "@/lib/d5o/scheduling/request-origin";
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
     const loaded = await context.read("work"), records = loaded.state?.records as WorkRecord[] | undefined;
     const index = records?.findIndex((item) => item.id === command.workId && item.workspace === workspace) ?? -1;
     if (!records || index < 0) return reply({ error: "work_unavailable" }, 404);
-    if (process.env.D5O_ISOLATED_PILOT === "1" && records[index].canonicalWorkId) {
+    if (authoritativeD5OCommandsReady() && records[index].canonicalWorkId) {
       if (!Number.isInteger(command.expectedDecisionRevision) || Number(command.expectedDecisionRevision) < 0)
         return reply({ error: "invalid_decision_revision" }, 400);
       const client = await createRybexSupabaseServerClient();

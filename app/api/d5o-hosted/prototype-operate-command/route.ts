@@ -1,3 +1,4 @@
+import { authoritativeD5OCommandsReady } from "@/lib/d5o/auth/hosted-target";
 import { NextRequest, NextResponse } from "next/server";
 import { HostedStateError, hostedPrototypeContext } from "@/lib/d5o/hosted/prototype-context";
 import { validLocalScheduleOrigin } from "@/lib/d5o/scheduling/request-origin";
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
     const index = records?.findIndex((item) => item.id === command.workId && item.workspace === workspace) ?? -1;
     if (!records || index < 0) return reply({ error: "work_unavailable" }, 404);
     const selected = records[index];
-    if (process.env.D5O_ISOLATED_PILOT === "1" && selected.canonicalWorkId) {
+    if (authoritativeD5OCommandsReady() && selected.canonicalWorkId) {
       if (["save-service-estimate", "submit-service-pricing", "approve-service-pricing",
         "return-service-pricing", "record-service-authorization"].includes(command.action)) {
         if (!command.requestId || !Number.isInteger(command.expectedDecisionRevision))
@@ -173,7 +174,7 @@ export async function POST(request: NextRequest) {
     if (changed.updatedRelated && (relatedIndex < 0 || relatedIndex === index || changed.updatedRelated.workspace !== workspace || changed.updatedRelated.serviceSource?.parentWorkId !== command.workId || records[relatedIndex].serviceSource?.parentWorkId !== command.workId)) return reply({ error: "related_work_conflict" }, 409);
     const next = records.map((item, i) => i === index ? changed.work : item);
     if (changed.updatedRelated) next[relatedIndex] = changed.updatedRelated;
-    if (process.env.D5O_ISOLATED_PILOT === "1" && changed.related) {
+    if (authoritativeD5OCommandsReady() && changed.related) {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(command.commandId)
         || !records[index].canonicalWorkId)
         return reply({ error: "canonical_parent_required" }, 409);

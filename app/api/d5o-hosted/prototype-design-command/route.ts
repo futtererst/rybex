@@ -1,3 +1,4 @@
+import { authoritativeD5OCommandsReady } from "@/lib/d5o/auth/hosted-target";
 import { NextRequest, NextResponse } from "next/server";
 import { applyDesignCommand, type DesignCommand } from "@/lib/d5o/prototype-work/design-command";
 import { PrototypeWorkError } from "@/lib/d5o/prototype-work/store-error";
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
     const index = records.findIndex((item) => item && typeof item === "object" && (item as WorkRecord).id === command.workId && (item as WorkRecord).workspace === workspace);
     if (index < 0) return reply({ error: "work_unavailable" }, 404);
     const current = records[index] as WorkRecord;
-    if (process.env.D5O_ISOLATED_PILOT === "1" && current.canonicalWorkId
+    if (authoritativeD5OCommandsReady() && current.canonicalWorkId
       && current.serviceSource && command.action.endsWith("service-basis")) {
       if (!Number.isInteger(command.expectedDecisionRevision)
         || !Number.isInteger(command.expectedOperateRevision)
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest) {
       if (!result?.state || !Number.isInteger(result.revision)) return reply({ error: "invalid_response" }, 502);
       return reply({ state: { ...result.state, revision: result.revision }, synthetic: false });
     }
-    if (process.env.D5O_ISOLATED_PILOT === "1" && current.canonicalWorkId &&
+    if (authoritativeD5OCommandsReady() && current.canonicalWorkId &&
       ["save-document", "save-package", "save-demand", "submit-document", "approve-document",
         "issue-document", "request-review", "decide-review",
         "release-package", "respond-receipt"].includes(command.action)) {
@@ -88,6 +89,7 @@ export async function POST(request: NextRequest) {
       if (!result?.state || !Number.isInteger(result.revision)) return reply({ error: "invalid_response" }, 502);
       return reply({ state: { ...result.state, revision: result.revision }, synthetic: false });
     }
+    if (current.canonicalWorkId) return reply({ error: "authoritative_command_unavailable" }, 409);
     const schedule = command.action === "release-package" || command.action === "release-set" ? (await context.read("schedule")).state as SharedSchedule | null : null;
     const crewDemand = schedule?.packageDemands.find((item) => item.packageId === command.packageId && item.workId === command.workId) ?? null;
     const work = current;

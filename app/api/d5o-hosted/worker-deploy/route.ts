@@ -1,3 +1,4 @@
+import { authoritativeD5OCommandsReady } from "@/lib/d5o/auth/hosted-target";
 import { NextRequest, NextResponse } from "next/server";
 import { createHash, randomUUID } from "node:crypto";
 import type { WorkRecord } from "@/components/d5o/platform/work-types";
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
     const index = records?.findIndex((item) => item.id === command.workId && item.workspace === workspace) ?? -1;
     if (index < 0 || !records || !schedule || !assigned(schedule, context.person, command.workId, command.packageId, command.bookingId, command.publicationId)) return reply({ error: "assignment_required" }, 403);
     const work = records[index];
-    if (process.env.D5O_ISOLATED_PILOT === "1" && work.canonicalWorkId) {
+    if (authoritativeD5OCommandsReady() && work.canonicalWorkId) {
       if (!["save-report", "submit-report", "record-inspection"].includes(command.action))
         return reply({ error: "authoritative_command_unavailable", message: "This worker action is not yet connected to the isolated pilot decision service." }, 409);
       if (!Number.isInteger(command.expectedDesignRevision) || !Number.isInteger(command.expectedScheduleRevision)
@@ -112,7 +113,7 @@ export async function PUT(request: NextRequest) {
     uploadedPath = objectPath(workId, id);
     const uploaded = await context.admin.storage.from(bucket).upload(uploadedPath, bytes, { contentType: file.type, upsert: false });
     if (uploaded.error) throw new HostedStateError("evidence_storage_unavailable", 503);
-    if (process.env.D5O_ISOLATED_PILOT === "1" && work.canonicalWorkId) {
+    if (authoritativeD5OCommandsReady() && work.canonicalWorkId) {
       const expectedDesignRevision = Number(form.get("expectedDesignRevision"));
       const expectedScheduleRevision = Number(form.get("expectedScheduleRevision"));
       const expectedDecisionRevision = Number(form.get("expectedDecisionRevision"));

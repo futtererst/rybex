@@ -1,3 +1,4 @@
+import { authoritativeD5OCommandsReady } from "@/lib/d5o/auth/hosted-target";
 import { NextRequest, NextResponse } from "next/server";
 import { applyDeployCommand, deployCommandFingerprint, type DeployCommand } from "@/lib/d5o/prototype-work/deploy-command";
 import { PrototypeWorkError } from "@/lib/d5o/prototype-work/store-error";
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
     const index = records.findIndex((item) => item && typeof item === "object" && (item as WorkRecord).id === command.workId && (item as WorkRecord).workspace === workspace);
     if (index < 0) return reply({ error: "work_unavailable" }, 404);
     const selected = records[index] as WorkRecord;
-    if (process.env.D5O_ISOLATED_PILOT === "1" && selected.canonicalWorkId) {
+    if (authoritativeD5OCommandsReady() && selected.canonicalWorkId) {
       if (!command.packageId || !Number.isInteger(command.expectedDesignRevision)
         || !Number.isInteger(command.expectedScheduleRevision)
         || !Number.isInteger(command.expectedDecisionRevision))
@@ -130,7 +131,7 @@ export async function PUT(request: NextRequest) {
     if (index < 0 || !records) return reply({ error: "work_unavailable" }, 404);
     if (expectedRevision !== loaded.revision) return reply({ error: "stale_state" }, 409);
     const work = records[index], config = resolvePublishedPhaseConfiguration(await hostedConfigurationInventory(workspace as WorkRecord["workspace"]), work.workspace, work.type, work);
-    if (process.env.D5O_ISOLATED_PILOT === "1" && work.canonicalWorkId)
+    if (authoritativeD5OCommandsReady() && work.canonicalWorkId)
       return reply({ error: "worker_upload_required", message: "The assigned worker must upload this package evidence from My assigned work." }, 403);
     if (work.phaseConfigurationVersionId && !config) return reply({ error: "deploy_policy_unavailable" }, 409);
     const bytes = Buffer.from(await file.arrayBuffer()), id = randomUUID();

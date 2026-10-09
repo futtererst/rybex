@@ -1,3 +1,4 @@
+import { authoritativeD5OCommandsReady } from "@/lib/d5o/auth/hosted-target";
 import { NextRequest, NextResponse } from "next/server";
 import { createRybexSupabaseServerClient } from "@/lib/d5o/auth/supabase-server";
 import { hostedD5OTargetReady } from "@/lib/d5o/auth/hosted-target";
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
       if (!["rybex", "rotork"].includes(workspace)) return reply({ error: "invalid_target" }, 400);
       const command = JSON.parse(text) as PricingPolicyCommand;
       if (!command || !["save-draft", "publish", "activate"].includes(command.action) || !Number.isInteger(command.expectedRevision)) return reply({ error: "invalid_command" }, 400);
-      if (process.env.D5O_ISOLATED_PILOT === "1") {
+      if (authoritativeD5OCommandsReady()) {
         const scopedClient = await createRybexSupabaseServerClient();
         const call = scopedClient.rpc.bind(scopedClient) as unknown as
           (name: string, args: Record<string, unknown>) => Promise<RpcResult>;

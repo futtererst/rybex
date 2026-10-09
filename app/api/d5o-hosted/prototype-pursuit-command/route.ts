@@ -1,3 +1,4 @@
+import { authoritativeD5OCommandsReady } from "@/lib/d5o/auth/hosted-target";
 import { NextRequest, NextResponse } from "next/server";
 import { createRybexSupabaseServerClient } from "@/lib/d5o/auth/supabase-server";
 import { validLocalScheduleOrigin } from "@/lib/d5o/scheduling/request-origin";
@@ -8,7 +9,7 @@ const reply = (body: unknown, status = 200) => NextResponse.json(body, {
 });
 
 export async function POST(request: NextRequest) {
-  if (process.env.D5O_ISOLATED_PILOT !== "1") return reply({ error: "pilot_only" }, 404);
+  if (!authoritativeD5OCommandsReady()) return reply({ error: "authoritative_runtime_unavailable" }, 503);
   if (!validLocalScheduleOrigin(request.headers)) return reply({ error: "invalid_origin" }, 403);
   const workspace = request.nextUrl.searchParams.get("workspace") ?? "";
   if (!/^[a-z][a-z0-9_-]{1,63}$/.test(workspace)) return reply({ error: "invalid_workspace" }, 400);

@@ -1,3 +1,4 @@
+import { authoritativeD5OCommandsReady } from "@/lib/d5o/auth/hosted-target";
 import { NextRequest, NextResponse } from "next/server";
 import type { WorkspaceKey } from "@/components/d5o/platform/schedule-model";
 import type { SharedWorkCatalog } from "@/components/d5o/platform/work-catalog-model";
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
       ? { ...loaded.state, revision: loaded.revision }
       : initialHostedSchedule(workspace as WorkspaceKey);
     return reply({ schedule, canEdit: context.canEdit, delivery,
-      requiresPublication: process.env.D5O_ISOLATED_PILOT === "1", synthetic: true });
+      requiresPublication: authoritativeD5OCommandsReady(), synthetic: true });
   } catch (error) {
     if (error instanceof HostedStateError) return reply({ error: error.code }, error.status);
     return reply({ error: "schedule_unavailable" }, 503);
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
     const input = JSON.parse(body) as ScheduleMutation;
     const context = await hostedPrototypeContext(workspace);
     if (!context.canEdit) return reply({ error: "workspace_forbidden" }, 403);
-    if (process.env.D5O_ISOLATED_PILOT === "1") {
+    if (authoritativeD5OCommandsReady()) {
       if (input.action !== "save-booking" && input.action !== "publish")
         return reply({ error: "typed_schedule_command_required" }, 409);
       const commandId = (input as ScheduleMutation & { commandId?: string }).commandId;

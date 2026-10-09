@@ -1,3 +1,4 @@
+import { authoritativeD5OCommandsReady } from "@/lib/d5o/auth/hosted-target";
 import { NextRequest, NextResponse } from "next/server";
 import type { WorkspaceKey } from "@/components/d5o/platform/schedule-model";
 import type { CatalogMutation, SharedWorkCatalog } from "@/components/d5o/platform/work-catalog-model";
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
     const input = JSON.parse(body) as CatalogMutation;
     const context = await hostedPrototypeContext(workspace);
     if (!context.canEdit) return reply({ error: "workspace_forbidden" }, 403);
-    if (process.env.D5O_ISOLATED_PILOT === "1" && input.action === "register-record")
+    if (authoritativeD5OCommandsReady() && input.action === "register-record")
       return reply({ error: "connected_creation_required", message: "Pilot work must be created with its canonical identity and catalog row in one transaction." }, 409);
     if (input.action === "create-record" || input.action === "register-record") {
       const candidate = input.action === "create-record" ? input : input.record;
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
           candidate.type, candidate.phaseConfigurationVersionId, true))
         return reply({ error: "configuration_changed",
           message: "Select a Work Type from the active published configuration." }, 409);
-      if (process.env.D5O_ISOLATED_PILOT === "1" && input.action === "create-record") {
+      if (authoritativeD5OCommandsReady() && input.action === "create-record") {
         const type = resolvePublishedPhaseConfiguration(inventory, workspace as WorkspaceKey, input.type);
         if (!type || !input.commandId || !/^[0-9a-f-]{36}$/i.test(input.commandId))
           return reply({ error: "invalid_connected_command" }, 400);
@@ -99,7 +100,7 @@ export async function POST(request: NextRequest) {
       if (discovery?.pursuitControl && (discovery.outcome !== "Won"
         || discovery.designHandoff?.status !== "accepted"))
         return reply({ error: "design_handoff_required" }, 409);
-      if (process.env.D5O_ISOLATED_PILOT === "1" && candidate?.canonicalWorkId) {
+      if (authoritativeD5OCommandsReady() && candidate?.canonicalWorkId) {
         const isService = !!candidate.serviceSource;
         if (isService && (candidate.serviceExecutionBasis as { status?: string } | undefined)?.status !== "accepted")
           return reply({ error: "accepted_service_basis_required" }, 409);

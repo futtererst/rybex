@@ -1,5 +1,6 @@
 "use server";
 
+import { authoritativeD5OCommandsReady } from "@/lib/d5o/auth/hosted-target";
 import { revalidatePath } from "next/cache";
 import { getRequestContext } from "@/lib/d5o/auth/request-context";
 import { createRybexSupabaseServerClient } from "@/lib/d5o/auth/supabase-server";
@@ -29,7 +30,7 @@ function errorMessage(error: unknown) {
 
 export async function verifyActiveConfigurationPin(workspaceId: string, expectedVersionId: string): Promise<{ ok: boolean; error?: string }> {
   try {
-    if (process.env.D5O_ISOLATED_PILOT === "1") {
+    if (authoritativeD5OCommandsReady()) {
       const inventory = await hostedConfigurationInventory("rybex");
       if (inventory.workspaceId !== workspaceId || inventory.activeVersionId !== expectedVersionId)
         throw new Error("configuration_default_changed_refresh_required");

@@ -5,7 +5,7 @@ import { assertProofEnvironment } from "@/lib/d5o/work-record/server";
 import { crewPersonForUser, scheduleWorkspaceKeys } from "@/lib/d5o/scheduling/crew-identity";
 import { loadConfigurationInventory } from "@/lib/d5o/configuration/server";
 import { createRybexSupabaseServerClient } from "@/lib/d5o/auth/supabase-server";
-import { hostedD5OTargetReady } from "@/lib/d5o/auth/hosted-target";
+import { d5oCommandRuntime, hostedD5OTargetReady } from "@/lib/d5o/auth/hosted-target";
 import { hostedConfigurationInventory } from "@/lib/d5o/hosted/configuration-inventory";
 import type { WorkspaceKey } from "@/components/d5o/platform/work-types";
 import Link from "next/link";
@@ -20,7 +20,7 @@ export default async function WorkHomePage({ searchParams }: {
   searchParams?: Promise<{ workspace?: string }>;
 }) {
   const sourceVersion = process.env.D5O_SOURCE_SHA ?? process.env.VERCEL_GIT_COMMIT_SHA ?? "source-unidentified";
-  const isolatedPilot = process.env.D5O_ISOLATED_PILOT === "1";
+  const isolatedPilot = ["pilot", "rehearsal"].includes(d5oCommandRuntime() ?? "");
   if (process.env.D5O_HOSTED_ENABLED === "1") {
     if (!hostedD5OTargetReady()) throw new Error("hosted_target_unavailable");
     const client = await createRybexSupabaseServerClient();

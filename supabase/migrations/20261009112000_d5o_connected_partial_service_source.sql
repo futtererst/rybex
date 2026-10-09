@@ -341,7 +341,7 @@ begin
     'type',v_type.display_name,'customer',v_parent_raw->>'customer',
     'site',v_parent_raw->>'site','stage','Design','owner',trim(p_owner),
     'nextAction','Prepare and approve service execution basis before Design release',
-    'progress',0,'value',case when v_pricing is null then 'Covered service obligation' else 'Partially covered service � priced uncovered scope' end,'status','attention',
+    'progress',0,'value',case when v_pricing is null then 'Covered service obligation' else 'Partially covered service · priced uncovered scope' end,'status','attention',
     'proof','[]'::jsonb,'blockers','[]'::jsonb,
     'history',pg_catalog.jsonb_build_array(v_now::text||' · Service visit created from accepted support; field execution is not authorized.'),
     'phaseConfigurationVersionId',v_parent.configuration_version_id,
