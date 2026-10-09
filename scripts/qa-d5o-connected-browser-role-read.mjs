@@ -19,6 +19,9 @@ try {
     await page.getByRole("button", { name: "Continue to your work" }).click();
     await page.waitForURL((url) => url.pathname.startsWith("/work"), { timeout: 30000 });
     await page.waitForLoadState("networkidle");
+    if (key !== "worker") await page.waitForFunction(
+      () => document.body.innerText.includes("Synthetic") && document.body.innerText.includes("Operate"),
+      null, { timeout: 30000 });
     const body = await page.locator("body").innerText();
     if (key === "worker") {
       if (!body.includes("MY CREW SCHEDULE") || body.includes("System administrator")
@@ -32,6 +35,9 @@ try {
     if (key === "pm") {
       await page.goto(`${base}/work?workspace=rybex&view=record&section=Design&record=rybex-d910a2a58a9c46038fb459436e1839c3`);
       await page.waitForLoadState("networkidle");
+      await page.waitForFunction(
+        () => document.body.innerText.includes("Synthetic covered monitoring inspection"),
+        null, { timeout: 30000 });
       const serviceBody = await page.locator("body").innerText();
       if (!serviceBody.includes("Synthetic covered monitoring inspection"))
         throw new Error("service_visit_missing_from_work_browser");
