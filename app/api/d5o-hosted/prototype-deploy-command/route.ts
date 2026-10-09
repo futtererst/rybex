@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
       const acceptanceAction = ["assemble-turnover", "accept-client", "accept-work",
         "respond-operate", "respond-operate-work"].includes(command.action);
       if (!startAction && !factAction && !evidenceAction && !acceptanceAction)
-        return reply({ error: "authoritative_command_unavailable", message: "This action is not yet connected to the isolated pilot decision service." }, 409);
+        return reply({ error: "authoritative_command_unavailable", message: "This action is not connected to the authenticated decision service." }, 409);
       const common = {
         p_workspace_key: workspace,p_presentation_id: command.workId,
         p_package_id: command.packageId,p_action: command.action,

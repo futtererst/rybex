@@ -187,7 +187,7 @@ function mergeSharedWork(local: Work[], catalog: SharedWorkCatalog): Work[] {
   return changed ? merged : local;
 }
 
-export function D5OPlatform({ initialWorkspace, configurationInventory, actorLabel, actorRole, actorId, hostedPreview = false, isolatedPilot = false, sourceVersion = "source-unidentified" }: { initialWorkspace: WorkspaceKey; configurationInventory: ConfigurationInventory; actorLabel?: string; actorRole?: string; actorId?: string; hostedPreview?: boolean; isolatedPilot?: boolean; sourceVersion?: string }) {
+export function D5OPlatform({ initialWorkspace, configurationInventory, actorLabel, actorRole, actorId, hostedPreview = false, authoritativeCommands = false, sourceVersion = "source-unidentified" }: { initialWorkspace: WorkspaceKey; configurationInventory: ConfigurationInventory; actorLabel?: string; actorRole?: string; actorId?: string; hostedPreview?: boolean; authoritativeCommands?: boolean; sourceVersion?: string }) {
   const [activeWorkspace] = useState<WorkspaceKey>(initialWorkspace);
   const [accent, setAccent] = useState<string>(workspace[initialWorkspace].color);
   const [workspaceDark, setWorkspaceDark] = useState<string>(workspace[initialWorkspace].dark);
@@ -208,11 +208,12 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
   const [defineReviewEntry, setDefineReviewEntry] = useState<"commercial" | "delivery" | null>(null);
   const [crewEntry, setCrewEntry] = useState<"coverage" | "attendance" | null>(null);
   const [crewFocusWorkId, setCrewFocusWorkId] = useState<string | null>(null);
-  const [work, setWork] = useState<Work[]>(() => seed.map(hydrate));
+  const [work, setWork] = useState<Work[]>(() => hostedPreview ? [] : seed.map(hydrate));
   const [workLoaded, setWorkLoaded] = useState(false);
   const [canEditWork, setCanEditWork] = useState(false);
   const [sharedWorkRevision, setSharedWorkRevision] = useState<number | null>(null);
   const lastSharedWork = useRef("");
+  const workSaveInFlight = useRef(false);
   const pendingDiscoverSave = useRef<string | null>(null);
   const pendingReviewQueue = useRef<"pricing" | "proposal" | "definition" | null>(null);
   const sharedWorkRevisionRef = useRef<number | null>(null);
@@ -237,7 +238,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
   useEffect(() => {
     let active = true;
     const restore = async () => {
-      let restored = seed.filter((record) => !hostedPreview || record.workspace === initialWorkspace).map(hydrate);
+      let restored = hostedPreview ? [] : seed.filter((record) => record.workspace === initialWorkspace).map(hydrate);
       let revision: number | null = null;
       let fromShared = false;
       try {
@@ -247,7 +248,8 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
           if (active) setCanEditWork(payload.canEdit === true);
           if (payload.state && Array.isArray(payload.state.records)) {
             revision = payload.state.revision;
-            if (payload.state.records.length) { restored = payload.state.records.map(hydrate); fromShared = true; }
+            restored = payload.state.records.map(hydrate);
+            fromShared = true;
           } else if (hostedPreview && response.ok) revision = 0;
         }
       } catch { /* The browser-local copy remains a usable offline fallback. */ }
@@ -261,9 +263,10 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
         } catch { /* Seed data remains available without browser storage. */ }
       }
       if (!active) return;
-      const serialized = JSON.stringify(isolatedPilot ? restored.filter((record) => !!record.canonicalWorkId) : restored);
-      // An empty isolated database must not import the bundled presentation examples.
-      lastSharedWork.current = fromShared || isolatedPilot ? serialized : "";
+      const serialized = JSON.stringify(restored);
+      // Hosted work is always projected from the server, including an empty workspace.
+      // Never import bundled demonstration rows through a hosted draft save.
+      lastSharedWork.current = fromShared || hostedPreview ? serialized : "";
       sharedWorkRevisionRef.current = revision;
       setSharedWorkRevision(revision);
       setWork(restored);
@@ -271,7 +274,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     };
     void restore();
     return () => { active = false; };
-  }, [initialWorkspace, hostedPreview, isolatedPilot, workStateEndpoint]);
+  }, [initialWorkspace, hostedPreview, workStateEndpoint]);
 
   useEffect(() => {
     let savedAccent: string = workspace[initialWorkspace].color;
@@ -308,10 +311,15 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
 
   useEffect(() => {
     if (!workLoaded || sharedWorkRevision === null) return;
-    const persistedWork = isolatedPilot ? work.filter((record) => !!record.canonicalWorkId) : work;
+    const persistedWork = work;
     const serialized = JSON.stringify(persistedWork);
     if (serialized === lastSharedWork.current) return;
     const timer = window.setTimeout(async () => {
+      // Multiple rapid draft edits must not post the same expected revision
+      // concurrently. The successful response advances sharedWorkRevision,
+      // which schedules the latest unsaved local draft in the next effect.
+      if (workSaveInFlight.current) return;
+      workSaveInFlight.current = true;
       try {
         const response = await fetch(workStateEndpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: hostedPreview
           ? JSON.stringify({ workspace: activeWorkspace, key: "work", expectedRevision: sharedWorkRevisionRef.current,
@@ -331,8 +339,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
         // a subsequent ordinary edit does not resend stale controlled fields.
         const projected = payload.state.records?.map(hydrate);
         lastSharedWork.current = projected ? JSON.stringify(projected) : serialized;
-        if (projected) setWork((current) => JSON.stringify(isolatedPilot
-          ? current.filter((record) => !!record.canonicalWorkId) : current) === serialized
+        if (projected) setWork((current) => JSON.stringify(current) === serialized
           ? projected : current);
         sharedWorkRevisionRef.current = payload.state.revision;
         setSharedWorkRevision(payload.state.revision);
@@ -348,10 +355,10 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       } catch (error) {
         pendingReviewQueue.current = null;
         if (pendingDiscoverSave.current) setNotice(`The Discover change was not saved: ${error instanceof Error ? error.message : "Connection failed"}.`);
-      }
+      } finally { workSaveInFlight.current = false; }
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [work, activeWorkspace, workLoaded, sharedWorkRevision, hostedPreview, isolatedPilot, workStateEndpoint]);
+  }, [work, activeWorkspace, workLoaded, sharedWorkRevision, hostedPreview, workStateEndpoint]);
 
   useEffect(() => {
     if (!workLoaded || sharedWorkRevision === null) return;
@@ -379,10 +386,10 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
   }, [work, workLoaded, sharedWorkRevision, workStateEndpoint]);
 
   useEffect(() => {
-    if (!workLoaded || !sharedWork.catalog) return;
+    if (!workLoaded || !sharedWork.catalog || hostedPreview) return;
     const frame = requestAnimationFrame(() => setWork((all) => mergeSharedWork(all, sharedWork.catalog!)));
     return () => cancelAnimationFrame(frame);
-  }, [workLoaded, sharedWork.catalog]);
+  }, [workLoaded, sharedWork.catalog, hostedPreview]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -408,8 +415,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       pinned,
     };
   };
-  const visibleWork = useMemo(() => work.filter((item) => item.workspace === activeWorkspace &&
-    (!isolatedPilot || !!item.canonicalWorkId || !seededWorkIds[activeWorkspace].includes(item.id))).map((item) => ({ ...item, status: item.status === "complete" ? "complete" as const : item.status === "attention" || transitionBlockers(item, resolvePublishedPhaseConfiguration(configurationInventory, item.workspace, item.type, item as WorkRecord)).length ? "attention" as const : "moving" as const })), [work, activeWorkspace, configurationInventory, isolatedPilot]);
+  const visibleWork = useMemo(() => work.filter((item) => item.workspace === activeWorkspace).map((item) => ({ ...item, status: item.status === "complete" ? "complete" as const : item.status === "attention" || transitionBlockers(item, resolvePublishedPhaseConfiguration(configurationInventory, item.workspace, item.type, item as WorkRecord)).length ? "attention" as const : "moving" as const })), [work, activeWorkspace, configurationInventory]);
   const operateTimezones = useMemo(() => Object.fromEntries(visibleWork.map((item) => [item.id, resolvePublishedPhaseConfiguration(configurationInventory, item.workspace, item.type, item as WorkRecord)?.operateControls?.timezone ?? legacyOperateControlPolicy.timezone])), [visibleWork, configurationInventory]);
   const operationalWork = useMemo(() => visibleWork.map((item) => ({ ...item, blockers: transitionBlockers(item, resolvePublishedPhaseConfiguration(configurationInventory, item.workspace, item.type, item as WorkRecord)) })), [visibleWork, configurationInventory]);
   const schedulingProfiles = useMemo(() => applyAvailability(peopleProfiles[activeWorkspace], availabilityBlocks), [activeWorkspace, availabilityBlocks]);
@@ -482,13 +488,13 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
   }
   function updateWork(id: string, transform: (item: Work) => Work) { setWork((all) => all.map((item) => item.id === id ? transform(hydrate(item)) : item)); }
   async function executePursuitCommand(workId: string, command: PursuitCommand): Promise<boolean> {
-    if (!isolatedPilot || !work.find((item) => item.id === workId)?.canonicalWorkId) return false;
+    if (!authoritativeCommands || !work.find((item) => item.id === workId)?.canonicalWorkId) return false;
     const expectedRevision = sharedWorkRevisionRef.current;
-    if (expectedRevision === null || JSON.stringify(work.filter((record) => !!record.canonicalWorkId)) !== lastSharedWork.current) {
+    if (expectedRevision === null || JSON.stringify(work) !== lastSharedWork.current) {
       setNotice("Wait for the opportunity draft to finish saving before recording a pursuit action."); return false;
     }
     if (command.kind === "request-spend" || command.kind === "decide-spend") {
-      setNotice("Pursuit spend is a separate decision and is not yet connected to this pilot authority path."); return false;
+      setNotice("Pursuit spend is a separate decision and is not yet connected to this authoritative command path."); return false;
     }
     const intent = command.kind === "save" ? { ...command.fields, ...command.workFields }
       : command.kind === "decide" || command.kind === "respond-handoff"
@@ -576,11 +582,9 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
         setScreen("my-work");
         setMobileMenuOpen(false);
       }
-      setNotice(hostedPreview && selected?.canonicalWorkId &&
-        (command.action.endsWith("solution") ||
-          ["save-detailed-estimate", "submit-pricing", "approve-pricing", "return-pricing"].includes(command.action))
-        ? `${command.action.replaceAll("-", " ")} saved against the isolated pilot's authenticated Develop decisions. The policy and roles are test fixtures.`
-        : `${command.action.replaceAll("-", " ")} recorded in shared synthetic revision ${payload.state.revision}. The role queue does not represent delegated business authority.`);
+      setNotice(authoritativeCommands && selected?.canonicalWorkId
+        ? `${command.action.replaceAll("-", " ")} recorded against authenticated Work revision ${payload.state.revision}.`
+        : `${command.action.replaceAll("-", " ")} recorded in shared prototype revision ${payload.state.revision}. The role queue does not represent delegated business authority.`);
       return true;
     } catch {
       setNotice("The commercial command could not reach the service. No decision was recorded.");
@@ -600,7 +604,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       const serviceParent = selected?.serviceSource
         ? work.find((item) => item.id === selected.serviceSource?.parentWorkId) : undefined;
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...command, expectedRevision, commandId: crypto.randomUUID(),
-        ...(isolatedPilot && selected?.canonicalWorkId ? { expectedDecisionRevision:
+        ...(authoritativeCommands && selected?.canonicalWorkId ? { expectedDecisionRevision:
           serviceBasisAction ? selected.serviceExecutionBasis?.authorityRevision ?? 0
             : (selected.design as { authorityRevision?: number } | undefined)?.authorityRevision ?? 0,
           ...(serviceBasisAction ? { expectedOperateRevision: serviceParent?.operate?.authorityRevision ?? -1 } : {}) } : {}) }) });
@@ -611,7 +615,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       sharedWorkRevisionRef.current = payload.state.revision;
       setSharedWorkRevision(payload.state.revision);
       setWork(next);
-      setNotice(`Design ${command.action.replaceAll("-", " ")} saved${isolatedPilot && selected?.canonicalWorkId ? " against the isolated pilot Work Record" : ` in shared synthetic revision ${payload.state.revision}`}.`);
+      setNotice(`Design ${command.action.replaceAll("-", " ")} saved${authoritativeCommands && selected?.canonicalWorkId ? ` against authenticated Work revision ${payload.state.revision}` : ` in shared prototype revision ${payload.state.revision}`}.`);
       return true;
     } catch { setNotice("The Design service could not be reached. No decision was recorded."); return false; }
   }
@@ -623,7 +627,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     try {
       const endpoint = hostedPreview ? `/api/d5o-hosted/prototype-deploy-command?workspace=${encodeURIComponent(activeWorkspace)}` : "/api/work/deploy-command";
       const selected = work.find((item) => item.id === command.workId);
-      const controlled = isolatedPilot && selected?.canonicalWorkId;
+      const controlled = authoritativeCommands && !!selected?.canonicalWorkId;
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...command, expectedRevision, commandId: crypto.randomUUID(),
         ...(controlled ? { expectedDesignRevision: (selected.design as { authorityRevision?: number } | undefined)?.authorityRevision ?? 0,
           expectedScheduleRevision: sharedSchedule.schedule?.revision ?? 0,
@@ -635,7 +639,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       sharedWorkRevisionRef.current = payload.state.revision;
       setSharedWorkRevision(payload.state.revision);
       setWork(next);
-      setNotice(`Deploy ${command.action.replaceAll("-", " ")} saved${controlled ? " against the isolated pilot Work Record" : ` in shared synthetic revision ${payload.state.revision}`}.`);
+      setNotice(`Deploy ${command.action.replaceAll("-", " ")} saved${controlled ? ` against authenticated Work revision ${payload.state.revision}` : ` in shared prototype revision ${payload.state.revision}`}.`);
       return true;
     } catch { setNotice("The Deploy service could not be reached. No field action was recorded."); return false; }
   }
@@ -655,7 +659,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
         ?? selected?.operate?.jobs.find((item) => item.id === selected.operate?.requests.find((request) => request.id === command.requestId)?.currentCycleJobIds?.[0]);
       const serviceWork = serviceJob ? work.find((item) => item.id === serviceJob.workId) : undefined;
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...command, expectedRevision: pending.expectedRevision, commandId: pending.commandId,
-        ...(isolatedPilot && selected?.canonicalWorkId ? { expectedDeployRevision: selected.deploy?.authorityRevision ?? 0,
+        ...(authoritativeCommands && selected?.canonicalWorkId ? { expectedDeployRevision: selected.deploy?.authorityRevision ?? 0,
           expectedDecisionRevision: selected.operate?.authorityRevision ?? 0,
           expectedServiceDeployRevision: serviceWork?.deploy?.authorityRevision ?? 0 } : {}) }) });
       const payload = await response.json() as { state?: { revision: number; records: Work[] }; message?: string };
@@ -668,7 +672,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       const next = payload.state.records.map(hydrate);
       lastSharedWork.current = JSON.stringify(next); sharedWorkRevisionRef.current = payload.state.revision;
       setSharedWorkRevision(payload.state.revision); setWork(next);
-      setNotice(`Operate ${command.action.replaceAll("-", " ")} saved${isolatedPilot && selected?.canonicalWorkId ? " against the isolated pilot Work Record" : ` in shared synthetic revision ${payload.state.revision}`}.`);
+      setNotice(`Operate ${command.action.replaceAll("-", " ")} saved${authoritativeCommands && selected?.canonicalWorkId ? ` against authenticated Work revision ${payload.state.revision}` : ` in shared prototype revision ${payload.state.revision}`}.`);
       return true;
     } catch { setNotice("The Operate service could not be reached. No action was recorded."); return false; }
   }
@@ -683,7 +687,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       if (!response.ok || !payload.state) { setNotice(payload.message ?? "The field file was not saved."); return false; }
       const next = payload.state.records.map(hydrate);
       lastSharedWork.current = JSON.stringify(next); sharedWorkRevisionRef.current = payload.state.revision; setSharedWorkRevision(payload.state.revision); setWork(next);
-      setNotice("Field file uploaded to private prototype custody. Independent evidence review is still required."); return true;
+      setNotice("Field file uploaded to private evidence custody. Independent evidence review is still required."); return true;
     } catch { setNotice("Field upload failed. Select the file again and retry."); return false; }
   }
   async function synchronizePricingRevision(): Promise<void> {
@@ -726,7 +730,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     const due = String(form.get("nextActionDue") ?? "");
     const impact = String(form.get("nextActionImpact") ?? "");
     updateWork(item.id, (current) => ({ ...current, nextActionDue: due || null, nextActionImpact: impact === "Critical" || impact === "High" || impact === "Standard" ? impact : null }));
-    setNotice("Next-action due date and impact updated for this prototype Work Record.");
+    setNotice("Next-action due date and impact updated for this Work Record.");
   }
   async function startWork(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const form = new FormData(event.currentTarget); const title = String(form.get("title") ?? "").trim(); const customer = String(form.get("customer") ?? "").trim(); const site = String(form.get("site") ?? "").trim(); const type = String(form.get("type") ?? "").trim(); const value = String(form.get("value") ?? "").trim(); const owner = String(form.get("owner") ?? "").trim();
@@ -737,11 +741,16 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     try {
       const result = await sharedWork.mutate({ action: "create-record", title, customer, site, type, phaseConfigurationVersionId, value, owner });
       const created = result.created as CatalogWorkRecord;
-      if (isolatedPilot && result.workRevision !== undefined) {
-        sharedWorkRevisionRef.current = result.workRevision;
-        setSharedWorkRevision(result.workRevision);
+      if (authoritativeCommands) {
+        if (!result.workState || !created.canonicalWorkId) throw new Error("The authoritative Work Record response is incomplete. Refresh before continuing.");
+        const next = result.workState.records.map(hydrate);
+        lastSharedWork.current = JSON.stringify(next);
+        sharedWorkRevisionRef.current = result.workState.revision;
+        setSharedWorkRevision(result.workState.revision);
+        setWork(next);
+      } else {
+        setWork((all) => [hydrate(created), ...all.filter((item) => item.id !== created.id)]);
       }
-      setWork((all) => [hydrate(created), ...all.filter((item) => item.id !== created.id)]);
       setSelectedId(created.id); setTab("Overview"); setScreen("record");
       setNotice("Work Record started in the shared workspace. Complete Discover intake before qualification.");
     } catch (error) { setNotice(error instanceof Error ? error.message : "Work Record could not be shared."); }
@@ -756,21 +765,30 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
         procurement: record.discovery.procurement, closeDate: record.discovery.closeDate
       } : undefined });
     const created = result.created as CatalogWorkRecord;
-    if (isolatedPilot && result.workRevision !== undefined) {
-      sharedWorkRevisionRef.current = result.workRevision;
-      setSharedWorkRevision(result.workRevision);
-    }
     // The catalog owns the stable identity and initial position. Discover owns
     // the opportunity details, which are then saved on that same Work Record.
     const next = hydrate({ ...record, id: created.id, canonicalWorkId: created.canonicalWorkId, stage: created.stage,
       status: created.status, progress: created.progress,
       phaseConfigurationVersionId: created.phaseConfigurationVersionId });
-    if (!isolatedPilot) pendingDiscoverSave.current = created.id;
-    setWork((all) => [next, ...all.filter((item) => item.id !== created.id)]);
+    if (authoritativeCommands) {
+      if (!result.workState || !created.canonicalWorkId) throw new Error("The authoritative opportunity response is incomplete. Refresh before continuing.");
+      const baseline = result.workState.records.map(hydrate);
+      const createdProjection = baseline.find((item) => item.id === created.id);
+      if (!createdProjection) throw new Error("The new opportunity is missing from the authoritative Work Record response.");
+      lastSharedWork.current = JSON.stringify(baseline);
+      sharedWorkRevisionRef.current = result.workState.revision;
+      setSharedWorkRevision(result.workState.revision);
+      setWork(baseline.map((item) => item.id === created.id
+        ? hydrate({ ...next, ...createdProjection,
+            discovery: next.discovery
+              ? { ...next.discovery, ...createdProjection.discovery }
+              : createdProjection.discovery }) : item));
+    } else setWork((all) => [next, ...all.filter((item) => item.id !== created.id)]);
+    pendingDiscoverSave.current = created.id;
     setSelectedId(created.id);
     return created.id;
   }
-  function resetDemo() { const sample = seed.filter((record) => !hostedPreview || record.workspace === activeWorkspace).map(hydrate); setWork(sharedWork.catalog ? mergeSharedWork(sample, sharedWork.catalog) : sample); setSelectedId(activeWorkspace === "rybex" ? "rybex-1" : "rotork-1"); setScreen("my-work"); setNotice("Sample Work Record views restored. Shared Work Records, packages and crew publications were preserved."); }
+  function resetDemo() { if (hostedPreview) return; const sample = seed.filter((record) => record.workspace === activeWorkspace).map(hydrate); setWork(sharedWork.catalog ? mergeSharedWork(sample, sharedWork.catalog) : sample); setSelectedId(activeWorkspace === "rybex" ? "rybex-1" : "rotork-1"); setScreen("my-work"); setNotice("Sample Work Record views restored. Shared Work Records, packages and crew publications were preserved."); }
   function addEvidence(item: Work, event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -807,17 +825,21 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     if (!name) return;
     if (!sharedWork.canEdit || !sharedWork.catalog) { setNotice("Sign in with workspace editing authority before adding a shared Work Package."); return; }
     try {
-      if (!seededWorkIds[activeWorkspace].includes(item.id) && !sharedWork.catalog.records.some((record) => record.id === item.id))
+      if (authoritativeCommands && item.canonicalWorkId &&
+        !sharedWork.catalog.records.some((record) => record.id === item.id))
+        throw new Error("The canonical Work Record is missing from the shared catalog. Refresh before creating a package.");
+      if (!authoritativeCommands && !seededWorkIds[activeWorkspace].includes(item.id) && !sharedWork.catalog.records.some((record) => record.id === item.id))
         await sharedWork.mutate({ action: "register-record", record: { ...item, createdAt: "", createdBy: "" } });
       const result = await sharedWork.mutate({ action: "create-package", workId: item.id, name, owner,
-        ...(isolatedPilot && item.canonicalWorkId ? {
+        ...(authoritativeCommands && item.canonicalWorkId ? {
           expectedWorkRevision: sharedWorkRevisionRef.current ?? undefined,
           expectedHandoffRevision: item.serviceSource
             ? item.serviceExecutionBasis?.revision : item.discovery?.designHandoff?.revision,
           expectedPackageCount: sharedWork.catalog.packages.filter((candidate) => candidate.workId === item.id).length
         } : {}) });
       const entry = result.created as WorkPackage;
-      if (isolatedPilot && result.workState) {
+      if (authoritativeCommands && item.canonicalWorkId) {
+        if (!result.workState) throw new Error("The authoritative package response is incomplete. Refresh before continuing.");
         const next = result.workState.records.map(hydrate);
         lastSharedWork.current = JSON.stringify(next);
         sharedWorkRevisionRef.current = result.workState.revision;
@@ -845,7 +867,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     const demand: PackageCrewDemand = { packageId, workId: item.id, qualification: String(form.get("qualification") ?? ""), minimumPeople: Number(form.get("minimumPeople")), estimatedPersonHours: Number(form.get("estimatedPersonHours")), priority: String(form.get("priority") ?? "Normal") as PackageCrewDemand["priority"], prerequisite: String(form.get("prerequisite") ?? "").trim(), crewSchedulable: true, requiredSlots };
     if (!requiredSlots.length || requiredSlots.some((slot) => !slot.date || !slot.shift)) { setNotice("Add at least one complete required date and shift."); return; }
     try {
-      if (isolatedPilot && item.canonicalWorkId) {
+      if (authoritativeCommands && item.canonicalWorkId) {
         const saved = await executeDesignCommand({ action: "save-demand", workId: item.id, demand });
         if (saved) await sharedSchedule.refresh();
         return;
@@ -940,14 +962,14 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
         {designNavigation.map((item) => <button key={item.screen} aria-current={screen === item.screen ? "page" : undefined} className={screen === item.screen ? "is-active" : ""} onClick={() => go(item.screen)}><PlatformIcon name={item.icon} /><span>{item.label}</span></button>)}
       </nav>
       <div className="d5o-user-card"><span>YOUR ROLE</span><strong>{currentUserLabel}</strong><small>Actions are scoped to this workspace.</small></div>
-      <div className="d5o-appearance"><button onClick={() => setAppearanceOpen((open) => !open)}>Appearance {appearanceOpen ? "−" : "+"}</button>{appearanceOpen ? <div><p>Set the workspace accent and foundation colors for this review space.</p><label>Accent<input aria-label="Workspace accent color" type="color" value={accent} onChange={(event) => setAccent(event.target.value)} /></label><label>Foundation<input aria-label="Workspace foundation color" type="color" value={workspaceDark} onChange={(event) => setWorkspaceDark(event.target.value)} /></label><button className="d5o-reset" onClick={() => { setAccent(palette.color); setWorkspaceDark(palette.dark); }}>Restore {palette.short} theme</button><button className="d5o-reset" onClick={resetDemo}>Restore sample workspace</button></div> : null}</div>
+      <div className="d5o-appearance"><button onClick={() => setAppearanceOpen((open) => !open)}>Appearance {appearanceOpen ? "−" : "+"}</button>{appearanceOpen ? <div><p>Set the workspace accent and foundation colors for this review space.</p><label>Accent<input aria-label="Workspace accent color" type="color" value={accent} onChange={(event) => setAccent(event.target.value)} /></label><label>Foundation<input aria-label="Workspace foundation color" type="color" value={workspaceDark} onChange={(event) => setWorkspaceDark(event.target.value)} /></label><button className="d5o-reset" onClick={() => { setAccent(palette.color); setWorkspaceDark(palette.dark); }}>Restore {palette.short} theme</button>{!hostedPreview ? <button className="d5o-reset" onClick={resetDemo}>Restore sample workspace</button> : null}</div> : null}</div>
       </div>
       <small className="d5o-source-id" title={sourceVersion}>Build {sourceVersion.slice(0, 12)}</small>
     </aside>
       <section className="d5o-full-content"><div className="d5o-app-topbar"><div><span>WORKSPACE</span><strong>{palette.name}</strong><i style={{ background: palette.color }} /></div><div><span>ACTIVE VIEW</span><strong>{screen === "record" ? `${selected?.title ?? "Work Record"} / ${tab}` : ({ discover: "Discover", define: "Define", develop: "Develop", operate: "Operate", home: "Work hub", "my-work": "My work", portfolio: "Portfolio", decisions: "Decision queue", crew: "Crew schedule", people: "People & capacity", execution: "Execution register", handoff: "Handoff register", library: "Evidence library", insights: "Operating insight", operating: "Operating model", configuration: "Workspace configuration", start: "Start work" } as Record<Exclude<Screen, "record">, string>)[screen]}</strong></div><div className="d5o-top-actions">{hostedPreview ? <Link href="/work">Switch workspace</Link> : null}<AccountMenu hostedPreview={hostedPreview} workspace={activeWorkspace} snapshotReady={workLoaded && preferencesLoaded} onExportSnapshot={() => { void exportSnapshot(); }} /><button onClick={() => go("start")}>+ Start work</button></div></div>
       {notice ? <div className="d5o-platform-notice" role="status">{notice}<button onClick={() => setNotice("")}>×</button></div> : null}
       <div className="d5o-surface-host">
-      {screen === "discover" ? <DiscoverWorkspace workspaceKey={activeWorkspace} workspaceName={palette.name} configurationInventory={configurationInventory} work={visibleWork as WorkRecord[]} commercialProfiles={commercialProfiles} actor={currentUserLabel} actorRole={actorRole} canEdit={canEditWork && sharedWorkRevision !== null} focusRecordId={selected?.id} reviewFocus={discoverEntry} onPhase={openJourneyPhase} onControl={(item, control) => { setSelectedId(item.id); setTab(control); go("record"); }} onBack={() => go("home")} onSelect={setSelectedId} onOpen={(item) => openRecord(item as Work)} onDefine={(item) => openWorkspacePhase("define", item as Work)} onPricingQueued={() => { pendingReviewQueue.current = "pricing"; setNotice("Saving the pricing review before opening its role queue."); }} onProposalQueued={() => { pendingReviewQueue.current = "proposal"; setNotice("Saving the proposal review before opening its role queue."); }} onCommercialCommand={executeCommercialCommand} onPursuitCommand={isolatedPilot ? executePursuitCommand : undefined} onUpdate={(id, transform) => { pendingDiscoverSave.current = id; updateWork(id, (current) => transform(current as WorkRecord) as Work); }} onCreate={createDiscoverWork} onNotice={setNotice} /> : null}
+      {screen === "discover" ? <DiscoverWorkspace workspaceKey={activeWorkspace} workspaceName={palette.name} configurationInventory={configurationInventory} work={visibleWork as WorkRecord[]} commercialProfiles={commercialProfiles} actor={currentUserLabel} actorRole={actorRole} canEdit={canEditWork && sharedWorkRevision !== null} focusRecordId={selected?.id} reviewFocus={discoverEntry} onPhase={openJourneyPhase} onControl={(item, control) => { setSelectedId(item.id); setTab(control); go("record"); }} onBack={() => go("home")} onSelect={setSelectedId} onOpen={(item) => openRecord(item as Work)} onDefine={(item) => openWorkspacePhase("define", item as Work)} onPricingQueued={() => { pendingReviewQueue.current = "pricing"; setNotice("Saving the pricing review before opening its role queue."); }} onProposalQueued={() => { pendingReviewQueue.current = "proposal"; setNotice("Saving the proposal review before opening its role queue."); }} onCommercialCommand={executeCommercialCommand} onPursuitCommand={authoritativeCommands ? executePursuitCommand : undefined} onUpdate={(id, transform) => { pendingDiscoverSave.current = id; updateWork(id, (current) => transform(current as WorkRecord) as Work); }} onCreate={createDiscoverWork} onNotice={setNotice} /> : null}
       {screen === "define" ? <DefineWorkspace workspaceKey={activeWorkspace} workspaceName={palette.name} configurationInventory={configurationInventory} work={visibleWork as WorkRecord[]} focusRecordId={selected?.id} reviewFocus={defineReviewEntry} actorLabel={currentUserLabel} onReviewQueued={() => { pendingReviewQueue.current = "definition"; setNotice("Saving the definition review before opening its role queue."); }} onCommand={executeDefineCommand} onPhase={openJourneyPhase} onControl={(item, control) => { setSelectedId(item.id); setTab(control); go("record"); }} onBack={() => openWorkspacePhase("discover")} onSelect={setSelectedId} onOpen={(item) => openRecord(item as Work)} onUpdate={(id, transform) => updateWork(id, (current) => transform(current as WorkRecord) as Work)} onNotice={setNotice} /> : null}
       {screen === "develop" ? <DiscoverWorkspace
         mode="develop" workspaceKey={activeWorkspace} workspaceName={palette.name} hosted={hostedPreview}
@@ -1090,7 +1112,7 @@ function StartWork({ workspaceKey, workspaceName, workTypes, publishedVersionId,
   const [selectedType, setSelectedType] = useState(workTypes[0] ?? "");
   const profile = lifecycleProfiles[workspaceKey];
   const profileAvailable = selectedType === profile.workType;
-  return <section className="d5o-page d5o-start-page"><p className="d5o-page-kicker">START WORK</p><h1>Start one governed unit of work.</h1><p className="d5o-page-lead">Create a stable Work Record in {workspaceName}. The shared prototype saves its exact published phase-contract version when work starts.</p><form onSubmit={onSubmit}><label>Work name<input name="title" placeholder="For example: Compressor reliability pilot" required /></label><label>Customer or account<input name="customer" placeholder="Customer name" /></label><label>Site, asset or operating location<input name="site" placeholder="For example: Platform Delta" /></label><label>Work type<select name="type" value={selectedType} onChange={(event) => setSelectedType(event.target.value)} disabled={!workTypes.length}>{workTypes.map((type) => <option key={type}>{type}</option>)}</select></label><label>Accountable owner<input name="owner" defaultValue={defaultOwner} required /></label><label>Initial value commitment<input name="value" placeholder="For example: $420k annual service value" /></label><div className={`d5o-path-card ${publishedVersionId ? "is-configured" : "is-unconfigured"}`}><span>{publishedVersionId ? "PUBLISHED CONFIGURATION" : "CONFIGURATION UNAVAILABLE"}</span><strong>{selectedType || workspaceName}</strong><small>{publishedVersionId ? `Exact version: ${publishedVersionId}` : "A published phase contract is required before new work can be created."}</small>{profileAvailable ? <small>Prototype lifecycle reference: {profile.name} · v{profile.version}. Governing business authority remains on the server command contract.</small> : <small>The detailed lifecycle path for this Work Type is not yet implemented in the prototype.</small>}</div><div><button className="d5o-primary" type="submit" disabled={!publishedVersionId || !selectedType}>Create Work Record</button><button className="d5o-quiet" type="button" onClick={onCancel}>Cancel</button></div></form></section>;
+  return <section className="d5o-page d5o-start-page"><p className="d5o-page-kicker">START WORK</p><h1>Start one governed unit of work.</h1><p className="d5o-page-lead">Create a stable Work Record in {workspaceName}. Its exact published phase-contract version is pinned when work starts.</p><form onSubmit={onSubmit}><label>Work name<input name="title" placeholder="For example: Compressor reliability pilot" required /></label><label>Customer or account<input name="customer" placeholder="Customer name" /></label><label>Site, asset or operating location<input name="site" placeholder="For example: Platform Delta" /></label><label>Work type<select name="type" value={selectedType} onChange={(event) => setSelectedType(event.target.value)} disabled={!workTypes.length}>{workTypes.map((type) => <option key={type}>{type}</option>)}</select></label><label>Accountable owner<input name="owner" defaultValue={defaultOwner} required /></label><label>Initial value commitment<input name="value" placeholder="For example: $420k annual service value" /></label><div className={`d5o-path-card ${publishedVersionId ? "is-configured" : "is-unconfigured"}`}><span>{publishedVersionId ? "PUBLISHED CONFIGURATION" : "CONFIGURATION UNAVAILABLE"}</span><strong>{selectedType || workspaceName}</strong><small>{publishedVersionId ? `Exact version: ${publishedVersionId}` : "A published phase contract is required before new work can be created."}</small>{profileAvailable ? <small>Prototype lifecycle reference: {profile.name} · v{profile.version}. Governing business authority remains on the server command contract.</small> : <small>The detailed lifecycle path for this Work Type is not yet implemented in the prototype.</small>}</div><div><button className="d5o-primary" type="submit" disabled={!publishedVersionId || !selectedType}>Create Work Record</button><button className="d5o-quiet" type="button" onClick={onCancel}>Cancel</button></div></form></section>;
 }
 function WorkRecord({ actorId, actorRole, work, allWork, configurationInventory, onSelectDesignWork, tab, setTab, phaseConfig, phaseDemandCount, phaseAssignmentCount, onPhaseRowSave, onPhaseRowRemove, backLabel, onBack, onOpenDiscovery, onOpenDefinition, onOpenDevelop, onOpenPeople, onOpenCrew, onActionPriority, onEvidence, onReviewEvidence, onPackage, onPackageDemand, packageDemands, canEditDemand, onPackageFacts, onAdvancePackage, onIssue, onResolveIssue, onException, onCommercial, onLifecycle, onDesignCommand, onDeployCommand, onDeployUpload, onOperateCommand, operateFocus, onOpenOperateWork, schedule, onDesignHandoff, hosted }: {
   actorId: string; actorRole?: string; work: Work; allWork: Work[]; configurationInventory: ConfigurationInventory; onSelectDesignWork: (id: string) => void; tab: RecordTab; setTab: (tab: RecordTab) => void;
@@ -1173,7 +1195,7 @@ function ConfiguredDecisionOverview({ work, config, blockers, onTab }: { work: W
   const firstOpenCheck = results.find((item) => !item.met)?.check;
   const nextSurface = firstOpenCheck ? phaseSurfaceForCheck(firstOpenCheck) : blockers.length ? conditionTargetTab(work, blockers) : "Readiness";
   const proof = work.evidence ?? [];
-  return <div className="d5o-gate-overview"><section className="d5o-gate-progress"><div><p>PINNED DECISION · {config.workTypeLabel}</p><h2>{work.stage}</h2><span>{transition ? `${transition.label} · ${transition.right}` : work.status === "complete" ? "Completed work" : "No current transition available"}</span></div><strong>{met} / {results.length}<small>configured checks satisfied</small></strong></section><section className="d5o-gate-grid"><article className="d5o-gate-requirements"><header><p>CURRENT DECISION</p><h2>{transition ? "What this action requires" : "Decision position"}</h2></header>{results.map(({ check, met: satisfied }, index) => <button key={`${check.op}-${check.key ?? check.field ?? check.evidenceKind ?? index}`} type="button" onClick={() => onTab(phaseSurfaceForCheck(check))}><i className={satisfied ? "is-met" : ""}>{satisfied ? "✓" : "!"}</i><div><strong>{check.message}</strong><span>{satisfied ? "Requirement satisfied for this Work Record." : `Complete this on ${phaseSurfaceForCheck(check)}.`}</span></div><b>{satisfied ? "View" : "Open"} {phaseSurfaceForCheck(check)} →</b></button>)}{transition && !results.length ? <p className="d5o-configured-empty">No additional phase input is configured for this decision. Other current conditions, if any, still apply.</p> : null}{!transition ? <p className="d5o-configured-empty">{work.status === "complete" ? "This Work Record has reached its configured outcome. Review the retained decision history." : "This position has no available configured transition; reconcile the pinned lifecycle before another decision."}</p> : null}{otherConditions.map((message, index) => <button key={`condition-${index}`} type="button" onClick={() => onTab(conditionTargetTab(work, [message]))}><i>!</i><div><strong>{message}</strong><span>Another current condition must be resolved before the decision.</span></div><b>Open condition →</b></button>)}</article><aside className="d5o-gate-proof"><header><p>DECISION CONTEXT</p><h2>Proof, version and next action</h2></header><div className="d5o-gate-proof-count"><strong>{proof.length}</strong><span>proof references</span><small>{proof.filter((item) => item.state === "draft").length} awaiting review</small></div><div className={`d5o-gate-issue${blockers.length ? "" : " is-neutral"}`}><strong>{blockers.length ? "ACTION REQUIRED" : "CURRENT POSITION"}</strong><span>{blockers[0] ?? (work.status === "complete" ? "No further decision is due for this Work Record." : "Current requirements are met. Record the decision basis when the responsible actor is ready.")}</span><button type="button" onClick={() => onTab(blockers.length ? nextSurface : work.status === "complete" ? "History" : "Readiness")}>{blockers.length ? `Open ${nextSurface} →` : work.status === "complete" ? "View decision history →" : "Review decision →"}</button></div><div className="d5o-gate-issue is-neutral"><strong>EFFECTIVE CONFIGURATION</strong><span>{config.workTypeLabel} · {config.version}</span><span>Existing work remains on its pinned version when a new default is published.</span></div></aside></section><section className="d5o-gate-bottom"><article><b>ACCOUNTABLE OWNER</b><strong>{work.owner}</strong><span>{work.customer} · {work.site}</span></article><article><b>VALUE PROTECTED</b><strong>{work.value}</strong><span>{work.commercial?.condition}</span></article><article><b>NEXT ACTION</b><strong>{work.nextAction}</strong><span>Decision effects on this surface remain prototype-local.</span></article></section></div>;
+  return <div className="d5o-gate-overview"><section className="d5o-gate-progress"><div><p>PINNED DECISION · {config.workTypeLabel}</p><h2>{work.stage}</h2><span>{transition ? `${transition.label} · ${transition.right}` : work.status === "complete" ? "Completed work" : "No current transition available"}</span></div><strong>{met} / {results.length}<small>configured checks satisfied</small></strong></section><section className="d5o-gate-grid"><article className="d5o-gate-requirements"><header><p>CURRENT DECISION</p><h2>{transition ? "What this action requires" : "Decision position"}</h2></header>{results.map(({ check, met: satisfied }, index) => <button key={`${check.op}-${check.key ?? check.field ?? check.evidenceKind ?? index}`} type="button" onClick={() => onTab(phaseSurfaceForCheck(check))}><i className={satisfied ? "is-met" : ""}>{satisfied ? "✓" : "!"}</i><div><strong>{check.message}</strong><span>{satisfied ? "Requirement satisfied for this Work Record." : `Complete this on ${phaseSurfaceForCheck(check)}.`}</span></div><b>{satisfied ? "View" : "Open"} {phaseSurfaceForCheck(check)} →</b></button>)}{transition && !results.length ? <p className="d5o-configured-empty">No additional phase input is configured for this decision. Other current conditions, if any, still apply.</p> : null}{!transition ? <p className="d5o-configured-empty">{work.status === "complete" ? "This Work Record has reached its configured outcome. Review the retained decision history." : "This position has no available configured transition; reconcile the pinned lifecycle before another decision."}</p> : null}{otherConditions.map((message, index) => <button key={`condition-${index}`} type="button" onClick={() => onTab(conditionTargetTab(work, [message]))}><i>!</i><div><strong>{message}</strong><span>Another current condition must be resolved before the decision.</span></div><b>Open condition →</b></button>)}</article><aside className="d5o-gate-proof"><header><p>DECISION CONTEXT</p><h2>Proof, version and next action</h2></header><div className="d5o-gate-proof-count"><strong>{proof.length}</strong><span>proof references</span><small>{proof.filter((item) => item.state === "draft").length} awaiting review</small></div><div className={`d5o-gate-issue${blockers.length ? "" : " is-neutral"}`}><strong>{blockers.length ? "ACTION REQUIRED" : "CURRENT POSITION"}</strong><span>{blockers[0] ?? (work.status === "complete" ? "No further decision is due for this Work Record." : "Current requirements are met. Record the decision basis when the responsible actor is ready.")}</span><button type="button" onClick={() => onTab(blockers.length ? nextSurface : work.status === "complete" ? "History" : "Readiness")}>{blockers.length ? `Open ${nextSurface} →` : work.status === "complete" ? "View decision history →" : "Review decision →"}</button></div><div className="d5o-gate-issue is-neutral"><strong>EFFECTIVE CONFIGURATION</strong><span>{config.workTypeLabel} · {config.version}</span><span>Existing work remains on its pinned version when a new default is published.</span></div></aside></section><section className="d5o-gate-bottom"><article><b>ACCOUNTABLE OWNER</b><strong>{work.owner}</strong><span>{work.customer} · {work.site}</span></article><article><b>VALUE PROTECTED</b><strong>{work.value}</strong><span>{work.commercial?.condition}</span></article><article><b>NEXT ACTION</b><strong>{work.nextAction}</strong><span>Canonical decisions are recorded through authenticated commands; historical prototype records retain their provenance.</span></article></section></div>;
 }
 function Overview({ work, blockers, onTab }: { work: Work; blockers: string[]; onTab: (tab: RecordTab) => void }) {
   const evidence = work.evidence ?? [];
@@ -1222,7 +1244,7 @@ function Lifecycle({ work, phaseConfig, onTab }: { work: Work; phaseConfig: Work
       const firstOpenCheck = pinnedChecks?.find((item) => !item.met);
       const linkedSurface = firstOpenCheck ? phaseSurfaceForCheck(firstOpenCheck.check) : destinationTab(transition.right);
       return <article key={transition.right}><div><b>{transition.label}</b><span>{roleLabel(work.workspace, transition.role)} · {recorded ? "Decision recorded on this Work Record" : transition.to ? `moves work to ${transition.to}` : "records an outcome without changing lifecycle position"}</span></div>{recorded ? <p className="d5o-transition-no-prerequisites">This right has already been recorded. View the Work Record history for its prototype decision basis.</p> : pinnedChecks ? pinnedChecks.length ? <ul aria-label="Pinned decision checks">{pinnedChecks.map(({ check, met }, index) => <li key={`${transition.right}-${index}`}>{met ? "✓ Met: " : "Open: "}{check.message} · {phaseSurfaceForCheck(check)}</li>)}</ul> : <p className="d5o-transition-no-prerequisites">No additional phase input is configured for this right. Other current conditions still apply.</p> : transition.requirements.length ? <ul aria-label="Lifecycle reference prerequisites">{transition.requirements.map((requirement, index) => <li key={`${transition.right}-${index}`}>{requirementLabel(requirement)}</li>)}</ul> : <p className="d5o-transition-no-prerequisites">No additional configured prerequisite.</p>}<button type="button" onClick={() => onTab(recorded ? "History" : linkedSurface)}>{recorded ? "Open decision history →" : `Open ${linkedSurface} →`}</button></article>;
-    })}<p>Current record controls and decisions remain prototype-local. Current pinned checks are shown for the next right; future positions are lifecycle reference context, not a readiness verdict.</p></section>
+    })}<p>Canonical record decisions use authenticated commands; historical prototype records retain their provenance. Current pinned checks are shown for the next right; future positions are lifecycle reference context, not a readiness verdict.</p></section>
   </Panel>;
 }
 function Facts({ work }: { work: Work }) { return <dl className="d5o-facts"><div><dt>Customer</dt><dd>{work.customer}</dd></div><div><dt>Site</dt><dd>{work.site}</dd></div><div><dt>Accountable owner</dt><dd>{work.owner}</dd></div><div><dt>Work type</dt><dd>{work.type}</dd></div></dl>; }

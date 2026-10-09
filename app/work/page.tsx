@@ -20,7 +20,9 @@ export default async function WorkHomePage({ searchParams }: {
   searchParams?: Promise<{ workspace?: string }>;
 }) {
   const sourceVersion = process.env.D5O_SOURCE_SHA ?? process.env.VERCEL_GIT_COMMIT_SHA ?? "source-unidentified";
-  const isolatedPilot = ["pilot", "rehearsal"].includes(d5oCommandRuntime() ?? "");
+  const commandRuntime = d5oCommandRuntime();
+  const isolatedPilot = commandRuntime === "pilot" || commandRuntime === "rehearsal";
+  const authoritativeCommands = commandRuntime !== null;
   if (process.env.D5O_HOSTED_ENABLED === "1") {
     if (!hostedD5OTargetReady()) throw new Error("hosted_target_unavailable");
     const client = await createRybexSupabaseServerClient();
@@ -35,7 +37,7 @@ export default async function WorkHomePage({ searchParams }: {
     if (!selected) return <main className={styles.entry}>
       <div className={styles.brand}>D5O <span>System of work</span></div>
       <section className={styles.intro}>
-        <p>YOUR WORKSPACES · {isolatedPilot ? "ISOLATED PILOT" : "SYNTHETIC PROTOTYPE"}</p>
+        <p>YOUR WORKSPACES · {isolatedPilot ? "ISOLATED PILOT" : "D5O WORKSPACE"}</p>
         <h1>Choose the work you’re here to move forward.</h1>
         <span>Each workspace has its own people, Work Records, configuration and decisions. Your membership controls which one you can open.</span>
       </section>
@@ -49,7 +51,7 @@ export default async function WorkHomePage({ searchParams }: {
         <strong>Open workspace →</strong>
       </Link>)}</div>
       {!entries.length ? <p role="status">No D5O workspace membership is assigned to this account.</p> : null}
-      <p className={styles.notice}>{isolatedPilot ? "Isolated pilot database. Decision authority remains under qualification." : "Synthetic review data only. Actions in this prototype do not grant real business authority or deploy to production."} Build {sourceVersion.slice(0, 12)}.</p>
+      <p className={styles.notice}>{isolatedPilot ? "Isolated pilot database. Decision authority remains under qualification." : "Authenticated commands govern canonical Work Records. Historical prototype records retain their recorded provenance."} Build {sourceVersion.slice(0, 12)}.</p>
       <Link className={styles.signout} href="/auth/sign-out">Switch account</Link>
     </main>;
     const permitted = entries.find((entry) => entry.workspaceKey === selected);
@@ -61,8 +63,8 @@ export default async function WorkHomePage({ searchParams }: {
     const workspace = selected as WorkspaceKey;
     return <D5OPlatform initialWorkspace={workspace} actorId={userData.user.id} actorRole={permitted.role}
       configurationInventory={await hostedConfigurationInventory(workspace)}
-      actorLabel={`${userData.user.email ?? "Workspace member"} · ${permitted.role.replaceAll("_", " ")} · ${isolatedPilot ? "isolated pilot" : "synthetic preview"}`}
-      hostedPreview isolatedPilot={isolatedPilot} sourceVersion={sourceVersion} />;
+      actorLabel={`${userData.user.email ?? "Workspace member"} · ${permitted.role.replaceAll("_", " ")} · ${isolatedPilot ? "isolated pilot" : "authenticated workspace"}`}
+      hostedPreview authoritativeCommands={authoritativeCommands} sourceVersion={sourceVersion} />;
   }
   assertProofEnvironment();
   const context = await getRequestContext();

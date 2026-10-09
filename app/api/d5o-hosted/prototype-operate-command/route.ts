@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
       }
       if (!["receive-handoff", "add-asset", "accept-support", "activate", "add-agreement",
         "approve-agreement", "open-request", "triage-request", "update-finance"].includes(command.action))
-        return reply({ error: "authoritative_command_unavailable", message: "This Operate action is not yet connected to the isolated pilot decision service." }, 409);
+        return reply({ error: "authoritative_command_unavailable", message: "This Operate action is not connected to the authenticated decision service." }, 409);
       if (!Number.isInteger(command.expectedDeployRevision) || !Number.isInteger(command.expectedDecisionRevision))
         return reply({ error: "invalid_decision_basis" }, 400);
       const session = await createRybexSupabaseServerClient();

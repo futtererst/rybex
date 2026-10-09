@@ -39,9 +39,9 @@ async function request(page, path, method = "GET", body) {
   }, { path, method, body });
 }
 
-function denied(name, result) {
-  if (result.status < 400 || result.status >= 500)
-    throw new Error(`${name}_not_safely_rejected:${result.status}:${result.error}`);
+function denied(name, result, status, error) {
+  if (result.status !== status || result.error !== error)
+    throw new Error(`${name}_wrong_domain_rejection:${result.status}:${result.error}; expected ${status}:${error}`);
   return { name, status: result.status, error: result.error };
 }
 
@@ -62,40 +62,40 @@ try {
   protectedState.records.find((item) => item.id === workId).definition.status = "Draft";
   probes.push(denied("generic_protected_write", await request(pm.page,
     "/api/d5o-hosted/prototype-state?workspace=rybex", "POST",
-    { workspace: "rybex", key: "work", expectedRevision: revision, state: protectedState })));
+    { workspace: "rybex", key: "work", expectedRevision: revision, state: protectedState }), 409, "protected_definition_changed"));
   const base = { workId, expectedRevision: revision, commandId: randomUUID() };
   probes.push(denied("pursuit_rpc", await request(pm.page,
     "/api/d5o-hosted/prototype-pursuit-command?workspace=rybex", "POST",
     { ...base, workId: rehearsalId, action: "invalid-rehearsal-action",
-      expectedDecisionRevision: 0, intent: {} })));
+      expectedDecisionRevision: 0, intent: {} }), 400, "invalid_pursuit_command"));
   probes.push(denied("define_rpc", await request(pm.page,
     "/api/d5o-hosted/prototype-define-command?workspace=rybex", "POST",
-    { ...base, commandId: randomUUID(), action: "submit", expectedDecisionRevision: 999999 })));
+    { ...base, commandId: randomUUID(), action: "submit", expectedDecisionRevision: 999999 }), 409, "stale_state"));
   probes.push(denied("commercial_rpc", await request(pm.page,
     "/api/d5o-hosted/prototype-commercial-command?workspace=rybex", "POST",
     { ...base, commandId: randomUUID(), action: "submit-solution", packageRevision: 1,
-      expectedDecisionRevision: 999999 })));
+      expectedDecisionRevision: 999999 }), 409, "stale_state"));
   probes.push(denied("design_rpc", await request(pm.page,
     "/api/d5o-hosted/prototype-design-command?workspace=rybex", "POST",
     { ...base, commandId: randomUUID(), action: "request-review", packageId,
-      expectedDecisionRevision: 999999 })));
+      expectedDecisionRevision: 999999 }), 409, "stale_design_review_basis"));
   probes.push(denied("deploy_rpc", await request(pm.page,
     "/api/d5o-hosted/prototype-deploy-command?workspace=rybex", "POST",
     { ...base, commandId: randomUUID(), action: "authorize-start", packageId,
       expectedDesignRevision: 999999, expectedScheduleRevision: schedule.payload.schedule.revision,
-      expectedDecisionRevision: 999999 })));
+      expectedDecisionRevision: 999999 }), 400, "invalid_field_start_command"));
   probes.push(denied("operate_rpc", await request(pm.page,
     "/api/d5o-hosted/prototype-operate-command?workspace=rybex", "POST",
     { ...base, commandId: randomUUID(), action: "activate",
-      expectedDeployRevision: 999999, expectedDecisionRevision: 999999 })));
+      expectedDeployRevision: 999999, expectedDecisionRevision: 999999 }), 409, "stale_operate_basis"));
   probes.push(denied("catalog_package_rpc", await request(pm.page,
     "/api/d5o-hosted/prototype-catalog?workspace=rybex", "POST",
     { action: "create-package", workId, name: "Must not be created", owner: "Pilot PM",
       expectedRevision: catalog.payload.catalog.revision, expectedWorkRevision: revision,
-      expectedHandoffRevision: 1, expectedPackageCount: 999999, commandId: randomUUID() })));
+      expectedHandoffRevision: 1, expectedPackageCount: 999999, commandId: randomUUID() }), 409, "stale_package_basis"));
   probes.push(denied("schedule_rpc", await request(pm.page,
     "/api/d5o-hosted/prototype-schedule?workspace=rybex", "POST",
-    { action: "publish", week: 40, expectedRevision: 999999, commandId: randomUUID() })));
+    { action: "publish", week: 40, expectedRevision: 999999, commandId: randomUUID() }), 409, "stale_schedule"));
   const evidencePath = `/api/d5o-hosted/customer-decision-evidence?workspace=rybex&workId=${workId}&evidenceId=${evidenceId}`;
   await pm.context.close();
 
@@ -123,14 +123,14 @@ try {
     "/api/d5o-hosted/worker-schedule", "POST",
     { publicationId: bookings.payload.bookings[0].publicationId,
       assignmentId: bookings.payload.bookings[0].assignmentId,
-      response: "accepted", expectedRevision: 999999, commandId: randomUUID() })));
+      response: "accepted", expectedRevision: 999999, commandId: randomUUID() }), 409, "stale_schedule"));
   const booking = bookings.payload.bookings.find((item) => item.workId === workId) ?? bookings.payload.bookings[0];
   if (booking.workId === workId) probes.push(denied("worker_report_rpc", await request(worker.page,
     "/api/d5o-hosted/worker-deploy", "POST",
     { action: "save-report", workId, packageId: booking.packageId, bookingId: booking.assignmentId,
       publicationId: booking.publicationId, expectedRevision: revision,
       expectedDesignRevision: 999999, expectedScheduleRevision: 999999,
-      expectedDecisionRevision: 999999, commandId: randomUUID() })));
+      expectedDecisionRevision: 999999, commandId: randomUUID() }), 409, "stale_field_fact_basis"));
   const workerEvidence = await request(worker.page, evidencePath);
   if (workerEvidence.status !== 403) throw new Error("worker_customer_evidence_visible");
   await worker.context.close();

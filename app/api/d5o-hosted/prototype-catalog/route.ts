@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     const context = await hostedPrototypeContext(workspace);
     if (!context.canEdit) return reply({ error: "workspace_forbidden" }, 403);
     if (authoritativeD5OCommandsReady() && input.action === "register-record")
-      return reply({ error: "connected_creation_required", message: "Pilot work must be created with its canonical identity and catalog row in one transaction." }, 409);
+      return reply({ error: "connected_creation_required", message: "Canonical work must be created with its identity and catalog row in one transaction." }, 409);
     if (input.action === "create-record" || input.action === "register-record") {
       const candidate = input.action === "create-record" ? input : input.record;
       const inventory = await hostedConfigurationInventory(workspace as WorkspaceKey);
@@ -73,12 +73,13 @@ export async function POST(request: NextRequest) {
         if (result.error) return reply({ error: result.error.message },
           result.error.code === "23505" ? 409 : result.error.code === "42501" ? 403 : result.error.code === "22023" ? 422 : 503);
         const identity = result.data as { presentationId?: string; workRevision?: number } | null;
-        const saved = await context.read("catalog");
+        const [saved, savedWork] = await Promise.all([context.read("catalog"), context.read("work")]);
         const catalog = { ...saved.state, revision: saved.revision } as SharedWorkCatalog;
         const created = catalog.records.find((item) => item.id === identity?.presentationId);
-        if (!created) return reply({ error: "connected_result_unavailable" }, 502);
+        if (!created || !savedWork.state) return reply({ error: "connected_result_unavailable" }, 502);
         return reply({ catalog, created, canonicalWorkId: created.canonicalWorkId,
-          workRevision: identity?.workRevision, synthetic: false }, 201);
+          workRevision: identity?.workRevision,
+          workState: { ...savedWork.state, revision: savedWork.revision }, synthetic: false }, 201);
       }
       if (input.action === "register-record") {
         // Registration connects a Work Record created by a governed command to

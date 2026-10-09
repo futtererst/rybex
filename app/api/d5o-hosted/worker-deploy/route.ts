@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     const work = records[index];
     if (authoritativeD5OCommandsReady() && work.canonicalWorkId) {
       if (!["save-report", "submit-report", "record-inspection"].includes(command.action))
-        return reply({ error: "authoritative_command_unavailable", message: "This worker action is not yet connected to the isolated pilot decision service." }, 409);
+        return reply({ error: "authoritative_command_unavailable", message: "This worker action is not connected to the authenticated decision service." }, 409);
       if (!Number.isInteger(command.expectedDesignRevision) || !Number.isInteger(command.expectedScheduleRevision)
         || !Number.isInteger(command.expectedDecisionRevision)) return reply({ error: "invalid_decision_basis" }, 400);
       const session = await createRybexSupabaseServerClient();
