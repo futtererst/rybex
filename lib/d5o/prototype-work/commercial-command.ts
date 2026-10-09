@@ -12,8 +12,9 @@ export type CommercialCommand = {
   commandId?: string;
   expectedDecisionRevision?: number;
   packageRevision: number;
-  action: "save-detailed-estimate" | "submit-solution" | "approve-solution" | "return-solution" | "submit-pricing" | "approve-margin-exception" | "approve-pricing" | "return-pricing" | "submit-proposal" | "approve-proposal" | "return-proposal" | "record-customer-submission" | "record-customer-response" | "start-negotiated-revision" | "submit-design-handoff" | "accept-design-handoff" | "return-design-handoff";
+  action: "save-detailed-estimate" | "submit-solution" | "approve-solution" | "return-solution" | "submit-pricing" | "approve-margin-exception" | "approve-pricing" | "return-pricing" | "save-proposal-revision" | "submit-proposal" | "approve-proposal" | "return-proposal" | "record-customer-submission" | "record-customer-response" | "start-negotiated-revision" | "submit-design-handoff" | "accept-design-handoff" | "return-design-handoff";
   pricingInput?: PricingInput;
+  offerInput?: { scope: string; assumptions: string; exclusions: string; commercialTerms: string; changeReason: string };
   dueDate?: string;
   note?: string;
   recipient?: string;

@@ -273,6 +273,18 @@ export function DiscoverWorkspace({ mode = "discover", workspaceKey, workspaceNa
     };
     if (!proposalPackage.scope || !proposalPackage.commercialTerms) { onNotice("Add the customer scope and commercial terms before saving the proposal package."); return; }
     if (revision > 1 && !proposalPackage.changeReason) { onNotice("Record why this offer revision changed before saving it for review."); return; }
+    if (selected.canonicalWorkId && controlledCommercial && proposal.status === "Changes requested") {
+      if (commercialBusy) return;
+      setCommercialBusy(true);
+      void onCommercialCommand({ workId: selected.id, packageRevision: revision,
+        action: "save-proposal-revision", offerInput: {
+          scope: proposalPackage.scope, assumptions: proposalPackage.assumptions,
+          exclusions: proposalPackage.exclusions,
+          commercialTerms: proposalPackage.commercialTerms,
+          changeReason: proposalPackage.changeReason ?? ""
+        } }).finally(() => setCommercialBusy(false));
+      return;
+    }
     updateDiscovery(selected.id, (current, data) => {
       const packageHistory = data.proposal.packageHistory ?? (data.proposal.package ? [data.proposal.package] : []);
       return { ...current, discovery: { ...data, phase: "Proposal", proposal: { ...data.proposal, status: "Draft", package: proposalPackage, packageHistory: [...packageHistory.filter((entry) => entry.revision !== revision), proposalPackage], review: undefined, history: [...(data.proposal.history ?? []), { revision, state: "Draft saved", at: new Date().toLocaleString(), note: `${proposalPackage.changeReason ? `${proposalPackage.changeReason} · ` : ""}Bound to approved estimate revision ${estimate.revision}` }] } }, nextAction: `Complete proposal revision ${revision}`, history: [`${new Date().toLocaleString()} · Proposal revision ${revision} saved against estimate revision ${estimate.revision}${proposalPackage.changeReason ? ` · ${proposalPackage.changeReason}` : ""}`, ...current.history] };

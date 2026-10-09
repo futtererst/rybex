@@ -538,7 +538,15 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
         ...command, expectedRevision,
         ...(hostedPreview && command.action.endsWith("solution") && selected?.canonicalWorkId
           ? { commandId: crypto.randomUUID(), expectedDecisionRevision: selected.develop?.authorityRevision ?? 0 }
-          : {})
+          : hostedPreview && selected?.canonicalWorkId &&
+            ["save-detailed-estimate", "submit-pricing", "approve-pricing", "return-pricing"].includes(command.action)
+            ? { commandId: crypto.randomUUID(), expectedDecisionRevision:
+                (selected.discovery?.estimate as { authorityRevision?: number } | undefined)?.authorityRevision ?? 0 }
+            : hostedPreview && selected?.canonicalWorkId &&
+              ["save-proposal-revision", "submit-proposal", "approve-proposal", "return-proposal"].includes(command.action)
+              ? { commandId: crypto.randomUUID(), expectedDecisionRevision:
+                  (selected.discovery?.proposal as { authorityRevision?: number } | undefined)?.authorityRevision ?? 0 }
+            : {})
       }) });
       const payload = await response.json() as { state?: { revision: number; records: Work[] }; message?: string; error?: string };
       if (!response.ok || !payload.state) {
@@ -556,8 +564,10 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
         setScreen("my-work");
         setMobileMenuOpen(false);
       }
-      setNotice(hostedPreview && selected?.canonicalWorkId && command.action.endsWith("solution")
-        ? `${command.action.replaceAll("-", " ")} saved against the isolated pilot's authenticated solution review. The policy and roles are test fixtures.`
+      setNotice(hostedPreview && selected?.canonicalWorkId &&
+        (command.action.endsWith("solution") ||
+          ["save-detailed-estimate", "submit-pricing", "approve-pricing", "return-pricing"].includes(command.action))
+        ? `${command.action.replaceAll("-", " ")} saved against the isolated pilot's authenticated Develop decisions. The policy and roles are test fixtures.`
         : `${command.action.replaceAll("-", " ")} recorded in shared synthetic revision ${payload.state.revision}. The role queue does not represent delegated business authority.`);
       return true;
     } catch {
