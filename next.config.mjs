@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  ...(process.env.D5O_OBSERVATION_CHECKPOINT === "delivery" ? { distDir: ".next-observe-delivery" } : {}),
+  ...(process.env.D5O_OBSERVATION_CHECKPOINT === "support" ? { distDir: ".next-observe-support" } : {}),
   // A second loopback origin lets reviewers recover browser-local state saved
   // under the earlier 61430 URL without sharing Next's development build lock.
   ...(process.env.D5O_REVIEW_PORT === "61430" ? { distDir: ".next-review-61430" } : {}),
