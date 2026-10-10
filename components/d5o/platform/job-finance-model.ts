@@ -10,7 +10,7 @@ export type JobBillHistory = { bill_id: string; revision: number; status: string
   reviewed_by: string | null; review_reason: string | null; recorded_at: string };
 export type JobCash = { id: string; bill_id: string; kind: "Billed" | "Paid";
   amount_minor: number; event_date: string; source: string };
-export type JobFinanceRead = { revision: number; currency: string | null;
+export type JobFinanceRead = { revision: number; currency: string | null; financeStatus: string | null;
   baseline: { pricingBasis?: { priceMinor?: number; includedCostMinor?: number; currency?: string; policyId?: string; policyVersion?: number }; revision?: number; awardEventId?: string; estimateRevision?: number } | null;
   remainingForecastMinor: number | null; forecastSource: string | null; forecastAt: string | null;
   changes: Array<{ id: string; packageId: string; priceAmount: string; currency: string;
@@ -34,6 +34,12 @@ const safeSum = (values: number[]): number | null => {
   }
   return total;
 };
+export function invoiceBalance(read: JobFinanceRead, billId: string) {
+  const events = read.cashEvents.filter((item) => item.bill_id === billId);
+  const billed = safeSum(events.filter((item) => item.kind === "Billed").map((item) => item.amount_minor));
+  const paid = safeSum(events.filter((item) => item.kind === "Paid").map((item) => item.amount_minor));
+  return { billed, paid, outstanding: billed !== null && paid !== null && paid <= billed ? billed - paid : null };
+}
 export function assessJobFinance(read: JobFinanceRead, work: WorkRecord) {
   const currency = read.currency ?? read.baseline?.pricingBasis?.currency ?? null;
   const original = read.baseline?.pricingBasis?.priceMinor ?? null;
@@ -53,6 +59,7 @@ export function assessJobFinance(read: JobFinanceRead, work: WorkRecord) {
   const forecastMargin = forecastProfit === null || revised === null || revised <= 0 ? null : forecastProfit / revised * 100;
   const billed = safeSum(read.cashEvents.filter((item) => item.kind === "Billed").map((item) => item.amount_minor));
   const paid = safeSum(read.cashEvents.filter((item) => item.kind === "Paid").map((item) => item.amount_minor));
+  const receivable = billed !== null && paid !== null && paid <= billed ? billed - paid : null;
   const state = deployState(work);
   const eligible = (work.packages ?? []).flatMap((pkg) => {
     const release = currentAcceptedRelease(work,pkg.id);
@@ -64,7 +71,7 @@ export function assessJobFinance(read: JobFinanceRead, work: WorkRecord) {
   });
   return { currency, original, changes, revised, incurred, outstanding,
     remaining: read.remainingForecastMinor, forecastFinal, forecastProfit, forecastMargin,
-    billed, paid, eligible, blocked: [
+    billed, paid, receivable, eligible, blocked: [
       ...(!read.baseline ? ["No recorded awarded fixed-price offer establishes the baseline."] : []),
       ...(invalidChange ? ["An authorized change has an unknown or different-currency price."] : []),
       ...(read.remainingForecastMinor === null ? ["Finance has not recorded a sourced remaining-cost forecast."] : []),
