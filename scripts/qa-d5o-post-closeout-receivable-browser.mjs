@@ -41,6 +41,7 @@ try {
       throw new Error("retained_invoice_or_payment_mismatch");
     const body = await page.locator("body").innerText();
     if (!body.includes("Finance Closed") || !body.includes("$84,977.15") ||
+        (process.env.D5O_EXPECTED_SOURCE_SHA && !body.includes(`Build ${process.env.D5O_EXPECTED_SOURCE_SHA.slice(0, 12)}`)) ||
         await page.getByRole("button", { name: "Record cost fact" }).count() ||
         await page.getByRole("button", { name: "Record billed event" }).count() ||
         await page.getByRole("button", { name: "Record paid event" }).count() !== 2)
