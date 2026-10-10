@@ -21,7 +21,7 @@ The 12 already-recorded D5O/worker migrations have SQL definitions identical to 
 
 The worker-excluding policies `d5o_hosted_work_member_read` and `d5o_hosted_work_event_member_read` also match the live read-only inspection. Do not rewrite the eight applied history versions. A raw version-only `supabase db push` is unsafe until the release operator explicitly reconciles those mappings; it would treat their local versions as unapplied.
 
-## Outstanding files, in required order (56)
+## Outstanding files, in required order (57)
 
 1. `20261008183310_d5o_prototype_authoritative_writes.sql`
 2. `20261008203000_d5o_reject_imported_commercial_decisions.sql`
@@ -79,9 +79,12 @@ The worker-excluding policies `d5o_hosted_work_member_read` and `d5o_hosted_work
 54. `20261010011108_d5o_connected_billing_integrity.sql`
 55. `20261010100022_d5o_post_closeout_receivable.sql`
 56. `20261010130807_connected_service_financial_disposition.sql`
+57. `20261010150000_connected_service_billing_terms.sql`
 
-A clean disposable Supabase instance replayed **68 hosted candidate files in filename order**, including the service-financial-disposition migration. Relative to the prior 12-file shared read-only mapping, **56 files are outstanding**. The active fictional service pilot was incrementally patched and has 17 locally recorded migration versions; it is not evidence of full ordered replay. Shared-project definitions and migration history must be rechecked at cutover. Disposable replay does not establish shared-project compatibility or authorization to apply migrations. The deployment cutover must compare names, normalized SQL, policy definitions and migration history again immediately before any shared write.
+A clean disposable Supabase instance replayed **69 hosted candidate files in filename order**, including the explicit service-billing-terms migration. Relative to the prior 12-file shared read-only mapping, **57 files are outstanding**. The active fictional service pilot was incrementally patched; it is not evidence of full ordered replay. Shared-project definitions and migration history must be rechecked at cutover. Disposable replay does not establish shared-project compatibility or authorization to apply migrations. The deployment cutover must compare names, normalized SQL, policy definitions and migration history again immediately before any shared write.
 
 The 10 October partially covered service pilot added no migration file. Its older disposable target at `127.0.0.1:56321` needed the already-listed candidate definitions `20261009232739`, `20261009234405`, and `20261009104500` applied locally before the browser journey. This does not establish application of any file to shared persistence. See [isolated service-return evidence](./evidence/d5o-partial-service-return-20261010.md).
 
 The later service-financial-disposition command adds three private Finance tables and authenticated typed read/decision RPCs. It was applied to the same fictional local pilot for the Finance demonstration and replayed with the full ordered candidate sequence on a separate clean disposable target. See [service-finance qualification](./evidence/d5o-service-finance-20261010.md).
+
+The subsequent `20261010150000_connected_service_billing_terms.sql` adds a separate, versioned customer-terms decision and private-document source binding. It replaces the condition-text inference in the existing Finance RPC and retains the prior Hold as history. The 69-file ordered sequence replayed once after this final migration change on the disposable `d5o-preclosure-20261010` target. See [explicit billing-terms evidence](./evidence/d5o-service-billing-terms-20261010.md).

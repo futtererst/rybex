@@ -10,7 +10,7 @@ const bucket = "d5o-deploy-evidence";
 const reply = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
 const pathFor = (workspace: string, workId: string, id: string) =>
   `${workspace}/${createHash("sha256").update(workId).digest("hex")}/customer-decisions/${id}`;
-type Purpose = "package-acceptance" | "work-acceptance" | "service-authorization" | "field-change-authorization";
+type Purpose = "package-acceptance" | "work-acceptance" | "service-authorization" | "field-change-authorization" | "service-billing-terms";
 
 function exactBasis(work: WorkRecord, purpose: Purpose, scopeId: string) {
   if (purpose === "package-acceptance") {
@@ -48,7 +48,7 @@ async function scope(request: NextRequest) {
   const workspace = request.nextUrl.searchParams.get("workspace") ?? "";
   if (!["rybex", "rotork"].includes(workspace)) return null;
   const context = await hostedPrototypeContext(workspace);
-  if (!["project_manager", "operations_leader", "field_supervisor"].includes(context.actor.role)) return null;
+  if (!["project_manager", "operations_leader", "field_supervisor", "billing_commercial_lead"].includes(context.actor.role)) return null;
   return { workspace, context };
 }
 
@@ -57,20 +57,37 @@ export async function POST(request: NextRequest) {
   let uploadedPath = "";
   try {
     const target = await scope(request);
-    if (!target) return reply({ error: "customer_evidence_authority_required" }, 403);
+    if (!target || target.context.actor.role === "billing_commercial_lead")
+      return reply({ error: "customer_evidence_authority_required" }, 403);
     const form = await request.formData();
     const file = form.get("file"), workId = String(form.get("workId") ?? "");
     const purpose = String(form.get("purpose") ?? "") as Purpose;
     const scopeId = String(form.get("scopeId") ?? "");
     if (!(file instanceof File) || file.type !== "application/pdf" || file.size < 1 ||
       file.size > 10_485_760 || !workId || !scopeId ||
-      !["package-acceptance", "work-acceptance", "service-authorization", "field-change-authorization"].includes(purpose))
+      !["package-acceptance", "work-acceptance", "service-authorization", "field-change-authorization", "service-billing-terms"].includes(purpose))
       return reply({ error: "signed_pdf_required" }, 400);
     const loaded = await target.context.read("work");
     const work = (loaded.state?.records as WorkRecord[] | undefined)?.find((item) =>
       item.id === workId && item.workspace === target.workspace && !!item.canonicalWorkId);
     if (!work) return reply({ error: "canonical_work_required" }, 404);
-    let exact: { scopeRevision: number; basis: Record<string, unknown> } | null = purpose === "field-change-authorization" ? null : exactBasis(work, purpose, scopeId);
+    let exact: { scopeRevision: number; basis: Record<string, unknown> } | null =
+      purpose === "field-change-authorization" || purpose === "service-billing-terms"
+        ? null : exactBasis(work, purpose, scopeId);
+    if (purpose === "service-billing-terms") {
+      if (target.context.actor.role !== "project_manager")
+        return reply({ error: "service_billing_terms_role_required" }, 403);
+      const session = await createRybexSupabaseServerClient();
+      const read = session.rpc.bind(session) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
+      const { data, error } = await read("d5o_hosted_service_finance_read_v1", {
+        p_workspace_key: target.workspace, p_parent_presentation_id: workId,
+        p_request_id: scopeId
+      });
+      const source = !error && data && typeof data === "object"
+        ? (data as { termsSource?: Record<string, unknown> }).termsSource : undefined;
+      if (source?.eligibleForFinanceReview === true && Number.isInteger(Number(source.estimateRevision)))
+        exact = { scopeRevision: Number(source.estimateRevision), basis: source };
+    }
     if (purpose === "field-change-authorization") {
       const session = await createRybexSupabaseServerClient();
       const read = session.rpc.bind(session) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
@@ -120,13 +137,27 @@ export async function GET(request: NextRequest) {
     if (!target) return reply({ error: "customer_evidence_authority_required" }, 403);
     const workId = request.nextUrl.searchParams.get("workId") ?? "";
     const id = request.nextUrl.searchParams.get("evidenceId") ?? "";
-    if (!/^[0-9a-f-]{36}$/i.test(id)) return reply({ error: "invalid_evidence" }, 400);
+    const requestId = request.nextUrl.searchParams.get("requestId") ?? "";
+    const listTerms = request.nextUrl.searchParams.get("list") === "service-billing-terms";
+    if (!listTerms && !/^[0-9a-f-]{36}$/i.test(id)) return reply({ error: "invalid_evidence" }, 400);
     const loaded = await target.context.read("work");
     const work = (loaded.state?.records as WorkRecord[] | undefined)?.find((item) =>
       item.id === workId && item.workspace === target.workspace && !!item.canonicalWorkId);
     if (!work) return reply({ error: "work_unavailable" }, 404);
     const admin = createRybexSupabaseAdminClient();
     const call = admin.rpc.bind(admin) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
+    if (listTerms || target.context.actor.role === "billing_commercial_lead") {
+      if (!requestId) return reply({ error: "request_scope_required" }, 400);
+      const listed = await call("d5o_hosted_service_billing_terms_evidence_list_v1", {
+        p_workspace_key: target.workspace,p_presentation_id: workId,p_request_id: requestId
+      });
+      if (listed.error || !Array.isArray(listed.data))
+        return reply({ error: "evidence_unavailable" }, 404);
+      if (listTerms) return reply(listed.data);
+      if (!listed.data.some((item) => !!item && typeof item === "object" &&
+        (item as { id?: string }).id === id))
+        return reply({ error: "customer_evidence_authority_required" }, 403);
+    }
     const { data: rows, error } = await call("d5o_hosted_customer_decision_evidence_read_v1", {
       p_workspace_key: target.workspace,p_presentation_id: workId,p_evidence_id: id
     });

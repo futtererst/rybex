@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     if (!target) return reply({ error: "service_finance_unavailable" }, 503);
     const body = await request.json() as Record<string, unknown>;
     const action = String(body.action ?? "");
-    if (!["prepare", "review-ready", "review-hold"].includes(action) ||
+    if (!["record-terms", "prepare", "review-ready", "review-hold"].includes(action) ||
       typeof body.workId !== "string" || typeof body.requestId !== "string" ||
       typeof body.commandId !== "string" || typeof body.basisDigest !== "string" ||
       !Number.isInteger(body.expectedWorkRevision) ||
@@ -54,6 +54,32 @@ export async function POST(request: NextRequest) {
       !Number.isInteger(body.expectedDeployRevision) ||
       !Number.isInteger(body.expectedFinanceRevision))
       return reply({ error: "invalid_service_finance_command" }, 400);
+    if (action === "record-terms") {
+      if (!Number.isInteger(body.expectedTermsRevision) ||
+        typeof body.termsSourceDigest !== "string")
+        return reply({ error: "invalid_service_billing_terms_command" }, 400);
+      const recorded = await target.call("d5o_hosted_service_billing_terms_command_v1", {
+        p_workspace_key: target.workspace,
+        p_parent_presentation_id: body.workId,
+        p_request_id: body.requestId,
+        p_input: {
+          evidenceId: body.evidenceId, billingBasis: body.billingBasis,
+          billingTrigger: body.billingTrigger, paymentTerms: body.paymentTerms,
+          customerParty: body.customerParty,
+          customerOrganization: body.customerOrganization,
+          customerRole: body.customerRole, authorityBasis: body.authorityBasis,
+          note: body.note
+        },
+        p_command_id: body.commandId,
+        p_expected_work_revision: body.expectedWorkRevision,
+        p_expected_operate_revision: body.expectedOperateRevision,
+        p_expected_design_revision: body.expectedDesignRevision,
+        p_expected_deploy_revision: body.expectedDeployRevision,
+        p_expected_terms_revision: body.expectedTermsRevision,
+        p_expected_source_digest: body.termsSourceDigest
+      });
+      return recorded.error ? reply({ error: recorded.error.message }, statusFor(recorded.error.code)) : reply(recorded.data);
+    }
     const { data, error } = await target.call("d5o_hosted_service_finance_command_v1", {
       p_workspace_key: target.workspace,
       p_parent_presentation_id: body.workId,

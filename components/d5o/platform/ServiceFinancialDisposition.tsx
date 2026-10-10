@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type { WorkRecord } from "./work-types";
+import { CustomerDecisionEvidence } from "./CustomerDecisionEvidence";
 import style from "./OperateWorkspace.module.css";
 
 type Basis = {
@@ -12,6 +13,12 @@ type Basis = {
   currency?: string; estimateRevision?: string; policyId?: string; policyVersion?: string;
   authorizationEvidenceId?: string; reviewedHours?: number; reviewedQuantity?: number;
   authorizationConditions?: string; billingTermsKnown?: boolean;
+  billingTermsRevision?: number; billingTermsEvidenceId?: string;
+  billingTermsChecksum?: string; billingTermsStatement?: string;
+  billingTermsRecordedBy?: string; billingTermsRecordedAt?: string;
+  billingTerms?: { billingBasis: string; billingTrigger: string; paymentTerms: string;
+    customerParty: string; customerOrganization: string; customerRole: string;
+    authorityBasis: string };
   jobStatus?: string; releaseId?: string; workAcceptanceId?: string;
   designRevision?: number; deployRevision?: number; eligibleForFinanceReview: boolean;
 };
@@ -23,6 +30,7 @@ type Decision = {
 };
 type Read = {
   basis: Basis; basisDigest: string; revision: number;
+  termsSource: Record<string, unknown>; termsSourceDigest: string; termsRevision: number;
   workRevision: number; operateRevision: number;
   decision: Decision | null; decisionCurrent: boolean;
   history: Array<{ revision: number; action: string; at: string }>;
@@ -42,6 +50,7 @@ export function ServiceFinancialDisposition({
   const [position, setPosition] = useState<Read | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [selectedEvidence, setSelectedEvidence] = useState("");
   const endpoint = `/api/d5o-hosted/service-finance?workspace=${encodeURIComponent(work.workspace)}`;
   const refresh = useCallback(async () => {
     const response = await fetch(`${endpoint}&workId=${encodeURIComponent(work.id)}&requestId=${encodeURIComponent(requestId)}`,
@@ -58,7 +67,7 @@ export function ServiceFinancialDisposition({
     return () => { live = false; };
   }, [refresh]);
 
-  async function submit(event: FormEvent<HTMLFormElement>, action: "prepare" | "review-ready" | "review-hold") {
+  async function submit(event: FormEvent<HTMLFormElement>, action: "record-terms" | "prepare" | "review-ready" | "review-hold") {
     event.preventDefault();
     if (!position) return;
     const form = event.currentTarget;
@@ -74,15 +83,26 @@ export function ServiceFinancialDisposition({
           expectedDesignRevision: position.basis.designRevision,
           expectedDeployRevision: position.basis.deployRevision,
           expectedFinanceRevision: position.revision, basisDigest: position.basisDigest,
+          expectedTermsRevision: position.termsRevision,
+          termsSourceDigest: position.termsSourceDigest,
           note: String(data.get("note") ?? "").trim(),
-          billingTermsEvidenceId: String(data.get("billingTermsEvidenceId") ?? "").trim(),
-          billingTermsStatement: String(data.get("billingTermsStatement") ?? "").trim()
+          billingTermsEvidenceId: action === "prepare" ? basis?.billingTermsEvidenceId : undefined,
+          billingTermsStatement: action === "prepare" ? basis?.billingTermsStatement : undefined,
+          evidenceId: selectedEvidence,
+          billingBasis: String(data.get("billingBasis") ?? ""),
+          billingTrigger: String(data.get("billingTrigger") ?? ""),
+          paymentTerms: String(data.get("paymentTerms") ?? "").trim(),
+          customerParty: String(data.get("customerParty") ?? "").trim(),
+          customerOrganization: String(data.get("customerOrganization") ?? "").trim(),
+          customerRole: String(data.get("customerRole") ?? "").trim(),
+          authorityBasis: String(data.get("authorityBasis") ?? "").trim()
         })
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Service Finance decision rejected");
       await refresh();
       form.reset();
+      if (action === "record-terms") setSelectedEvidence("");
     } catch (cause) { setError(String(cause)); }
     finally { setBusy(false); }
   }
@@ -107,22 +127,59 @@ export function ServiceFinancialDisposition({
           {basis.reviewedHours ?? "unknown"} actual hours. Release {basis.releaseId || "missing"};
           accepted scope {basis.workAcceptanceId || "missing"}.</small>
       </div>
-      <p>Actual incurred cost: unknown · billing terms: {decision?.billing_terms_statement || basis.authorizationConditions || "not established in the retained customer authorization"}
+      <p>Actual incurred cost: unknown · billing terms: {basis.billingTermsKnown
+        ? basis.billingTermsStatement : "not established by a current retained terms supplement"}
         · invoice: pending/unknown · payment: pending/unknown. Actual hours are not a time-and-materials charge.</p>
+      {basis.authorizationConditions ? <small>Separate operational authorization condition: {basis.authorizationConditions}</small> : null}
+      {basis.billingTermsKnown && basis.billingTerms ? <div className={style.row}>
+        <b>Customer billing terms · revision {basis.billingTermsRevision}</b>
+        <span>{basis.billingTerms.billingBasis} · {basis.billingTerms.billingTrigger}
+          · {basis.billingTerms.paymentTerms}</span>
+        <small>Fictional customer authority: {basis.billingTerms.customerParty},
+          {basis.billingTerms.customerRole}, {basis.billingTerms.customerOrganization}
+          · {basis.billingTerms.authorityBasis}</small>
+        <small>Recorded by {basis.billingTermsRecordedBy} on {basis.billingTermsRecordedAt}.
+          Document SHA-256 {basis.billingTermsChecksum}.</small>
+        <a href={`/api/d5o-hosted/customer-decision-evidence?workspace=${encodeURIComponent(work.workspace)}&workId=${encodeURIComponent(work.id)}&requestId=${encodeURIComponent(requestId)}&evidenceId=${encodeURIComponent(basis.billingTermsEvidenceId ?? "")}`}
+          target="_blank" rel="noreferrer">Review retained terms PDF</a>
+      </div> : null}
       {decision ? <div className={style.row}><b>{position?.decisionCurrent ? decision.status : `${decision.status} · historical basis`}</b>
         <span>Decision r{decision.revision} · prepared by {decision.prepared_by} on {decision.prepared_at}</span>
         {decision.reviewed_by ? <small>Finance reviewer {decision.reviewed_by} · {decision.reviewed_at}
           · {decision.review_reason}</small> : null}</div> : <p>No Finance disposition has been recorded.</p>}
       {!basis.eligibleForFinanceReview ? <p role="alert">Current completed service source is incomplete or changed. Reconcile its request, approved price, release and acceptance before review.</p> : null}
+      {actorRole === "project_manager" && basis.eligibleForFinanceReview ? <form className={style.form}
+        onSubmit={(event) => void submit(event, "record-terms")}>
+        <b>Record customer billing-terms supplement for the uncovered {money(basis.uncoveredAmountMinor, basis.currency)}</b>
+        <p>This supplements the original authorization. It does not change covered scope or reopen the closed request.</p>
+        <CustomerDecisionEvidence key={position?.termsSourceDigest}
+          workspace={work.workspace} workId={work.id}
+          purpose="service-billing-terms" scopeId={requestId}
+          evidenceId={selectedEvidence} onEvidence={setSelectedEvidence} disabled={busy} />
+        <label>Billing basis<select name="billingBasis" required defaultValue="Fixed fee for approved uncovered scope">
+          <option>Fixed fee for approved uncovered scope</option>
+        </select></label>
+        <label>Billing trigger<select name="billingTrigger" required defaultValue="Accepted service scope">
+          <option>Accepted service scope</option>
+        </select></label>
+        <label>Payment terms<select name="paymentTerms" required defaultValue="">
+          <option value="">Select documented terms</option>
+          <option>Net 30 days from invoice</option>
+          <option>Due on receipt of invoice</option>
+        </select></label>
+        <label>Fictional customer representative<input name="customerParty" required minLength={5} /></label>
+        <label>Customer organization<input name="customerOrganization" required minLength={5} /></label>
+        <label>Representative role<input name="customerRole" required minLength={5} /></label>
+        <label>Stated authority basis<input name="authorityBasis" required minLength={15} /></label>
+        <label>Recorder note confirming the document states these exact terms<input name="note" required minLength={15} /></label>
+        <button disabled={busy || !selectedEvidence}>Record retained supplement</button>
+      </form> : null}
       {actorRole === "project_manager" && basis.eligibleForFinanceReview ?
         <form className={style.form} onSubmit={(event) => void submit(event, "prepare")}>
           <b>Prepare exact service basis for independent Finance review</b>
-          {basis.billingTermsKnown ? <>
-            <label>Billing-terms document ID (retained customer authorization)
-              <input name="billingTermsEvidenceId" /></label>
-            <label>Exact billing terms recorded in that authorization
-              <input name="billingTermsStatement" /></label>
-          </> : <p>The retained authorization does not state billing terms. Prepare this basis for a Finance hold; do not infer terms from the approved amount or actual hours.</p>}
+          {basis.billingTermsKnown
+            ? <p>Current terms revision {basis.billingTermsRevision} and its retained document will be bound automatically.</p>
+            : <p>No current retained billing terms. Finance can hold this prepared basis; operational conditions do not establish billing terms.</p>}
           <label>Preparation reason and unresolved obligations<input name="note" required minLength={15} /></label>
           <button disabled={busy}>Prepare Finance review</button>
         </form> : null}
