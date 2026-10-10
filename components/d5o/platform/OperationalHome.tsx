@@ -17,9 +17,10 @@ type WorkLike = ActionPriority & {
   packages?: { id: string; name: string; status: string }[];
 };
 
-export function OperationalHome<T extends WorkLike>({ workspaceName, currentOwner, actions, work, schedule, scheduleWeek, onOpenDecision, onPortfolio, onConditions, onAssignedToYou, onMyWork, onCrewCoverage, onCrewAttendance, getBlockers }: {
+export function OperationalHome<T extends WorkLike>({ workspaceName, currentOwner, ownedIds, actions, work, schedule, scheduleWeek, onOpenDecision, onPortfolio, onConditions, onAssignedToYou, onMyWork, onCrewCoverage, onCrewAttendance, getBlockers }: {
   workspaceName: string;
   currentOwner: string;
+  ownedIds?: string[];
   actions: T[];
   work: T[];
   schedule: SharedSchedule | null;
@@ -33,7 +34,9 @@ export function OperationalHome<T extends WorkLike>({ workspaceName, currentOwne
   onCrewAttendance: () => void;
   getBlockers: (item: T) => string[];
 }) {
-  const mine = actions.filter((item) => item.owner === currentOwner)
+  const owned = ownedIds ? new Set(ownedIds) : null;
+  const isMine = (item: T) => owned ? owned.has(item.id) : item.owner === currentOwner;
+  const mine = actions.filter(isMine)
     .sort((left, right) => compareActionPriority(left, right) || left.title.localeCompare(right.title));
   const lead = mine[0];
   const leadTransitions = lead ? configuredTransitionsFor(lead.workspace, lead.stage).map((transition) => `${transition.label} · ${roleLabel(lead.workspace, transition.role)}`) : [];
@@ -56,7 +59,7 @@ export function OperationalHome<T extends WorkLike>({ workspaceName, currentOwne
   };
   const exceptions: (ActionPriority & { id: string; label: string; title: string; context: string; detail: string; action: string; open: () => void })[] = [
     ...declined.map(({ assignment, recipient }) => ({ id: `receipt-${assignment.id}-${recipient}`, nextActionDue: assignment.date, nextActionImpact: demandImpact(assignment.workId, assignment.packageId), label: "CREW RESPONSE", title: `${recipient} cannot attend`, context: `${assignment.crew} · ${assignment.date} ${assignment.shift}`, detail: "A replacement or schedule change needs the scheduler.", action: "Resolve in Crew Schedule →", open: onCrewAttendance })),
-    ...holds.filter((item) => item.owner !== currentOwner).map((item) => ({ id: `hold-${item.id}`, nextActionDue: item.nextActionDue, nextActionImpact: item.nextActionImpact, label: "WORK CONDITION", title: item.title, context: `${item.stage} · ${item.owner}`, detail: getBlockers(item)[0], action: "Open condition →", open: () => onOpenDecision(item) })),
+    ...holds.filter((item) => !isMine(item)).map((item) => ({ id: `hold-${item.id}`, nextActionDue: item.nextActionDue, nextActionImpact: item.nextActionImpact, label: "WORK CONDITION", title: item.title, context: `${item.stage} · ${item.owner}`, detail: getBlockers(item)[0], action: "Open condition →", open: () => onOpenDecision(item) })),
     ...uncovered.map(({ demand, slot, record, packageName, missing }) => ({ id: `coverage-${demand.packageId}-${slot.date}-${slot.shift}`, nextActionDue: slot.date, nextActionImpact: demand.priority === "Normal" ? "Standard" as const : demand.priority, label: "CREW COVERAGE", title: packageName, context: `${record.title} · ${slot.date} ${slot.shift}`, detail: `${missing} more qualified ${missing === 1 ? "person" : "people"} required for this shift.`, action: "Staff in Crew Schedule →", open: onCrewCoverage })),
   ].sort((left, right) => compareActionPriority(left, right) || left.title.localeCompare(right.title));
 

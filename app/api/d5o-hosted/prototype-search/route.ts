@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authoritativeD5OCommandsReady } from "@/lib/d5o/auth/hosted-target";
+import { createRybexSupabaseAdminClient, createRybexSupabaseServerClient } from "@/lib/d5o/auth/supabase-server";
+import { deliveryRoleActions } from "@/lib/d5o/hosted/delivery-role-actions";
+import { supportRoleActions } from "@/lib/d5o/hosted/support-role-actions";
+import type { WorkRecord } from "@/components/d5o/platform/work-types";
 import { hostedPrototypeContext, HostedStateError } from "@/lib/d5o/hosted/prototype-context";
 import { initialHostedCatalog } from "@/lib/d5o/work-catalog/store";
 import { lifecycleProfiles, stateFor } from "@/components/d5o/platform/lifecycle-profiles";
@@ -51,16 +56,66 @@ export async function GET(request: NextRequest) {
       if (value) index.set(value.id, value);
     }
     if (recordId) return index.has(recordId) ? reply({ record: index.get(recordId) }) : reply({ error: "record_unavailable" }, 404);
+    let ownedIds: Set<string> | null = null;
+    let actorRole = ctx.actor.role;
+    let roleActions: unknown[] = [];
+    let serviceActions: unknown[] = [];
+    let deliveryActions: unknown[] = [];
+    let supportActions: unknown[] = [];
+    if (authoritativeD5OCommandsReady()) {
+      const client = await createRybexSupabaseServerClient();
+      const call = client.rpc.bind(client) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
+      const { data, error } = await call("d5o_hosted_work_queue_identity_v1", { p_workspace_key: workspace });
+      if (error || !data) return reply({ error: "queue_identity_unavailable" }, 503);
+      const identity = data as { role: string; ownedIds: string[] };
+      actorRole = identity.role;
+      ownedIds = new Set(identity.ownedIds);
+      if (view === "actions") {
+        // The prototype snapshot is not the source for connected Design and Deploy
+        // decisions. Scope this server-only projection after membership resolution.
+        const admin = createRybexSupabaseAdminClient();
+        const adminCall = admin.rpc.bind(admin) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
+        const connected = await adminCall("d5o_hosted_server_connected_read_v1", {
+          p_workspace_key: workspace, p_state_key: "work"
+        });
+        const connectedRead = connected.data as { state?: { records?: WorkRecord[] } } | null;
+        if (connected.error || !Array.isArray(connectedRead?.state?.records))
+          return reply({ error: "delivery_queue_unavailable" }, 503);
+        deliveryActions = deliveryRoleActions(connectedRead.state.records.filter((item) => item.workspace === workspace), ctx.actor.id, actorRole);
+        supportActions = supportRoleActions(connectedRead.state.records.filter((item) => item.workspace === workspace), ctx.actor.id, actorRole);
+        const queued = await call("d5o_hosted_role_actions_v1", { p_workspace_key: workspace });
+        if (queued.error || !Array.isArray(queued.data)) return reply({ error: "role_queue_unavailable" }, 503);
+        roleActions = (queued.data as Array<{ kind?: string }>).filter((item) => item.kind !== "Field report review");
+        const serviceQueued = await call("d5o_hosted_service_actions_v1", { p_workspace_key: workspace });
+        if (serviceQueued.error || !Array.isArray(serviceQueued.data)) return reply({ error: "service_queue_unavailable" }, 503);
+        const costQueued = await call("d5o_hosted_service_cost_actions_v1", { p_workspace_key: workspace });
+        if (costQueued.error || !Array.isArray(costQueued.data)) return reply({ error: "service_cost_queue_unavailable" }, 503);
+        serviceActions = [...serviceQueued.data, ...costQueued.data];
+      }
+    }
+    const isMine = (r: Work) => ownedIds ? ownedIds.has(r.id) : r.owner === owner;
+    const canReviewDefinition = (r: Work) => {
+      const d = r.definition as { reviews?: { commercial?: string; delivery?: string }; submittedByActorId?: string } | undefined;
+      return definition(r) && d?.submittedByActorId !== ctx.actor.id &&
+        (d?.reviews?.commercial === "Pending" && ["admin", "billing_commercial_lead"].includes(actorRole)
+          || d?.reviews?.delivery === "Pending" && ["admin", "operations_leader", "project_manager"].includes(actorRole));
+    };
+    const canReviewPricing = (r: Work) => pricing(r) &&
+      (r.discovery as { estimate?: { review?: { authorityRole?: string; submittedByActorId?: string } } } | undefined)?.estimate?.review?.authorityRole === actorRole &&
+      (r.discovery as { estimate?: { review?: { submittedByActorId?: string } } } | undefined)?.estimate?.review?.submittedByActorId !== ctx.actor.id;
+    const canReviewProposal = (r: Work) => proposal(r) &&
+      (r.discovery as { proposal?: { review?: { authorityRole?: string; submittedByActorId?: string } } } | undefined)?.proposal?.review?.authorityRole === actorRole &&
+      (r.discovery as { proposal?: { review?: { submittedByActorId?: string } } } | undefined)?.proposal?.review?.submittedByActorId !== ctx.actor.id;
     const all = [...index.values()].sort((a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
     const lifecycle = lifecycleProfiles[workspace as WorkspaceKey].states;
     const pos = (r: Work) => lifecycle.indexOf(stateFor(workspace as WorkspaceKey, r.stage, r.progress));
     const matched = all.filter((r) => (!query || [r.id, r.title, r.customer, r.site, r.type, r.stage, r.owner]
       .some((v) => v.toLocaleLowerCase().includes(query))) && (view === "portfolio"
         ? (position === null || pos(r) === position) && (filter === "all" || filter === "blocked" && r.blockers.length > 0 || filter === r.status)
-        : view === "actions" ? filter === "all" || filter === "mine" && r.owner === owner || filter === "waiting" && r.status === "attention"
-          || filter === "pricing" && pricing(r) || filter === "proposal" && proposal(r) || filter === "definition" && definition(r)
+        : view === "actions" ? filter === "all" || filter === "mine" && isMine(r) || filter === "waiting" && r.status === "attention"
+          || filter === "pricing" && (ownedIds ? canReviewPricing(r) : pricing(r)) || filter === "proposal" && (ownedIds ? canReviewProposal(r) : proposal(r)) || filter === "definition" && canReviewDefinition(r)
         : view === "decisions" ? filter === "all" || filter === "blocked" && r.blockers.length > 0 || filter === "actionable" && r.blockers.length === 0 && r.status !== "complete" || filter === "completed" && r.status === "complete"
-        : filter === "all" || filter === "mine" && r.owner === owner || filter === "attention" && r.status === "attention"));
+        : filter === "all" || filter === "mine" && isMine(r) || filter === "attention" && r.status === "attention"));
     const revision = `${work.revision}:${catalog.revision}`;
     let offset = 0;
     if (cursor) {
@@ -75,10 +130,10 @@ export async function GET(request: NextRequest) {
     if (view === "portfolio") return reply({ records, total: matched.length, nextCursor,
       overview: { total: all.length, attention: all.filter((r) => r.status === "attention").length,
         stages: Object.fromEntries(lifecycle.map((_, i) => [i, all.filter((r) => pos(r) === i).length])) } });
-    if (view === "actions") return reply({ records, total: matched.length, nextCursor,
-      roles: [...new Set(all.filter(proposal).map((r) => (r.discovery as { proposal?: { review?: { authorityRole?: string } } } | undefined)?.proposal?.review?.authorityRole).filter(Boolean))],
-      overview: { total: all.length, mine: all.filter((r) => r.owner === owner).length, waiting: all.filter((r) => r.status === "attention").length,
-        pricing: all.filter(pricing).length, proposal: all.filter(proposal).length, definition: all.filter(definition).length } });
+    if (view === "actions") return reply({ records, total: matched.length, nextCursor, ownedIds: [...(ownedIds ?? [])], actorRole, roleActions, serviceActions, deliveryActions, supportActions,
+      roles: [...new Set(all.filter((r) => ownedIds ? canReviewProposal(r) : proposal(r)).map((r) => (r.discovery as { proposal?: { review?: { authorityRole?: string } } } | undefined)?.proposal?.review?.authorityRole).filter(Boolean))],
+      overview: { total: all.length, mine: all.filter(isMine).length, waiting: all.filter((r) => r.status === "attention").length,
+        pricing: all.filter((r) => ownedIds ? canReviewPricing(r) : pricing(r)).length, proposal: all.filter((r) => ownedIds ? canReviewProposal(r) : proposal(r)).length, definition: all.filter(canReviewDefinition).length } });
     if (view === "decisions") return reply({ records, total: matched.length, nextCursor,
       overview: { total: all.length, blocked: all.filter((r) => r.blockers.length > 0).length,
         actionable: all.filter((r) => r.blockers.length === 0 && r.status !== "complete").length, completed: all.filter((r) => r.status === "complete").length } });

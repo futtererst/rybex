@@ -1,12 +1,12 @@
 import "server-only";
-import { createRybexSupabaseServerClient } from "@/lib/d5o/auth/supabase-server";
+import { createRybexSupabaseAdminClient, createRybexSupabaseServerClient } from "@/lib/d5o/auth/supabase-server";
 import { hostedD5OTargetReady } from "@/lib/d5o/auth/hosted-target";
 
 export type HostedStateKey = "work" | "catalog" | "schedule";
 export type HostedRpcError = { code?: string; message: string };
 export type HostedStateResult = { revision: number; state: Record<string, unknown> | null };
 type RpcName = "d5o_hosted_actor_v1" | "d5o_hosted_prototype_read_v1" |
-  "d5o_hosted_prototype_save_v1";
+  "d5o_hosted_command_save_v1";
 type RpcResult = { data: unknown; error: HostedRpcError | null };
 
 const editors = new Set(["admin", "operations_leader", "project_manager", "field_supervisor"]);
@@ -50,10 +50,15 @@ export async function hostedPrototypeContext(workspace: string) {
       return read;
     },
     async save(key: HostedStateKey, revision: number, state: Record<string, unknown>): Promise<HostedStateResult> {
-      if (!editors.has(role)) throw new HostedStateError("workspace_forbidden", 403);
-      const result = await call("d5o_hosted_prototype_save_v1", {
+      // Only server command routes call this writer. Browser JWTs cannot invoke
+      // the command RPC, even if they bypass an application snapshot endpoint.
+      const admin = createRybexSupabaseAdminClient();
+      const commandCall = admin.rpc.bind(admin) as unknown as
+        (name: RpcName, args: Record<string, unknown>) => Promise<RpcResult>;
+      const result = await commandCall("d5o_hosted_command_save_v1", {
         p_workspace_key: workspace, p_state_key: key,
-        p_expected_revision: revision, p_state: state
+        p_expected_revision: revision, p_state: state,
+        p_actor_user_id: userData.user.id, p_membership_id: identity.membershipId
       });
       if (result.error) throw rpcError(result.error);
       const saved = result.data as HostedStateResult | null;

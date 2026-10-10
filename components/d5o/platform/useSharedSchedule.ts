@@ -16,6 +16,7 @@ export function useSharedSchedule(workspace: WorkspaceKey, hostedPreview = false
     : "/api/work/schedule";
   const [schedule, setSchedule] = useState<SharedSchedule | null>(null);
   const [canEdit, setCanEdit] = useState(false);
+  const [requiresPublication, setRequiresPublication] = useState(false);
   const [error, setError] = useState("");
   const [delivery, setDelivery] = useState<{ sent: number; failed: number; attempting: number; unavailable?: boolean } | null>(null);
   const [deliveryWarning, setDeliveryWarning] = useState("");
@@ -24,11 +25,12 @@ export function useSharedSchedule(workspace: WorkspaceKey, hostedPreview = false
   const refresh = useCallback(async () => {
     const response = await fetch(endpoint, { cache: "no-store" });
     if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? "Sign in to your authorized workspace to view the shared schedule." : "The shared schedule is unavailable.");
-    const payload = await response.json() as { schedule: SharedSchedule; canEdit: boolean; delivery?: { sent: number; failed: number; attempting: number; unavailable?: boolean } };
+    const payload = await response.json() as { schedule: SharedSchedule; canEdit: boolean; requiresPublication?: boolean; delivery?: { sent: number; failed: number; attempting: number; unavailable?: boolean } };
     if (payload.schedule.workspace !== workspace) throw new Error("Schedule workspace mismatch.");
     current.current = payload.schedule;
     setSchedule(payload.schedule);
     setCanEdit(payload.canEdit);
+    setRequiresPublication(payload.requiresPublication === true);
     setDelivery(payload.delivery ?? null);
     setError("");
     return payload.schedule;
@@ -63,7 +65,7 @@ export function useSharedSchedule(workspace: WorkspaceKey, hostedPreview = false
     const payload = change.action === "save-assignments" ? { ...change, assignments: datedAssignments(change.assignments, state.anchorDate) }
       : change.action === "save-booking" ? { ...change, assignment: datedAssignments([change.assignment], state.anchorDate)[0] }
       : change.action === "save-availability" ? { ...change, availabilityBlocks: datedAvailability(change.availabilityBlocks, state.anchorDate) } : change;
-    const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...payload, expectedRevision: state.revision }) });
+    const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...payload, expectedRevision: state.revision, commandId: crypto.randomUUID() }) });
     const result = await response.json() as { schedule?: SharedSchedule; error?: string; message?: string; delivery?: { sent: number; failed: number; attempting: number; unavailable?: boolean }; deliveryWarning?: string };
     if (!response.ok || !result.schedule) {
       if (response.status === 409) await refresh();
@@ -82,5 +84,5 @@ export function useSharedSchedule(workspace: WorkspaceKey, hostedPreview = false
     localStorage.setItem(`d5o.crew-board-import-dismissed.v1:${workspace}`, "1");
     setLegacyPlan(null);
   }, [workspace]);
-  return { schedule, canEdit, error, delivery, deliveryWarning, legacyPlan, refresh, mutate, dismissLegacy };
+  return { schedule, canEdit, requiresPublication, error, delivery, deliveryWarning, legacyPlan, refresh, mutate, dismissLegacy };
 }

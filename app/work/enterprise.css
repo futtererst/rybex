@@ -1099,3 +1099,4 @@
 .d5o-full-app .d5o-phase-disclosure{border-bottom:1px solid #dbe5e9;background:#f7fafb;padding:0 15px}
 .d5o-full-app .d5o-phase-disclosure>summary{color:#3b6171;cursor:pointer;font-size:.72rem;font-weight:800;padding:12px 2px}
 .d5o-full-app .d5o-phase-disclosure>section{margin-bottom:15px}
+.d5o-source-id { display: block; margin: 1rem 0.75rem; color: #aebdcc; font-size: 0.7rem; overflow-wrap: anywhere; }
