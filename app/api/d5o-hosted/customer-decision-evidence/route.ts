@@ -10,9 +10,30 @@ const bucket = "d5o-deploy-evidence";
 const reply = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } });
 const pathFor = (workspace: string, workId: string, id: string) =>
   `${workspace}/${createHash("sha256").update(workId).digest("hex")}/customer-decisions/${id}`;
-type Purpose = "package-acceptance" | "work-acceptance" | "service-authorization" | "field-change-authorization" | "service-billing-terms";
+type Purpose = "package-acceptance" | "work-acceptance" | "service-authorization" | "field-change-authorization" | "service-billing-terms" | "support-as-built" | "support-inspection";
 
 function exactBasis(work: WorkRecord, purpose: Purpose, scopeId: string) {
+  if (purpose === "support-as-built" || purpose === "support-inspection") {
+    const acceptance = work.deploy?.workAcceptance;
+    const turnover = work.deploy?.turnovers.find((item) => item.id === scopeId);
+    const kind = purpose === "support-as-built" ? "as-built" : "inspection";
+    const release = work.design?.releases.find((item) =>
+      turnover?.releaseIds.length === 1 && item.id === turnover.releaseIds[0] && item.status === "Accepted");
+    if (!acceptance || acceptance.receipt !== "Accepted" ||
+      !acceptance.turnoverIds.includes(scopeId) || !turnover ||
+      turnover.status !== "Client accepted" || turnover.receipt !== "Accepted" || !release ||
+      work.operate?.source?.workAcceptanceId !== acceptance.id ||
+      work.operate.source.revision !== acceptance.revision ||
+      !turnover.obligations.toLowerCase().includes(kind === "as-built" ? "as-built" : "inspection"))
+      return null;
+    return { scopeRevision: turnover.revision, basis: {
+      turnoverId: turnover.id, turnoverRevision: turnover.revision,
+      packageId: release.packageId, releaseId: release.id,
+      releaseRevision: release.packageRevision,
+      workAcceptanceId: acceptance.id, workAcceptanceRevision: acceptance.revision,
+      kind
+    } };
+  }
   if (purpose === "package-acceptance") {
     const turnover = work.deploy?.turnovers.find((item) => item.id === scopeId && item.status === "Draft");
     if (!turnover || !work.design?.authorityRevision) return null;
@@ -65,7 +86,7 @@ export async function POST(request: NextRequest) {
     const scopeId = String(form.get("scopeId") ?? "");
     if (!(file instanceof File) || file.type !== "application/pdf" || file.size < 1 ||
       file.size > 10_485_760 || !workId || !scopeId ||
-      !["package-acceptance", "work-acceptance", "service-authorization", "field-change-authorization", "service-billing-terms"].includes(purpose))
+      !["package-acceptance", "work-acceptance", "service-authorization", "field-change-authorization", "service-billing-terms", "support-as-built", "support-inspection"].includes(purpose))
       return reply({ error: "signed_pdf_required" }, 400);
     const loaded = await target.context.read("work");
     const work = (loaded.state?.records as WorkRecord[] | undefined)?.find((item) =>
@@ -100,6 +121,9 @@ export async function POST(request: NextRequest) {
         basis: { packageId: change.packageId, proposal: change.facts.proposal,
           internalReview: change.facts.internalReview } };
     }
+    if ((purpose === "support-as-built" || purpose === "support-inspection") &&
+      !["project_manager", "field_supervisor"].includes(target.context.actor.role))
+      return reply({ error: "support_document_supplier_required" }, 403);
     if (!exact) return reply({ error: "current_decision_scope_required" }, 409);
     const id = randomUUID(), bytes = Buffer.from(await file.arrayBuffer());
     if (bytes.subarray(0, 5).toString("ascii") !== "%PDF-" || !bytes.subarray(-32).toString("ascii").includes("%%EOF"))
@@ -116,7 +140,15 @@ export async function POST(request: NextRequest) {
       createHash("sha256").update(Buffer.from(await verified.data.arrayBuffer())).digest("hex") !== checksum)
       throw new Error("uploaded_bytes_changed");
     const call = admin.rpc.bind(admin) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
-    const { data, error } = await call("d5o_hosted_register_customer_decision_evidence_v1", {
+    const supportDocument = purpose === "support-as-built" || purpose === "support-inspection";
+    const { data, error } = await call(supportDocument
+      ? "d5o_hosted_register_support_document_v1"
+      : "d5o_hosted_register_customer_decision_evidence_v1", supportDocument ? {
+      p_workspace_key: target.workspace,p_presentation_id: workId,p_evidence_id: id,
+      p_turnover_id: scopeId,p_kind: purpose === "support-as-built" ? "as-built" : "inspection",
+      p_basis: exact.basis,p_checksum_sha256: checksum,p_filename: file.name,
+      p_uploader_id: target.context.actor.id
+    } : {
       p_workspace_key: target.workspace,p_presentation_id: workId,p_evidence_id: id,
       p_purpose: purpose,p_scope_id: scopeId,p_scope_revision: exact.scopeRevision,
       p_basis: exact.basis,p_checksum_sha256: checksum,p_filename: file.name,

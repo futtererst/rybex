@@ -27,6 +27,31 @@ export async function POST(request: NextRequest) {
     if (!records || index < 0) return reply({ error: "work_unavailable" }, 404);
     const selected = records[index];
     if (authoritativeD5OCommandsReady() && selected.canonicalWorkId) {
+      if (command.action === "submit-support-document" || command.action === "review-support-document") {
+        if (!command.turnoverId || !command.documentKind || !command.evidenceId ||
+          !Number.isInteger(command.expectedDeployRevision) ||
+          !Number.isInteger(command.expectedDecisionRevision))
+          return reply({ error: "support_document_basis_missing" }, 400);
+        const session = await createRybexSupabaseServerClient();
+        const call = session.rpc.bind(session) as unknown as (name: string, args: Record<string, unknown>) => Promise<{
+          data: unknown; error: { code?: string; message: string } | null
+        }>;
+        const { data, error } = await call("d5o_hosted_support_document_command_v1", {
+          p_workspace_key: workspace,p_presentation_id: command.workId,
+          p_action: command.action === "submit-support-document" ? "submit" : "review",
+          p_turnover_id: command.turnoverId,p_kind: command.documentKind,
+          p_evidence_id: command.evidenceId,p_decision: command.decision ?? null,
+          p_note: command.note ?? "",p_command_id: command.commandId,
+          p_expected_source_revision: command.expectedRevision,
+          p_expected_deploy_revision: command.expectedDeployRevision,
+          p_expected_operate_revision: command.expectedDecisionRevision
+        });
+        if (error) return reply({ error: error.message, message: error.message },
+          error.code === "42501" ? 403 : error.code === "23505" || error.code === "23514" ? 409 : 400);
+        const result = data as { state?: Record<string, unknown>; revision?: number } | null;
+        if (!result?.state || !Number.isInteger(result.revision)) return reply({ error: "invalid_response" }, 502);
+        return reply({ state: { ...result.state, revision: result.revision }, synthetic: false });
+      }
       if (["save-service-estimate", "submit-service-pricing", "approve-service-pricing",
         "return-service-pricing", "record-service-authorization"].includes(command.action)) {
         if (!command.requestId || !Number.isInteger(command.expectedDecisionRevision))

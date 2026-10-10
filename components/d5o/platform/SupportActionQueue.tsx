@@ -6,7 +6,9 @@ const labels: Record<SupportAction["kind"], string> = {
   "receive-handoff": "Link exact accepted delivery handoff",
   "add-asset": "Identify supported asset or system",
   "accept-support": "Accept ongoing support responsibility",
-  "activate": "Assess and authorize support activation"
+  "activate": "Assess and authorize support activation",
+  "supply-document": "Supply accepted turnover documentation",
+  "review-document": "Review exact support document"
 };
 
 export function SupportActionQueue({ workspace, actions }: { workspace: string; actions: SupportAction[] }) {
@@ -20,6 +22,7 @@ export function SupportActionQueue({ workspace, actions }: { workspace: string; 
         {items.map((item) => {
           const params = new URLSearchParams({ workspace, view: "record", record: item.workId, section: "Operate",
             focus: item.kind, decision: item.decisionId, decisionRevision: String(item.decisionRevision),
+            turnover: item.turnoverId ?? "", documentKind: item.documentKind ?? "",
             sourceRevision: String(item.sourceRevision), deployRevision: String(item.deployRevision) });
           return <a key={`${item.kind}:${item.workId}:${item.decisionId}`} href={`/work?${params}`}>
             <strong>{labels[item.kind]}</strong>

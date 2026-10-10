@@ -12,8 +12,19 @@ export type ServiceAuthorization = { estimateRevision: number; amountMinor: numb
 export type ServiceRequest = { id: string; assetId: string; title: string; description: string; impact: "Standard" | "High" | "Critical"; contact: string; reportedAt: string; reopenedAt?: string; owner: string; status: "New" | "Triaged" | "In progress" | "Resolved" | "Closed" | "Reopened"; coverage: "Awaiting" | "Covered" | "Partially covered" | "Chargeable" | "Excluded" | "Expired"; coverageBasis?: string; agreementId?: string; serviceCategory?: string; responseDueAt?: string; restorationDueAt?: string; resolutionDueAt?: string; respondedAt?: string; restoredAt?: string; resolvedAt?: string; resolution?: string; resolutionSource?: string; reviewedBy?: string; serviceEstimate?: ServiceEstimate; serviceAuthorization?: ServiceAuthorization; serviceAuthorizationHistory?: ServiceAuthorization[]; slaBasis?: { configurationVersionId?: string; agreementId?: string; agreementRevision?: number; calendar: "Business hours" | "Continuous"; timezone: string; holidayDates: string[]; businessStartHour?: number; businessEndHour?: number; responseHours?: number; restorationHours?: number; resolutionHours?: number }; activePause?: { at: string; reason: string; actorId: string }; slaHistory?: Array<{ at: string; action: string; actorId: string; reason: string; responseDueAt?: string; restorationDueAt?: string; resolutionDueAt?: string }>; jobIds: string[]; currentCycleJobIds?: string[]; history: Array<{ at: string; action: string; actorId: string; note: string }> };
 export type ServiceJob = { id: string; workId: string; assetIds: string[]; requestId?: string; planId?: string; dueDate: string; status: "Generated" | "Execution linked" | "Completed" | "Cancelled"; evidence: string[]; completionRefs?: string[]; createdAt: string; linkedByActorId?: string; completedAt?: string; completedByActorId?: string; completionReason?: string };
 export type MaintenancePlan = { id: string; assetId: string; title: string; frequencyDays: number; nextDue: string; mode: "Fixed date" | "Completion relative"; owner: string; skill: string; expectedHours: number; requiredEvidence: string; status: "Active" | "Suspended"; revision: number; generatedDates: string[]; deferrals?: Array<{ originalDue: string; revisedDue: string; reason: string; actorId: string; at: string }> };
+export type SupportDocumentation = {
+  id: string; turnoverId: string; kind: "as-built" | "inspection";
+  basis: { turnoverId: string; turnoverRevision: number; packageId: string; releaseId: string;
+    releaseRevision: number; workAcceptanceId: string; workAcceptanceRevision: number; kind: string };
+  status: "Submitted" | "Reviewed" | "Returned"; filename: string; checksumSha256: string;
+  uploadedAt: string; uploadedByActorId: string; submittedAt: string;
+  submittedByActorId: string; submittedByMembershipId: string;
+  supersedesId?: string | null; note?: string; reviewedAt?: string;
+  reviewedByActorId?: string; reviewedByMembershipId?: string; reviewReason?: string;
+};
 export type OperateState = {
   authorityRevision?: number;
+  documentationObligations?: SupportDocumentation[];
   source?: { kind: "Accepted Deploy" | "Legacy onboarding"; workAcceptanceId?: string; revision?: number; turnoverIds: string[]; acceptedAt: string; acceptedByActorId: string; note: string };
   support?: { owner: string; ownerActorId: string; acceptedAt: string; customerContact: string; escalation: string; intakeRoute: string; warrantyDisposition: string; serviceDisposition: string; documentationReviewed: string; residualOwner: string };
   activation?: { status: "Active" | "Suspended" | "Deactivated"; at: string; actorId: string; basis: string; sourceRevision: number; history: Array<{ at: string; action: string; actorId: string; reason: string }> };

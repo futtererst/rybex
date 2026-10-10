@@ -1,9 +1,10 @@
 import type { WorkRecord } from "@/components/d5o/platform/work-types";
 import { currentWorkAcceptanceScope } from "@/components/d5o/platform/deploy-model";
+import { supportDocumentationPositions } from "@/components/d5o/platform/support-documentation";
 
 export type SupportAction = {
-  kind: "receive-handoff" | "add-asset" | "accept-support" | "activate";
-  workId: string; title: string; customer: string; decisionId: string;
+  kind: "receive-handoff" | "add-asset" | "accept-support" | "activate" | "supply-document" | "review-document";
+  workId: string; title: string; customer: string; decisionId: string; turnoverId?: string; documentKind?: "as-built" | "inspection";
   decisionRevision: number; sourceRevision: number; deployRevision: number;
   position: "available" | "preparation" | "waiting";
   responsibleRole: string; blocker: string | null;
@@ -31,6 +32,19 @@ export function supportRoleActions(records: WorkRecord[], actorId: string, role:
       "Review contact, escalation, intake, coverage dispositions, documents and residual obligations.");
     else if (!state.activation) add("activate", "Operations leader", role === "operations_leader",
       "Review operational readiness and resolve any outstanding prerequisites before authorization.");
+    if (state?.source && state.support) {
+      for (const doc of supportDocumentationPositions(work).filter((item) => item.status !== "Reviewed")) {
+        const review = doc.status === "Submitted";
+        actions.push({ ...base, kind: review ? "review-document" : "supply-document",
+          turnoverId: doc.turnoverId, documentKind: doc.kind,
+          decisionId: review ? doc.current!.id : doc.turnoverId,
+          decisionRevision: doc.turnoverRevision,
+          responsibleRole: review ? "Operations leader" : "Project manager",
+          blocker: review ? null : "Supply a retained PDF for the exact accepted package and release.",
+          position: review ? role === "operations_leader" ? "available" : "waiting"
+            : role === "project_manager" ? "preparation" : "waiting" });
+      }
+    }
   }
   return actions;
 }

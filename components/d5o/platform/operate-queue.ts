@@ -1,5 +1,6 @@
 import type { WorkRecord, WorkspaceKey } from "./work-types";
 import { coverageFor, operateState, type ServiceRequest } from "./operate-model";
+import { supportDocumentationPositions } from "./support-documentation";
 
 export type SupportQueueItem = {
   key: string; workId: string; requestId?: string; section: "Handoff & activation" | "Assets" | "Coverage" | "Requests & jobs" | "Maintenance";
@@ -28,6 +29,16 @@ export function buildSupportQueue(records: WorkRecord[], workspace: WorkspaceKey
     }
     if (state.activation?.status === "Active" && state.support && !state.support.residualOwner && work.deploy?.turnovers?.some((item) => item.obligations.trim())) {
       push({ key: `${work.id}:residual`, section: "Handoff & activation", severity: "Action", label: "Assign residual obligation", detail: "Accepted turnover names continuing work without an accountable owner.", owner: "Operations leader" });
+    }
+    for (const doc of supportDocumentationPositions(work).filter((entry) => entry.status !== "Reviewed")) {
+      push({ key: work.id + ":document:" + doc.turnoverId + ":" + doc.kind,
+        section: "Handoff & activation", severity: "Action",
+        label: (doc.kind === "as-built" ? "As-built record" : "Inspection record") + ": " + doc.status,
+        detail: "Package " + doc.packageId + ", release " + doc.releaseId +
+          "; " + (doc.status === "Submitted" ? "independent document review due" :
+            "retained document supply or correction due"),
+        owner: doc.status === "Submitted" ? "Operations leader" :
+          state.support?.residualOwner || "Project manager" });
     }
     for (const asset of state.assets) {
       if (state.activation?.status !== "Active") continue;
