@@ -242,6 +242,7 @@ declare v_actor uuid:=auth.uid();v_workspace d5o_hosted.workspaces%rowtype;
   v_current d5o_hosted.connected_service_finance_states%rowtype;
   v_receipt d5o_hosted.connected_service_finance_receipts%rowtype;
   v_basis jsonb;v_digest text;v_fingerprint text;v_next jsonb;v_result jsonb;
+  v_child uuid;
   v_revision integer;v_note text:=trim(coalesce(p_input->>'note',''));
   v_terms text:=nullif(trim(coalesce(p_input->>'billingTermsStatement','')),'');
   v_terms_id uuid;v_now timestamptz:=now();
@@ -291,6 +292,19 @@ begin
     where workspace_id=v_workspace.id and state_key='work' for share;
   select * into v_operate from d5o_hosted.connected_operate_states
     where workspace_id=v_workspace.id and work_id=v_parent.id for share;
+  select s.work_id into v_child from d5o_hosted.connected_service_work s
+    where s.workspace_id=v_workspace.id and s.parent_work_id=v_parent.id
+      and s.request_id=p_request_id for share;
+  if v_child is null then
+    raise exception 'service_finance_execution_incomplete' using errcode='23514'; end if;
+  perform 1 from d5o_hosted.work_records
+    where workspace_id=v_workspace.id and id=v_child for share;
+  perform 1 from d5o_hosted.connected_design_handoffs
+    where workspace_id=v_workspace.id and work_id=v_child for share;
+  perform 1 from d5o_hosted.connected_design_states
+    where workspace_id=v_workspace.id and work_id=v_child for share;
+  perform 1 from d5o_hosted.connected_deploy_states
+    where workspace_id=v_workspace.id and work_id=v_child for share;
   select * into v_current from d5o_hosted.connected_service_finance_states
     where workspace_id=v_workspace.id and parent_work_id=v_parent.id
       and request_id=p_request_id for update;
