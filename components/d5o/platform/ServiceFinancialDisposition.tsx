@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type { WorkRecord } from "./work-types";
 import { CustomerDecisionEvidence } from "./CustomerDecisionEvidence";
 import { ServiceInvoicePanel } from "./ServiceInvoicePanel";
+import { ServiceActualCostPanel } from "./ServiceActualCostPanel";
 import style from "./OperateWorkspace.module.css";
 
 type Basis = {
@@ -128,7 +129,7 @@ export function ServiceFinancialDisposition({
           {basis.reviewedHours ?? "unknown"} actual hours. Release {basis.releaseId || "missing"};
           accepted scope {basis.workAcceptanceId || "missing"}.</small>
       </div>
-      <p>Actual incurred cost: unknown · billing terms: {basis.billingTermsKnown
+      <p>Actual incurred cost is shown in the sourced cost ledger below · billing terms: {basis.billingTermsKnown
         ? basis.billingTermsStatement : "not established by a current retained terms supplement"}
         · see the retained invoice and payment position below. Actual hours are not a time-and-materials charge.</p>
       {basis.authorizationConditions ? <small>Separate operational authorization condition: {basis.authorizationConditions}</small> : null}
@@ -198,6 +199,7 @@ export function ServiceFinancialDisposition({
         </> : null}
       <small>{position?.history.length ?? 0} retained Finance event(s). Ready for billing does not itself issue an invoice or record payment.</small>
       <ServiceInvoicePanel work={work} requestId={requestId} actorRole={actorRole} />
+      <ServiceActualCostPanel work={work} requestId={requestId} actorRole={actorRole} />
     </>}
   </section>;
 }

@@ -71,7 +71,9 @@ export async function GET(request: NextRequest) {
         roleActions = queued.data;
         const serviceQueued = await call("d5o_hosted_service_actions_v1", { p_workspace_key: workspace });
         if (serviceQueued.error || !Array.isArray(serviceQueued.data)) return reply({ error: "service_queue_unavailable" }, 503);
-        serviceActions = serviceQueued.data;
+        const costQueued = await call("d5o_hosted_service_cost_actions_v1", { p_workspace_key: workspace });
+        if (costQueued.error || !Array.isArray(costQueued.data)) return reply({ error: "service_cost_queue_unavailable" }, 503);
+        serviceActions = [...serviceQueued.data, ...costQueued.data];
       }
     }
     const isMine = (r: Work) => ownedIds ? ownedIds.has(r.id) : r.owner === owner;
