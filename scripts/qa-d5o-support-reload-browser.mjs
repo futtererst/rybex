@@ -13,6 +13,8 @@ try {
     await page.locator('input[name="password"]').fill(user.password);
     await page.getByRole("button", { name: "Continue to your work" }).click();
     await page.getByRole("heading", { name: "Actions requiring attention" }).waitFor({ timeout: 30000 });
+    if (!(await page.locator("body").innerText()).includes("Build cd1a43f"))
+      throw new Error("displayed_build_identity_mismatch");
     const queue = await page.evaluate(async () => {
       const body = await (await fetch("/api/d5o-hosted/prototype-search?workspace=rybex&view=actions")).json();
       return body.supportActions ?? [];
