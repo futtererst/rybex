@@ -16,6 +16,7 @@ import type { DeployCommand } from "@/lib/d5o/prototype-work/deploy-command";
 import style from "./OperateWorkspace.module.css";
 import { ServicePricingPanel } from "./ServicePricingPanel";
 import { JobFinancePanel } from "./JobFinancePanel";
+import { ServiceFinancialDisposition } from "./ServiceFinancialDisposition";
 import { buildSupportQueue } from "./operate-queue";
 
 import { legacyOperateControlPolicy, type OperateControlPolicy } from "./operate-policy";
@@ -107,6 +108,10 @@ export function OperateWorkspace({ work, allWork, policy, hosted, actorRole, ini
 
     {tab === "Finance & lessons" ? <><div className={style.grid}><Card title="Project financial closeout" lead="Finance status does not turn support on or off."><p><b>{state.finance.status}</b> · {state.finance.owner}</p><p>{state.finance.note || "No Finance review recorded."}</p>{canFinance ? <form className={style.form} onSubmit={submit("update-finance", (data) => ({ status: value(data, "status"), note: value(data, "note") }))}><label>Status<select name="status"><option>Pending</option><option>In review</option><option>Closed</option></select></label>{field("note", "Finance decision and open exposure")}<button disabled={busy}>Save Finance position</button></form> : <p>Finance authority is required to record project closeout.</p>}</Card><Card title="Lessons and owned follow-through">{state.lessons.map((item) => <article className={style.row} key={item.id}><b>{item.finding}</b><span>{item.action} · {item.owner} · {item.status}</span></article>)}<form className={style.form} onSubmit={submit("add-lesson", (data) => ({ description: value(data, "description"), actionOwner: value(data, "actionOwner"), resolution: value(data, "resolution") }))}>{field("description", "Lesson")}{field("resolution", "Follow-through action")}{field("actionOwner", "Accountable owner")}<button disabled={busy}>Record lesson</button></form></Card></div>{hosted && work.canonicalWorkId && !work.serviceSource ? <JobFinancePanel work={work} actorRole={actorRole ?? ""} /> : null}</> : null}
 
+    {tab === "Finance & lessons" && hosted && work.canonicalWorkId ?
+      state.requests.filter((request) => request.coverage === "Partially covered")
+        .map((request) => <ServiceFinancialDisposition key={request.id} work={work}
+          requestId={request.id} actorRole={actorRole} />) : null}
     <p className={style.disclosure}>Synthetic prototype. Asset and service history persists with this Work Record. External customer submission, ERP closeout, live telemetry and notifications are not connected.</p>
 
   </section>;
