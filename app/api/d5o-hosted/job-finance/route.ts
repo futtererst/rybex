@@ -9,7 +9,7 @@ const reply = (value: unknown, status = 200) => NextResponse.json(value, {
 });
 type DbResult = { data: unknown; error: { code?: string; message: string } | null };
 const actions = new Set(["add-cost", "set-remaining", "draft-bill", "submit-bill",
-  "review-bill", "record-billed", "record-paid"]);
+  "review-bill", "revise-bill", "return-unbilled", "record-billed", "record-paid"]);
 const validId = (value: unknown) => typeof value === "string" && value.length >= 2 && value.length <= 120;
 export async function GET(request: NextRequest) {
   if (!authoritativeD5OCommandsReady()) return reply({ error: "finance_unavailable" }, 503);
