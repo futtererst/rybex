@@ -32,14 +32,17 @@ try {
     if (key === "pm" && process.env.D5O_EXPECT_COMPLETE === "1") {
       await page.goto(`${base}/work?workspace=rybex&view=handoff`);
       await page.getByRole("heading", { name: "Current scope and receiving responsibility" }).waitFor({ timeout: 30000 });
-      const row = page.locator("button").filter({ hasText: "2/2 current releases" }).filter({ hasText: "2/2 reviewed completions" })
-        .filter({ hasText: "2/2 scoped acceptances" }).filter({ hasText: "Operations received exact scope" });
-      if (!(await row.count())) throw new Error("handoff_scope_projection_mismatch");
       const work = await page.evaluate(async (id) => {
         const response = await fetch("/api/d5o-hosted/prototype-state?workspace=rybex&key=work", { cache: "no-store" });
         const body = await response.json();
         return body.state?.records?.find((item) => item.id === id);
       }, workId);
+      const row = page.locator("button").filter({ hasText: work.title }).filter({ hasText: "2/2 current releases" }).filter({ hasText: "2/2 reviewed completions" })
+        .filter({ hasText: "2/2 scoped acceptances" }).filter({ hasText: "Operations received exact scope" });
+      if (!(await row.count())) throw new Error("handoff_scope_projection_mismatch");
+      const handoffText = await row.innerText();
+      if (!handoffText.includes("Receipt actor") || !handoffText.includes("receiving owner"))
+        throw new Error("handoff_receiving_identity_missing");
       if (work?.packages?.length !== 2 || !work.deploy?.workAcceptance || work.deploy.workAcceptance.receipt !== "Accepted")
         throw new Error("whole_work_receipt_missing");
       const release = work.design?.releases?.find((item) => item.packageId === work.packages[0].id && item.status === "Accepted");

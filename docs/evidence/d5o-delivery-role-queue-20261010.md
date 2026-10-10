@@ -1,6 +1,6 @@
 # Delivery role queues and exact handoff scope — isolated qualification (10 October 2026)
 
-Application change: `64bf4585da900c9d078e66c49aa7d7d5cba38d75`. Draft PR #2 remains unmerged. The production-mode local preview is `http://127.0.0.1:61643/work?workspace=rybex` against disposable Supabase `127.0.0.1:56621`. Shared and production persistence, users and aliases were unchanged. All people, customer names, work, files and signatures below are fictional pilot data.
+Application source: `1cb742aa337f63366d03648e528a9b859699807d` (role-queue implementation `64bf4585da900c9d078e66c49aa7d7d5cba38d75`, followed by the handoff receiving-owner correction). Draft PR #2 remains unmerged. The production-mode local preview is `http://127.0.0.1:61643/work?workspace=rybex` against disposable Supabase `127.0.0.1:56621`. Shared and production persistence, users and aliases were unchanged. All people, customer names, work, files and signatures below are fictional pilot data.
 
 The fresh canonical Work Record is `rybex-282d4ad2d36e4e3a8f52b330bbbc685d`, with North package `wp-c0050891eb0c4808925655847f90d15a` and South package `wp-27a39f7935904e3c996b4b11d90d1d71`. Separate signed-in PM, Operations, supervisor, Quality and worker accounts performed the journey. Discover, Define and Develop decisions, exact Design revision-2 reviews/releases and independent Deploy receipts preceded qualified crew publication, worker acknowledgment and field-start authorization.
 
