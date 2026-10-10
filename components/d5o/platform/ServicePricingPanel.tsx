@@ -13,7 +13,7 @@ type Command = Omit<OperateCommand, "workId" | "expectedRevision" | "commandId">
 const categories: PricingCategory[] = ["labor", "material", "equipment", "subcontract", "travel", "mobilization", "setup", "recurring", "other"];
 const field = (form: FormData, name: string) => String(form.get(name) ?? "").trim();
 
-export function ServicePricingPanel({ work, request, hosted, busy, onCommand }: { work: WorkRecord; request: ServiceRequest; hosted: boolean; busy: boolean; onCommand: (command: Command) => Promise<boolean> }) {
+export function ServicePricingPanel({ work, request, hosted, busy, focused = false, onCommand }: { work: WorkRecord; request: ServiceRequest; hosted: boolean; busy: boolean; focused?: boolean; onCommand: (command: Command) => Promise<boolean> }) {
   const [policyState, setPolicyState] = useState<PolicyResponse | null>(null);
   const [lines, setLines] = useState<PricingLine[]>(() => request.serviceEstimate?.input.lines ?? []);
   const [riskBasis, setRiskBasis] = useState(request.serviceEstimate?.input.riskBasis ?? "");
@@ -45,7 +45,7 @@ export function ServicePricingPanel({ work, request, hosted, busy, onCommand }: 
     if (saved) form.reset();
   }
 
-  return <details className={style.card}>
+  return <details className={style.card} open={focused ? true : undefined}>
     <summary>Chargeable service estimate · {estimate ? `revision ${estimate.revision} ${estimate.status}` : "not started"}</summary>
     <p>Use the tenant’s published Develop pricing policy for this request. Pricing review, a source-backed customer authorization record, and permission to start field work are separate. Recording a customer name here is not an authenticated customer signature.</p>
     {work.canonicalWorkId ? <p>The connected pilot currently supports one sourced labor-rate line for this decision. Other cost methods need their own governed calculation before they can authorize service.</p> : null}

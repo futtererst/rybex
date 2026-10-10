@@ -2,7 +2,7 @@ import type { WorkRecord, WorkspaceKey } from "./work-types";
 import { coverageFor, operateState, type ServiceRequest } from "./operate-model";
 
 export type SupportQueueItem = {
-  key: string; workId: string; section: "Handoff & activation" | "Assets" | "Coverage" | "Requests & jobs" | "Maintenance";
+  key: string; workId: string; requestId?: string; section: "Handoff & activation" | "Assets" | "Coverage" | "Requests & jobs" | "Maintenance";
   severity: "Overdue" | "Action" | "Upcoming"; label: string; detail: string; owner: string; dueAt?: string;
 };
 
@@ -16,7 +16,7 @@ function localDay(at: string, timezone: string): string {
 const addDays = (day: string, count: number) => new Date(Date.parse(`${day}T12:00:00Z`) + count * 86_400_000).toISOString().slice(0, 10);
 const open = (request: ServiceRequest) => !["Resolved", "Closed"].includes(request.status);
 
-export function buildSupportQueue(records: WorkRecord[], workspace: WorkspaceKey, now: string, timezone: string | ((work: WorkRecord) => string)): SupportQueueItem[] {
+export function buildSupportQueue(records: WorkRecord[], workspace: WorkspaceKey, now: string, timezone: string | ((work: WorkRecord) => string), includeCommercial = true): SupportQueueItem[] {
   const soon = Date.parse(now) + 24 * 3_600_000;
   const items: SupportQueueItem[] = [];
   for (const work of records) {
@@ -53,11 +53,11 @@ export function buildSupportQueue(records: WorkRecord[], workspace: WorkspaceKey
         ] as const).filter(([, due, met]) => due && !met).sort((a, b) => a[1]!.localeCompare(b[1]!))[0];
         if (next && Date.parse(next[1]!) <= soon) push({ key: `${prefix}:sla:${next[0]}`, section: "Requests & jobs", severity: Date.parse(next[1]!) < Date.parse(now) ? "Overdue" : "Upcoming", label: `${request.title}: ${next[0]} deadline`, detail: `Due ${next[1]}; clock from recorded agreement and policy.`, owner, dueAt: next[1] });
       }
-      if (request.coverage === "Chargeable") {
+      if (includeCommercial && ["Chargeable", "Partially covered"].includes(request.coverage)) {
         const estimate = request.serviceEstimate;
         const current = estimate?.requestCycleAt === (request.reopenedAt ?? request.reportedAt);
-        if (!current || estimate?.status !== "Approved") push({ key: `${prefix}:pricing`, section: "Requests & jobs", severity: "Action", label: `${request.title}: price service work`, detail: estimate?.status === "Pricing review" ? "Independent pricing decision is pending." : "Prepare or correct a current-cycle estimate before a commercial commitment.", owner });
-        else if (request.serviceAuthorization?.estimateRevision !== estimate.revision) push({ key: `${prefix}:authorization`, section: "Requests & jobs", severity: "Action", label: `${request.title}: customer authorization`, detail: `Approved estimate revision ${estimate.revision} still needs a recorded external customer decision.`, owner });
+        if (!current || estimate?.status !== "Approved") push({ key: `${prefix}:pricing`, requestId: request.id, section: "Requests & jobs", severity: "Action", label: `${request.title}: price service work`, detail: estimate?.status === "Pricing review" ? "Independent pricing decision is pending." : "Prepare or correct a current-cycle estimate before a commercial commitment.", owner });
+        else if (request.serviceAuthorization?.estimateRevision !== estimate.revision) push({ key: `${prefix}:authorization`, requestId: request.id, section: "Requests & jobs", severity: "Action", label: `${request.title}: customer authorization`, detail: `Approved estimate revision ${estimate.revision} still needs a recorded external customer decision.`, owner });
       }
     }
     for (const plan of state.maintenance.filter((item) => item.status === "Active" && item.nextDue <= next30)) {

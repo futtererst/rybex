@@ -56,6 +56,7 @@ export async function GET(request: NextRequest) {
     let ownedIds: Set<string> | null = null;
     let actorRole = ctx.actor.role;
     let roleActions: unknown[] = [];
+    let serviceActions: unknown[] = [];
     if (authoritativeD5OCommandsReady()) {
       const client = await createRybexSupabaseServerClient();
       const call = client.rpc.bind(client) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
@@ -68,6 +69,9 @@ export async function GET(request: NextRequest) {
         const queued = await call("d5o_hosted_role_actions_v1", { p_workspace_key: workspace });
         if (queued.error || !Array.isArray(queued.data)) return reply({ error: "role_queue_unavailable" }, 503);
         roleActions = queued.data;
+        const serviceQueued = await call("d5o_hosted_service_actions_v1", { p_workspace_key: workspace });
+        if (serviceQueued.error || !Array.isArray(serviceQueued.data)) return reply({ error: "service_queue_unavailable" }, 503);
+        serviceActions = serviceQueued.data;
       }
     }
     const isMine = (r: Work) => ownedIds ? ownedIds.has(r.id) : r.owner === owner;
@@ -107,7 +111,7 @@ export async function GET(request: NextRequest) {
     if (view === "portfolio") return reply({ records, total: matched.length, nextCursor,
       overview: { total: all.length, attention: all.filter((r) => r.status === "attention").length,
         stages: Object.fromEntries(lifecycle.map((_, i) => [i, all.filter((r) => pos(r) === i).length])) } });
-    if (view === "actions") return reply({ records, total: matched.length, nextCursor, ownedIds: [...(ownedIds ?? [])], actorRole, roleActions,
+    if (view === "actions") return reply({ records, total: matched.length, nextCursor, ownedIds: [...(ownedIds ?? [])], actorRole, roleActions, serviceActions,
       roles: [...new Set(all.filter((r) => ownedIds ? canReviewProposal(r) : proposal(r)).map((r) => (r.discovery as { proposal?: { review?: { authorityRole?: string } } } | undefined)?.proposal?.review?.authorityRole).filter(Boolean))],
       overview: { total: all.length, mine: all.filter(isMine).length, waiting: all.filter((r) => r.status === "attention").length,
         pricing: all.filter((r) => ownedIds ? canReviewPricing(r) : pricing(r)).length, proposal: all.filter((r) => ownedIds ? canReviewProposal(r) : proposal(r)).length, definition: all.filter(canReviewDefinition).length } });

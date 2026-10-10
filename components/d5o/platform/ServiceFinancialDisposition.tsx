@@ -45,8 +45,8 @@ const money = (minor: string | undefined, currency: string | undefined) => {
 };
 
 export function ServiceFinancialDisposition({
-  work, requestId, actorRole
-}: { work: WorkRecord; requestId: string; actorRole?: string }) {
+  work, requestId, requestTitle, actorRole
+}: { work: WorkRecord; requestId: string; requestTitle?: string; actorRole?: string }) {
   const [position, setPosition] = useState<Read | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -110,7 +110,7 @@ export function ServiceFinancialDisposition({
   const basis = position?.basis;
   const decision = position?.decision;
   return <section className={style.card} aria-label="Service financial disposition">
-    <div className={style.cardHead}><h3>Service financial disposition</h3>
+    <div className={style.cardHead}><h3>{requestTitle ? `${requestTitle} · service financial disposition` : "Service financial disposition"}</h3>
       <p>Coverage, customer authorization, physical completion and billing remain separate decisions.</p></div>
     {error ? <p role="alert">{error}</p> : null}
     {!basis ? <p>Loading the exact service basis…</p> : <>

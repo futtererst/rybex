@@ -13,9 +13,11 @@ export function validLocalScheduleOrigin(headers: Headers): boolean {
     const runtime = d5oCommandRuntime();
     if (runtime === "pilot"
       && (origin === "http://127.0.0.1:61641" ||
-        process.env.D5O_ISOLATED_PILOT_URL === "http://127.0.0.1:56621" && origin === "http://127.0.0.1:61642")) return true;
+        process.env.D5O_ISOLATED_PILOT_URL === "http://127.0.0.1:56621" && origin === "http://127.0.0.1:61642" ||
+        process.env.D5O_ISOLATED_PILOT_URL === "http://127.0.0.1:56821" && origin === "http://127.0.0.1:61645")) return true;
     if (runtime === "rehearsal") return origin === "http://127.0.0.1:61643" ||
-      (process.env.D5O_REHEARSAL_TARGET_URL === "http://127.0.0.1:56321" && origin === "http://127.0.0.1:61644");
+      (process.env.D5O_REHEARSAL_TARGET_URL === "http://127.0.0.1:56321" && origin === "http://127.0.0.1:61644") ||
+      (process.env.D5O_REHEARSAL_TARGET_URL === "http://127.0.0.1:56821" && origin === "http://127.0.0.1:61645");
     if (runtime === "production") return parsed.protocol === "https:";
     return localScheduleOrigins.has(origin);
   } catch { return false; }
