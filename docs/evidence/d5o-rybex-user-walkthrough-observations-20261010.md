@@ -1,6 +1,6 @@
 # D5O Rybex-user observation record (blank)
 
-No user session has occurred. Participant names, dates, results and comments remain pending. Automated pilot browser runs belong in the technical qualification record.
+No user session has occurred. Participant names, dates, results and comments remain pending. Automated pilot browser runs belong in the technical qualification record. The two resettable checkpoint definitions and source hashes are in the [facilitator notes](d5o-rybex-observation-facilitator-20261010.md). No participant result has been entered.
 
 Session date/time: Pending
 Facilitator and observer: Pending
