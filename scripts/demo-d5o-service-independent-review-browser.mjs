@@ -4,8 +4,9 @@ import { chromium } from "playwright";
 if (process.env.D5O_ISOLATED_PILOT !== "1" || !process.env.D5O_PILOT_CREDENTIALS_FILE)
   throw new Error("disposable_pilot_only");
 const users = JSON.parse(readFileSync(process.env.D5O_PILOT_CREDENTIALS_FILE, "utf8")).users;
-const origin = "http://127.0.0.1:61641";
-const child = "rybex-d910a2a58a9c46038fb459436e1839c3";
+const partial = process.env.D5O_SERVICE_VARIANT === "partial";
+const origin = process.env.D5O_PILOT_ORIGIN || "http://127.0.0.1:61641";
+const child = partial ? "rybex-a11c09e603a248359205ec84f0af4ae8" : "rybex-d910a2a58a9c46038fb459436e1839c3";
 const target = `${origin}/work?workspace=rybex&view=record&section=Deploy&record=${child}`;
 const browser = await chromium.launch({ headless: true });
 async function signIn(key) {
@@ -22,7 +23,7 @@ async function signIn(key) {
 try {
   const supervisor = await signIn("supervisor");
   await supervisor.page.getByRole("button", { name: "Field work" }).click();
-  const report = supervisor.page.locator('article:has-text("Panel inspection and alarm inputs completed")');
+  const report = supervisor.page.locator(`article:has-text("${partial ? "FICTIONAL PILOT: inspected the existing monitoring route" : "Panel inspection and alarm inputs completed"}")`);
   const reviewForm = report.locator('form:has(button:has-text("Record independent review"))');
   if (await reviewForm.count()) {
     await reviewForm.locator('input[name="note"]').fill("Actual completed service visit and four labor hours checked against the crew record.");
@@ -33,7 +34,7 @@ try {
 
   const quality = await signIn("quality");
   await quality.page.getByRole("button", { name: "Field work" }).click();
-  const evidence = quality.page.locator('article:has-text("synthetic-monitoring-panel.png")');
+  const evidence = quality.page.locator(`article:has-text("${partial ? "FICTIONAL-route-entry-diagnostic.png" : "synthetic-monitoring-panel.png"}")`);
   const evidenceForm = evidence.locator('form:has(button:has-text("Record independent review"))');
   if (await evidenceForm.count()) {
     await evidenceForm.locator('input[name="note"]').fill("Inspected synthetic pilot panel image and confirmed its package and revision link.");
