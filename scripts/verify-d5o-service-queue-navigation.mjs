@@ -12,7 +12,7 @@ try{const page=await browser.newPage();
  await page.getByRole('button',{name:'Continue to your work'}).click();
  await page.getByRole('button',{name:'Requests & jobs'}).click();
  await page.getByText('Synthetic covered monitoring inspection').waitFor();
- await page.getByRole('button',{name:'Overview'}).click();
+ await page.getByRole('button',{name:'Overview',exact:true}).click();
  await page.getByRole('link',{name:'Open exact request →'}).first().waitFor({timeout:40000});
  const links=await page.getByRole('link',{name:'Open exact request →'}).evaluateAll(nodes=>nodes.map(n=>n.getAttribute('href')));
  if(!links.some(link=>link?.includes(`request=${request}`)&&link.includes('focus=finance')))throw new Error('support_queue_missing_exact_closed_finance_link');
