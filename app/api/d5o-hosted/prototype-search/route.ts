@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authoritativeD5OCommandsReady } from "@/lib/d5o/auth/hosted-target";
-import { createRybexSupabaseServerClient } from "@/lib/d5o/auth/supabase-server";
+import { createRybexSupabaseAdminClient, createRybexSupabaseServerClient } from "@/lib/d5o/auth/supabase-server";
+import { deliveryRoleActions } from "@/lib/d5o/hosted/delivery-role-actions";
+import type { WorkRecord } from "@/components/d5o/platform/work-types";
 import { hostedPrototypeContext, HostedStateError } from "@/lib/d5o/hosted/prototype-context";
 import { initialHostedCatalog } from "@/lib/d5o/work-catalog/store";
 import { lifecycleProfiles, stateFor } from "@/components/d5o/platform/lifecycle-profiles";
@@ -57,6 +59,7 @@ export async function GET(request: NextRequest) {
     let actorRole = ctx.actor.role;
     let roleActions: unknown[] = [];
     let serviceActions: unknown[] = [];
+    let deliveryActions: unknown[] = [];
     if (authoritativeD5OCommandsReady()) {
       const client = await createRybexSupabaseServerClient();
       const call = client.rpc.bind(client) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
@@ -66,9 +69,20 @@ export async function GET(request: NextRequest) {
       actorRole = identity.role;
       ownedIds = new Set(identity.ownedIds);
       if (view === "actions") {
+        // The prototype snapshot is not the source for connected Design and Deploy
+        // decisions. Scope this server-only projection after membership resolution.
+        const admin = createRybexSupabaseAdminClient();
+        const adminCall = admin.rpc.bind(admin) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
+        const connected = await adminCall("d5o_hosted_server_connected_read_v1", {
+          p_workspace_key: workspace, p_state_key: "work"
+        });
+        const connectedRead = connected.data as { state?: { records?: WorkRecord[] } } | null;
+        if (connected.error || !Array.isArray(connectedRead?.state?.records))
+          return reply({ error: "delivery_queue_unavailable" }, 503);
+        deliveryActions = deliveryRoleActions(connectedRead.state.records.filter((item) => item.workspace === workspace), ctx.actor.id, actorRole);
         const queued = await call("d5o_hosted_role_actions_v1", { p_workspace_key: workspace });
         if (queued.error || !Array.isArray(queued.data)) return reply({ error: "role_queue_unavailable" }, 503);
-        roleActions = queued.data;
+        roleActions = (queued.data as Array<{ kind?: string }>).filter((item) => item.kind !== "Field report review");
         const serviceQueued = await call("d5o_hosted_service_actions_v1", { p_workspace_key: workspace });
         if (serviceQueued.error || !Array.isArray(serviceQueued.data)) return reply({ error: "service_queue_unavailable" }, 503);
         const costQueued = await call("d5o_hosted_service_cost_actions_v1", { p_workspace_key: workspace });
@@ -113,7 +127,7 @@ export async function GET(request: NextRequest) {
     if (view === "portfolio") return reply({ records, total: matched.length, nextCursor,
       overview: { total: all.length, attention: all.filter((r) => r.status === "attention").length,
         stages: Object.fromEntries(lifecycle.map((_, i) => [i, all.filter((r) => pos(r) === i).length])) } });
-    if (view === "actions") return reply({ records, total: matched.length, nextCursor, ownedIds: [...(ownedIds ?? [])], actorRole, roleActions, serviceActions,
+    if (view === "actions") return reply({ records, total: matched.length, nextCursor, ownedIds: [...(ownedIds ?? [])], actorRole, roleActions, serviceActions, deliveryActions,
       roles: [...new Set(all.filter((r) => ownedIds ? canReviewProposal(r) : proposal(r)).map((r) => (r.discovery as { proposal?: { review?: { authorityRole?: string } } } | undefined)?.proposal?.review?.authorityRole).filter(Boolean))],
       overview: { total: all.length, mine: all.filter(isMine).length, waiting: all.filter((r) => r.status === "attention").length,
         pricing: all.filter((r) => ownedIds ? canReviewPricing(r) : pricing(r)).length, proposal: all.filter((r) => ownedIds ? canReviewProposal(r) : proposal(r)).length, definition: all.filter(canReviewDefinition).length } });

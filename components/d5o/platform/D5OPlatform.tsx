@@ -205,6 +205,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
   const [preferencesLoaded, setPreferencesLoaded] = useState(false);
   const [screen, setScreen] = useState<Screen>("home");
   const [urlRestored, setUrlRestored] = useState(false);
+  const [unavailableRecordId, setUnavailableRecordId] = useState<string | null>(null);
   const [recordReturn, setRecordReturn] = useState<Exclude<Screen, "record">>("portfolio");
   const [myWorkEntry, setMyWorkEntry] = useState<"all" | "mine" | "pricing" | "proposal" | "definition">("all");
   const [discoverEntry, setDiscoverEntry] = useState<"pricing" | "proposal" | null>(null);
@@ -433,7 +434,7 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
   const operateTimezones = useMemo(() => Object.fromEntries(visibleWork.map((item) => [item.id, resolvePublishedPhaseConfiguration(configurationInventory, item.workspace, item.type, item as WorkRecord)?.operateControls?.timezone ?? legacyOperateControlPolicy.timezone])), [visibleWork, configurationInventory]);
   const operationalWork = useMemo(() => visibleWork.map((item) => ({ ...item, blockers: transitionBlockers(item, resolvePublishedPhaseConfiguration(configurationInventory, item.workspace, item.type, item as WorkRecord)) })), [visibleWork, configurationInventory]);
   const schedulingProfiles = useMemo(() => applyAvailability(hostedPreview && authoritativeCommands ? (workforce.state?.people ?? []) : peopleProfiles[activeWorkspace], availabilityBlocks), [activeWorkspace, availabilityBlocks, hostedPreview, authoritativeCommands, workforce.state]);
-  const selected = visibleWork.find((item) => item.id === selectedId) ?? visibleWork[0];
+  const selected = unavailableRecordId ? undefined : visibleWork.find((item) => item.id === selectedId) ?? visibleWork[0];
   useEffect(() => {
     if (!workLoaded || urlRestored) return;
     const frame = requestAnimationFrame(() => {
@@ -441,7 +442,8 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       const recordId = params.get("record");
       const view = params.get("view");
       const section = params.get("section");
-      if (recordId && work.some((item) => item.id === recordId && item.workspace === activeWorkspace)) setSelectedId(recordId);
+      if (recordId && work.some((item) => item.id === recordId && item.workspace === activeWorkspace)) { setSelectedId(recordId); setUnavailableRecordId(null); }
+      else if (recordId && view === "record") setUnavailableRecordId(recordId);
       if (view && durableScreens.has(view as Screen)) setScreen(view as Screen);
       if (section && durableRecordTabs.has(section as RecordTab)) setTab(section as RecordTab);
       setUrlRestored(true);
@@ -452,16 +454,18 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
     if (!urlRestored) return;
     const url = new URL(window.location.href);
     url.searchParams.set("view", screen);
-    if (selected) url.searchParams.set("record", selected.id);
+    if (screen === "record" && unavailableRecordId) url.searchParams.set("record", unavailableRecordId);
+    else if (selected) url.searchParams.set("record", selected.id);
     if (screen === "record") url.searchParams.set("section", tab);
     else url.searchParams.delete("section");
     window.history.replaceState(window.history.state, "", url);
-  }, [screen, selected, tab, urlRestored]);
+  }, [screen, selected, tab, urlRestored, unavailableRecordId]);
   const selectedPhaseConfig = selected ? resolvePublishedPhaseConfiguration(configurationInventory, activeWorkspace, selected.type, selected as WorkRecord) : null;
   const myActions = visibleWork.filter((item) => item.status !== "complete").sort((a, b) => compareActionPriority(a, b) || a.title.localeCompare(b.title));
 
   function go(next: Screen, entry?: { myWork?: "all" | "mine" | "pricing" | "proposal" | "definition"; crew?: "coverage" | "attendance" }) {
     setNotice(""); setScreen(next); setMobileMenuOpen(false);
+    if (next !== "record") setUnavailableRecordId(null);
     if (next === "record" && screen !== "record") setRecordReturn(screen);
     if (next === "my-work") setMyWorkEntry(entry?.myWork ?? "all");
     if (next === "crew") { setCrewEntry(entry?.crew ?? null); setCrewFocusWorkId(null); }
@@ -1013,13 +1017,14 @@ export function D5OPlatform({ initialWorkspace, configurationInventory, actorLab
       {screen === "people" ? <PeopleCapacityBoard workspaceKey={activeWorkspace} work={operationalWork} profiles={schedulingProfiles} assignments={scheduleAssignments} weekIndex={scheduleWeek} anchorDate={sharedSchedule.schedule?.anchorDate ?? ""} availabilityBlocks={availabilityBlocks} packageDemands={sharedSchedule.schedule?.packageDemands ?? []} onAvailabilityChange={(blocks) => sharedSchedule.mutate({ action: "save-availability", availabilityBlocks: blocks }).then(() => undefined)} onSchedule={() => go("crew")} /> : null}
       {screen === "people" && hostedPreview && actorRole === "admin" ? <MemberAccessPanel workspace={activeWorkspace} /> : null}
       {screen === "execution" ? <ExecutionFactsBoard workspaceName={palette.name} work={operationalWork as WorkRecord[]} schedule={sharedSchedule.schedule} onOpen={(item) => { setSelectedId(item.id); setTab("Deploy"); go("record"); }} onSchedule={() => go("crew")} /> : null}
-      {screen === "handoff" ? <HandoffControlBoard workspaceName={palette.name} work={operationalWork} onOpen={(item) => { setSelectedId(item.id); setTab("Handoff"); go("record"); }} /> : null}
+      {screen === "handoff" ? <HandoffControlBoard workspaceName={palette.name} work={operationalWork as WorkRecord[]} onOpen={(item) => { setSelectedId(item.id); setTab("Deploy"); go("record"); }} /> : null}
       {screen === "library" ? <EvidenceLibrary work={visibleWork} onOpen={(item) => { setSelectedId(item.id); setTab("Evidence"); go("record"); }} /> : null}
       {screen === "insights" ? <OperatingInsights workspaceName={palette.name} work={operationalWork} scheduleAssignments={scheduleAssignments.filter((item) => item.week === scheduleWeek).map((item) => ({ ...item, week: 0 }))} onOpen={openRecord} /> : null}
       {screen === "operating" ? <OperatingModel workspaceKey={activeWorkspace} workspaceName={palette.name} /> : null}
       {screen === "configuration" ? <WorkspaceStudio workspaceKey={activeWorkspace} workspaceName={palette.name} configurationInventory={configurationInventory} canManageWorkerAccounts={hostedPreview && actorRole === "admin" && activeWorkspace === "rybex"} accent={accent} foundation={workspaceDark} workTypes={configuredTypes} commercialProfiles={commercialProfiles} onAccent={setAccent} onFoundation={setWorkspaceDark} onWorkTypes={setConfiguredTypes} onCommercialProfiles={(profiles) => { setCommercialProfiles(profiles); setCommercialPolicyInitialized(true); }} /> : null}
       {screen === "start" ? <StartWork workspaceKey={activeWorkspace} workspaceName={palette.name} workTypes={publishedStartTypes} publishedVersionId={configurationInventory.status === "ready" ? configurationInventory.activeVersionId : null} defaultOwner={currentUserLabel} onSubmit={startWork} onCancel={() => go("home")} /> : null}
       {screen === "record" && selected ? <WorkRecord profiles={schedulingProfiles} actorId={actorId ?? "unknown-user"} actorRole={actorRole} work={selected} allWork={visibleWork} configurationInventory={configurationInventory} onSelectDesignWork={(id) => { setSelectedId(id); setTab("Design"); }} tab={tab} setTab={setTab} phaseConfig={selectedPhaseConfig} phaseDemandCount={(sharedSchedule.schedule?.packageDemands ?? []).filter((item) => item.workId === selected.id).length} phaseAssignmentCount={scheduleAssignments.filter((item) => item.workId === selected.id).length} onPhaseRowSave={(key, row, index) => savePhaseRow(selected, key, row, index)} onPhaseRowRemove={(key, index) => removePhaseRow(selected, key, index)} backLabel={operatingNavigation.find((item) => item.screen === recordReturn)?.label ?? designNavigation.find((item) => item.screen === recordReturn)?.label ?? "Work hub"} onBack={() => go(recordReturn, { myWork: myWorkEntry, crew: crewEntry ?? undefined })} onOpenDiscovery={() => openWorkspacePhase("discover", selected)} onOpenDefinition={() => openWorkspacePhase("define", selected)} onOpenDevelop={() => { setDiscoverEntry(null); go("develop"); }} onOpenPeople={() => go("people")} onOpenCrew={() => { go("crew"); setCrewFocusWorkId(selected.id); }} onActionPriority={(event) => saveActionPriority(selected, event)} onEvidence={(event) => addEvidence(selected, event)} onReviewEvidence={(event) => reviewEvidence(selected, event)} onPackage={(event) => addPackage(selected, event)} onPackageDemand={(event) => savePackageDemand(selected, event)} packageDemands={sharedSchedule.schedule?.packageDemands ?? []} canEditDemand={sharedSchedule.canEdit} onPackageFacts={(event) => recordPackageFacts(selected, event)} onAdvancePackage={(id) => advancePackage(selected, id)} onIssue={(event) => createIssue(selected, event)} onResolveIssue={(event) => resolveIssue(selected, event)} onException={(event) => recordException(selected, event)} onCommercial={(event) => saveCommercial(selected, event)} onLifecycle={(event) => addLifecycle(selected, event)} onDesignCommand={(command) => executeDesignCommand({ ...command, workId: selected.id })} schedule={sharedSchedule.schedule ?? null} onDeployCommand={(command) => executeDeployCommand({ ...command, workId: selected.id })} onDeployUpload={(packageId, data) => uploadDeployEvidence(selected.id, packageId, data)} hosted={hostedPreview} onOperateCommand={(command) => executeOperateCommand({ ...command, workId: selected.id })} operateFocus={operateFocus?.workId === selected.id ? operateFocus.section : "Overview"} onOpenOperateWork={(id, section) => { const target = visibleWork.find((item) => item.id === id); setSelectedId(id); setOperateFocus(section && target?.operate ? { workId: id, section } : null); if (target?.discovery && !target?.serviceSource && !target?.operate) { go("discover"); return; } setTab(target?.serviceSource ? "Design" : target?.operate ? "Operate" : "Overview"); }} onDesignHandoff={(decision, note) => executeCommercialCommand({ workId: selected.id, action: decision, packageRevision: selected.discovery?.proposal.package?.revision ?? 0, handoffRevision: selected.discovery?.designHandoff?.revision, note })} /> : null}
+      {screen === "record" && unavailableRecordId ? <section className="d5o-panel" role="alert"><h2>Work Record unavailable</h2><p>The requested record {unavailableRecordId} is unavailable in this workspace. Refresh the queue to find the current decision.</p><button onClick={() => go("my-work")}>Return to My Work</button></section> : null}
       </div>
     </section>
   </main>;

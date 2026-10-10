@@ -21,7 +21,7 @@ The 12 already-recorded D5O/worker migrations have SQL definitions identical to 
 
 The worker-excluding policies `d5o_hosted_work_member_read` and `d5o_hosted_work_event_member_read` also match the live read-only inspection. Do not rewrite the eight applied history versions. A raw version-only `supabase db push` is unsafe until the release operator explicitly reconciles those mappings; it would treat their local versions as unapplied.
 
-## Outstanding files, in required order (60)
+## Outstanding files, in required order (61)
 
 1. `20261008183310_d5o_prototype_authoritative_writes.sql`
 2. `20261008203000_d5o_reject_imported_commercial_decisions.sql`
@@ -83,8 +83,9 @@ The worker-excluding policies `d5o_hosted_work_member_read` and `d5o_hosted_work
 58. `20261010170000_connected_service_action_queue.sql`
 59. `20261010180000_connected_service_invoice.sql`
 60. `20261010190000_connected_service_actual_cost.sql`
+61. `20261010200000_d5o_completion_reassessment.sql`
 
-A fresh disposable Supabase instance replayed **71 hosted candidate files in filename order**, including the service-invoice migration. Relative to the prior 12-file shared read-only mapping, **59 files are outstanding**. The active fictional service pilot was incrementally patched; it is not evidence of full ordered replay. Shared-project definitions and migration history must be rechecked at cutover. Disposable replay does not establish shared-project compatibility or authorization to apply migrations. The deployment cutover must compare names, normalized SQL, policy definitions and migration history again immediately before any shared write.
+At the earlier invoice checkpoint, a fresh disposable Supabase instance replayed **71 hosted candidate files in filename order**, including the service-invoice migration. Relative to the prior 12-file shared read-only mapping, **59 files are outstanding**. The active fictional service pilot was incrementally patched; it is not evidence of full ordered replay. Shared-project definitions and migration history must be rechecked at cutover. Disposable replay does not establish shared-project compatibility or authorization to apply migrations. The deployment cutover must compare names, normalized SQL, policy definitions and migration history again immediately before any shared write.
 
 The 10 October partially covered service pilot added no migration file. Its older disposable target at `127.0.0.1:56321` needed the already-listed candidate definitions `20261009232739`, `20261009234405`, and `20261009104500` applied locally before the browser journey. This does not establish application of any file to shared persistence. See [isolated service-return evidence](./evidence/d5o-partial-service-return-20261010.md).
 
@@ -97,3 +98,5 @@ The `20261010170000_connected_service_action_queue.sql` migration projects curre
 The `20261010180000_connected_service_invoice.sql` migration adds a private, request-cycle-scoped USD fixed-fee invoice and receivable ledger, typed authenticated draft/review/issue/payment commands, replay receipts and role-queue positions. It does not alter the parent customer-job Finance ledger. The final 71-file sequence replayed from an empty disposable local database; the active fictional fixture was patched separately. See [service invoice evidence](./evidence/d5o-service-invoice-20261010.md).
 
 The `20261010190000_connected_service_actual_cost.sql` migration adds a private append-only cost ledger for the exact completed service cycle, linked reversal/replacement corrections, authenticated Finance commands, replay receipts, an honest economics read model and a separate cost action queue that retains invoice collection. The final **72-file** candidate sequence replayed in filename order in a fresh disposable local database; **12 mapped files remain already recorded on shared and 60 candidate files remain outstanding**. The active fictional fixture and a separate disposable database-only probe were patched locally. No shared migration was applied. See [sourced service-cost evidence](./evidence/d5o-service-cost-20261010.md).
+
+The `20261010200000_d5o_completion_reassessment.sql` migration retains a prior reviewed completion, permits a new independent review of changed report/inspection facts only before turnover, binds new turnovers to the exact completion ID, and freezes completion after turnover or whole-work acceptance. The current **73-file** candidate sequence replayed in filename order on disposable local `d5o-delivery-replay-20261010`; 73 migration versions were recorded. Relative to the 12 read-only mapped shared entries, **61 files are outstanding**. No shared migration was applied. See [delivery role-queue qualification](./evidence/d5o-delivery-role-queue-20261010.md).
