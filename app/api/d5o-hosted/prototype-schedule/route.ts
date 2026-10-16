@@ -1,3 +1,4 @@
+import { authoritativeD5OCommandsReady } from "@/lib/d5o/auth/hosted-target";
 import { NextRequest, NextResponse } from "next/server";
 import type { WorkspaceKey } from "@/components/d5o/platform/schedule-model";
 import type { SharedWorkCatalog } from "@/components/d5o/platform/work-catalog-model";
@@ -5,6 +6,7 @@ import { applyScheduleMutation, initialHostedSchedule, ScheduleError,
   type ScheduleMutation } from "@/lib/d5o/scheduling/store";
 import { HostedStateError, hostedPrototypeContext } from "@/lib/d5o/hosted/prototype-context";
 import { validLocalScheduleOrigin } from "@/lib/d5o/scheduling/request-origin";
+import { createRybexSupabaseServerClient } from "@/lib/d5o/auth/supabase-server";
 
 export const dynamic = "force-dynamic";
 const workspaces = new Set(["rybex", "rotork"]);
@@ -22,7 +24,8 @@ export async function GET(request: NextRequest) {
     const schedule = loaded.state
       ? { ...loaded.state, revision: loaded.revision }
       : initialHostedSchedule(workspace as WorkspaceKey);
-    return reply({ schedule, canEdit: context.canEdit, delivery, synthetic: true });
+    return reply({ schedule, canEdit: context.canEdit, delivery,
+      requiresPublication: authoritativeD5OCommandsReady(), synthetic: true });
   } catch (error) {
     if (error instanceof HostedStateError) return reply({ error: error.code }, error.status);
     return reply({ error: "schedule_unavailable" }, 503);
@@ -39,6 +42,34 @@ export async function POST(request: NextRequest) {
     const input = JSON.parse(body) as ScheduleMutation;
     const context = await hostedPrototypeContext(workspace);
     if (!context.canEdit) return reply({ error: "workspace_forbidden" }, 403);
+    if (authoritativeD5OCommandsReady()) {
+      if (input.action !== "save-booking" && input.action !== "publish")
+        return reply({ error: "typed_schedule_command_required" }, 409);
+      const commandId = (input as ScheduleMutation & { commandId?: string }).commandId;
+      if (!commandId || !Number.isInteger(input.expectedRevision))
+        return reply({ error: "command_identity_required" }, 400);
+      const client = await createRybexSupabaseServerClient();
+      const call = client.rpc.bind(client) as unknown as (name: string, args: Record<string, unknown>) => Promise<{
+        data: unknown; error: { code?: string; message: string } | null
+      }>;
+      const { data, error } = await call("d5o_hosted_crew_command_v1", {
+        p_workspace_key: workspace,
+        p_action: input.action === "publish" ? "publish-week" : "save-booking",
+        p_input: input.action === "publish" ? { week: input.week } : { assignment: input.assignment },
+        p_command_id: commandId,
+        p_expected_revision: input.expectedRevision
+      });
+      if (error) return reply({ error: error.message, message: error.message },
+        error.code === "42501" ? 403 : error.code === "23505" || error.code === "23514" ? 409 : 400);
+      const result = data as { state?: Record<string, unknown>; revision?: number } | null;
+      if (!result?.state || !Number.isInteger(result.revision)) return reply({ error: "invalid_response" }, 502);
+      return reply({ schedule: { ...result.state, revision: result.revision }, delivery,
+        requiresPublication: true,
+        deliveryWarning: input.action === "publish"
+          ? "The published booking is available in-app. External notification is not configured for this hosted pilot."
+          : "Booking saved as a draft. Publish this week before workers can see it. External notification is not configured.",
+        synthetic: false });
+    }
     if (input.action === "save-demand") {
       const workState = await context.read("work");
       const record = (workState.state?.records as Array<Record<string, unknown>> | undefined)?.find((item) => item.id === input.demand.workId);

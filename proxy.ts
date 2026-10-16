@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { isProductionRouteAvailable } from "./lib/d5o/security/production-module-availability";
+import { d5oSupabaseCookieOptions } from "./lib/d5o/auth/supabase-cookie-options";
 
 type CookieToSet = {
   name: string;
@@ -29,7 +30,8 @@ export async function proxy(request: NextRequest) {
   if (hostedD5O && pathname === "/") {
     return NextResponse.redirect(new URL("/work", request.url));
   }
-  if (hostedD5O && pathname !== "/work" && !pathname.startsWith("/api/d5o-hosted/")) {
+  if (hostedD5O && pathname !== "/work" && pathname !== "/work/my-schedule"
+    && !pathname.startsWith("/work/my-schedule/") && !pathname.startsWith("/api/d5o-hosted/")) {
     return new NextResponse("The hosted D5O work surface is not yet available.", {
       status: 503,
       headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" }
@@ -59,6 +61,7 @@ export async function proxy(request: NextRequest) {
 
   let response = NextResponse.next({ request });
   const supabase = createServerClient(supabaseUrl, supabaseKey, {
+    cookieOptions: d5oSupabaseCookieOptions(supabaseUrl),
     cookies: {
       getAll() {
         return request.cookies.getAll();
